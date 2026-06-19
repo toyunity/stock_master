@@ -11,6 +11,7 @@ class Signal:
     confidence: int           # 1~5
     reasons: list[str] = field(default_factory=list)
     advice: bool = False      # 백테스트 게이트 통과 시 True (S2에서 설정)
+    _backtest_passed: bool = field(default=False, repr=False)
 
 
 def _crossed_up(short, long_, lookback: int = 5) -> bool:
@@ -60,10 +61,9 @@ def evaluate_with_gate(df, code: str) -> Signal:
     sig = evaluate(df, code)
     passed = False
     if sig.action == "buy":
-        for reason in sig.reasons:
-            for key, strat in _REASON_TO_STRATEGY.items():
-                if key in reason and backtest_strategy(df, strat).passed:
-                    passed = True
+        strategies = {strat for reason in sig.reasons
+                      for key, strat in _REASON_TO_STRATEGY.items() if key in reason}
+        passed = any(backtest_strategy(df, s).passed for s in strategies)
     sig.advice = passed
-    sig._backtest_passed = passed  # 테스트 가시성용
+    sig._backtest_passed = passed
     return sig

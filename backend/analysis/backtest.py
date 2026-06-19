@@ -41,8 +41,8 @@ def backtest_strategy(df, strategy: str, hold_days: int = 10,
     losses = [-r for r in rets if r < 0]
     win_rate = len(wins) / trades
     avg_win = sum(wins) / len(wins) if wins else 0.0
-    avg_loss = sum(losses) / len(losses) if losses else 1e-9
-    payoff = avg_win / avg_loss if avg_loss else 0.0
+    avg_loss = sum(losses) / len(losses) if losses else None
+    payoff = (avg_win / avg_loss) if avg_loss else float("inf")
     # 단순 자본곡선 MDD
     equity, peak, mdd = 1.0, 1.0, 0.0
     for r in rets:
