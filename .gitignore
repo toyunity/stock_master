@@ -5,3 +5,4 @@ data/cache/*.parquet
 stock_master.db
 .env
 docs/report-daily.html
+*.egg-info/
