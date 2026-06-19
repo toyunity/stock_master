@@ -14,6 +14,10 @@
    padding:10px;border-radius:8px;margin-top:16px}
  .bt{font-size:12px;color:#1565c0;margin-top:6px;background:#eef4fc;padding:6px 8px;border-radius:6px}
  ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
+ h2{font-size:16px;margin-top:24px;border-top:1px solid #e0e3eb;padding-top:14px}
+ details{background:#fff;border:1px solid #e0e3eb;border-radius:8px;padding:8px 12px;margin:6px 0}
+ summary{cursor:pointer;font-size:14px;font-weight:600}
+ details p{font-size:13px;color:#444;line-height:1.6;margin:8px 0 2px}
 </style></head><body>
 <h1>📊 Stock Master 일일 리포트 <small>{{ date }}</small></h1>
 {% for s in signals %}
@@ -24,6 +28,16 @@
   <ul>{% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
   {% if s.backtest %}<div class="bt">📈 백테스트 성과 — 승률 {{ s.backtest.win_rate }}% · {{ s.backtest.trades }}거래 · 손익비 {{ s.backtest.payoff }} · 최대낙폭(MDD) {{ s.backtest.mdd }}%</div>{% endif %}
 </div>
+{% endfor %}
+{% if glossary_terms %}
+<h2>📚 오늘 리포트에 나온 용어</h2>
+{% for t in glossary_terms %}
+<details class="term"><summary>{{ t.key }} — {{ t.short }}</summary><p>{{ t.long }}</p></details>
+{% endfor %}
+{% endif %}
+<h2>📖 기초 개념 — 한 걸음씩 배우기</h2>
+{% for l in lessons %}
+<details class="lesson"><summary>{{ l.title }}</summary><p>{{ l.body }}</p></details>
 {% endfor %}
 <div class="disc">⚠️ 투자 유의 안내 — 본 애플리케이션이 제공하는 모든 정보·분석·신호는 참고용이며, 특정 종목의 매수·매도를 권유하지 않습니다. 모든 투자 판단과 그 결과에 대한 책임은 이용자 본인에게 있습니다. 과거 성과(백테스트)는 미래 수익을 보장하지 않습니다. 데이터는 KIS·DART·KRX·언론사 등에서 수집되며 오류·지연이 있을 수 있습니다.</div>
 </body></html>
