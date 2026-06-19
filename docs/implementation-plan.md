@@ -14,6 +14,7 @@
 
 ## 진행 원칙
 - **TDD**: 실패 테스트 → 최소 구현 → 통과 → 커밋. (각 step 2~5분)
+- ⚠️ **예시 테스트·합성 데이터는 "미실행 출발점"이다.** 본 계획의 코드/테스트는 아직 한 번도 실행되지 않았다. 각 step의 "Expected: PASS"는 *의도*이지 *검증된 사실*이 아니다. 첫 실행에서 빨간불이 나면 "뭔가 고장났다"가 아니라 **"이 출발 테스트의 데이터/로직을 다듬으라는 신호"**로 해석한다. (특히 합성 데이터가 지표 임계값과 어떻게 상호작용하는지는 실행해 봐야 확실해진다 — Task 1.3의 ⚠️ 참고.)
 - **DRY / YAGNI**: 지금 MVP에 필요한 것만.
 - **병렬 표시**: 각 Task 머리에 `[병렬: 가능 — 선행 Task X 이후]` 또는 `[병렬: 불가 — 선행 의존]`을 명시. 같은 묶음(병렬 그룹)으로 표시된 Task는 서로 독립이라 별도 에이전트/워크트리에서 동시에 진행 가능.
 - **커밋**: 각 Task 끝에 1커밋. (저장소는 Task 0.1에서 `git init`)
@@ -565,11 +566,15 @@ class Signal:
     reasons: list[str] = field(default_factory=list)
     advice: bool = False      # 백테스트 게이트 통과 시 True (S2에서 설정)
 
-def _crossed_up(short, long_) -> bool:
-    return short.iloc[-2] <= long_.iloc[-2] and short.iloc[-1] > long_.iloc[-1]
+def _crossed_up(short, long_, lookback: int = 5) -> bool:
+    """최근 lookback 봉 안에서 단기선이 장기선을 상향 돌파(신선한 골든크로스)."""
+    event = (short.shift(1) <= long_.shift(1)) & (short > long_)
+    return bool(event.iloc[-lookback:].any())
 
-def _crossed_down(short, long_) -> bool:
-    return short.iloc[-2] >= long_.iloc[-2] and short.iloc[-1] < long_.iloc[-1]
+def _crossed_down(short, long_, lookback: int = 5) -> bool:
+    """최근 lookback 봉 안에서 단기선이 장기선을 하향 돌파(신선한 데드크로스)."""
+    event = (short.shift(1) >= long_.shift(1)) & (short < long_)
+    return bool(event.iloc[-lookback:].any())
 
 def evaluate(df, code: str) -> Signal:
     """지표가 채워진 DataFrame을 받아 매매 신호를 산출한다."""
@@ -597,7 +602,9 @@ def evaluate(df, code: str) -> Signal:
     return Signal(code=code, action=action, confidence=confidence, reasons=reasons)
 ```
 
-- [ ] **Step 4: 통과 확인** — Run: `pytest tests/test_rules.py -v` → PASS
+- [ ] **Step 4: 통과 확인** — Run: `pytest tests/test_rules.py -v` → PASS 의도
+
+> ⚠️ **알려진 함정 (실행 시 확인할 것):** `test_golden_cross_yields_buy`의 합성 데이터(80봉 하락→40봉 급등)는 두 가지 이유로 **첫 실행에서 실패할 수 있다**: ① 골든크로스 이벤트가 마지막 봉이 아니라 상승 *중간*에 발생 → `lookback=5`로 못 잡을 수 있음. ② 40봉 연속 급등 → RSI14 > 70 → 과매수 *sell* 이유가 붙음. 이는 **버그가 아니라 출발 테스트가 다듬어져야 한다는 신호**다. 권장 대응(택1): (a) `_crossed_up`의 `lookback`을 키워 최근 크로스를 포착, **또는** (b) 합성 데이터를 *완만하고 최근에* 크로스가 마지막 봉 근처에서 일어나고 RSI가 70 미만에 머물도록 재구성, **또는** (c) "신선한 골든크로스"의 정의(이벤트 vs ma20>ma60 상태)를 의도에 맞게 확정. **이 신호가 앱의 핵심(매수)이므로 실행 시 trace로 직접 검증하고 확정할 것.**
 
 - [ ] **Step 5: 커밋** — `git add backend/signals/rules.py tests/test_rules.py && git commit -m "feat: rule-based signal engine (golden/dead cross + RSI)"`
 
