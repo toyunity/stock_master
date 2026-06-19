@@ -3,22 +3,27 @@
 | 항목 | 값 |
 |---|---|
 | 갱신일 | 2026-06-19 |
-| 브랜치 | `feature/mvp-s0-s2` |
-| 상태 | ✅ S0(기반)·S1(MVP)·S2(백테스트 게이트) **완료** |
-| 테스트 | **23 passed** (pytest) |
+| 브랜치 | `main` (S0–S2 + 교육 레이어 병합 완료) |
+| 상태 | ✅ S0(기반)·S1(MVP)·S2(백테스트 게이트) + **교육 레이어** 완료 |
+| 테스트 | **32 passed** (pytest) |
 | 실행 | 실제 한국 시장 데이터(FDR)로 end-to-end 동작 확인 |
 
 ## 무엇이 동작하나
 명령 한 번으로 관심종목 일일 HTML 리포트를 생성한다:
 ```bash
 source .venv/bin/activate
-python -m backend.cli report          # 캐시 우선
+python -m backend.cli report          # 캐시 우선 → docs/report-daily.html
 python -m backend.cli report --force  # 캐시 무시하고 새로 받기
-# → docs/report-daily.html 생성
+python -m backend.cli glossary        # 용어·개념 학습 페이지 → docs/glossary.html
 ```
 파이프라인: **FDR(캐시 우선 어댑터) → `ta` 지표(MA20/MA60/RSI14/MACD) → 규칙 신호(신선한 골든/데드크로스 + RSI 30/70) → 백테스트 게이트(통과 시에만 "조언") → Jinja2 HTML 리포트**.
 
 리포트에는 종목별 {매수관심/매도고려/관망 + 신뢰도 + 근거}와, 게이트를 통과한 매수 신호에는 **백테스트 성과(승률·거래수·손익비·MDD)**와 "검증됨" 배지, 그리고 §16 투자 유의 고지문이 표시된다.
+
+### 📚 교육 레이어 (구현됨 — 초보자 학습용)
+- **용어 사전**: 매수/매도·골든크로스·RSI·손절·백테스트 등 **24개 용어**를 "한 줄 뜻 + 공부용 설명"으로 (`backend/education/glossary.py`).
+- **리포트 자동 용어 설명**: 그날 리포트에 등장한 용어만 골라 펼침(▶) 설명 + **6개 기초 개념 레슨**("참고 vs 지시", "신뢰도 별의 뜻", "검증됨의 뜻", 손절·분산투자, "관망도 정답").
+- **독립 학습 페이지**: `glossary` 명령으로 전체 용어집+개념을 공부용 HTML(`docs/glossary.html`)로 생성.
 
 ## 모듈 구조 (구현됨)
 ```
@@ -34,9 +39,12 @@ backend/
 │   ├── indicators.py    # add_indicators()
 │   └── backtest.py      # backtest_strategy() + BacktestResult
 ├── signals/rules.py     # Signal, evaluate(), evaluate_with_gate()
-└── report/
-    ├── render.py        # render_daily_report() (autoescape=True)
-    └── templates/daily.html.j2
+├── report/
+│   ├── render.py        # render_daily_report() + render_glossary_page()
+│   └── templates/{daily,glossary}.html.j2
+└── education/           # 📚 교육 레이어
+    ├── glossary.py      # 24개 용어(Term: key/short/long/aliases) + terms_in()
+    └── lessons.py       # 6개 기초 개념 레슨
 ```
 
 ## 계획서 대비 변경사항 (실행 환경 적응 + 리뷰 반영)
@@ -58,9 +66,10 @@ backend/
 7. **payoff = ∞** — 손실 거래가 0이면 손익비가 무한대로 표시됨(게이트엔 영향 없음). → 후속: 표기 정책 정리.
 
 ## 다음 슬라이스 (각자 별도 계획서로 확장)
+- ✅ **교육 레이어** (S6 일부) — 용어 사전·리포트 용어설명·학습 페이지 **완료**.
 - **S3 뉴스/이슈** — RSS(한경 등) + DART 공시. (DART는 Python 3.13 또는 REST 직접)
 - **S4 시장 스캐너** — KIS 순위 API(등락률/거래량 Top30) 또는 FDR EOD.
 - **S5 실시간** — KIS 웹소켓. **선행: 한국투자증권 실계좌 개설(본인인증, 수일 소요) → 모의투자 키 발급.**
-- **S6 PWA + 교육 + 알림** — Lightweight Charts, 용어집(§17), 웹푸시.
+- **S6 나머지** — PWA(모바일 설치), Lightweight Charts 차트, 웹푸시 알림. (교육 콘텐츠는 위에서 완료)
 
 자세한 설계는 `docs/design.md`, 단계별 TDD 작업은 `docs/implementation-plan.md` 참조.
