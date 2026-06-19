@@ -85,7 +85,9 @@ touch backend/__init__.py backend/adapters/__init__.py backend/ingest/__init__.p
 name = "stock-master"
 version = "0.1.0"
 description = "한국 주식 실시간 분석·매매조언 PWA (개인용)"
-requires-python = ">=3.13"
+# MVP(S0~S2) 의존성은 모두 3.9+ 호환. 실행 환경에 3.13이 없어 3.9로 진행한다.
+# S3의 OpenDartReader(3.13 요구)는 'DART REST 직접 호출'로 우회하므로 3.13 불필요.
+requires-python = ">=3.9"
 dependencies = [
     "finance-datareader>=0.9.101",
     "pandas>=2.2",
@@ -123,11 +125,12 @@ docs/report.html
 - [ ] **Step 4: 가상환경 + 설치**
 
 ```bash
-python3.13 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
 pip install -e ".[dev]"
 ```
-Expected: 설치 성공. 실패 시 Python 3.13 설치 여부 확인(`python3.13 --version`).
+Expected: 설치 성공. (이 환경은 Python 3.9.6 — MVP 의존성은 3.9 호환. 3.13이 있으면 그걸 써도 무방.)
 
 - [ ] **Step 5: 스모크 테스트 작성 `tests/test_smoke.py`**
 
