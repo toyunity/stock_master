@@ -15,6 +15,18 @@ def _bt_view(bt):
             "payoff": payoff, "mdd": f"{bt.max_drawdown * 100:.1f}"}
 
 
+def render_glossary_page(out_path) -> Path:
+    env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
+    tmpl = env.get_template("glossary.html.j2")
+    terms = [{"key": t.key, "short": t.short, "long": t.long} for t in glossary.all_terms()]
+    lessons_view = [{"title": l.title, "body": l.body} for l in lessons_mod.LESSONS]
+    html = tmpl.render(terms=terms, lessons=lessons_view)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
 def render_daily_report(signals, date: str, out_path) -> Path:
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
     tmpl = env.get_template("daily.html.j2")

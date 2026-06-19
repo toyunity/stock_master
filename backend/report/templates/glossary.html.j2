@@ -1,0 +1,28 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Master — 주식 용어·개념 공부</title>
+<style>
+ body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+   max-width:820px;margin:0 auto;padding:16px;color:#1a1a2e;background:#f7f8fb;line-height:1.6}
+ h1{font-size:22px} h2{font-size:17px;margin-top:26px;border-top:1px solid #e0e3eb;padding-top:14px}
+ .term{background:#fff;border:1px solid #e0e3eb;border-radius:10px;padding:12px 14px;margin:10px 0}
+ .term .k{font-size:16px;font-weight:700;color:#1565c0}
+ .term .s{font-weight:600;margin:4px 0} .term .l{font-size:14px;color:#444}
+ .toc{font-size:13px} .toc a{color:#1565c0;text-decoration:none;margin-right:8px;white-space:nowrap}
+ .lesson{background:#eef4fc;border:1px solid #cfe0f5;border-radius:8px;padding:10px 12px;margin:8px 0}
+ .lesson .t{font-weight:700} .lesson .b{font-size:14px;color:#333;margin-top:4px}
+ .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:20px}
+</style></head><body>
+<h1>📚 주식 용어·개념 공부</h1>
+<p class="toc">{% for t in terms %}<a href="#term-{{ loop.index }}">{{ t.key }}</a> {% endfor %}</p>
+<h2>용어 사전 ({{ terms|length }}개)</h2>
+{% for t in terms %}
+<div class="term" id="term-{{ loop.index }}"><div class="k">{{ t.key }}</div>
+<div class="s">{{ t.short }}</div><div class="l">{{ t.long }}</div></div>
+{% endfor %}
+<h2>📖 기초 개념 — 한 걸음씩 배우기</h2>
+{% for l in lessons %}
+<div class="lesson"><div class="t">{{ l.title }}</div><div class="b">{{ l.body }}</div></div>
+{% endfor %}
+<div class="disc">⚠️ 본 자료는 학습용 참고이며, 투자 판단과 책임은 본인에게 있습니다.</div>
+</body></html>

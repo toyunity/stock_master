@@ -47,3 +47,16 @@ def test_render_has_no_glossary_section_when_no_known_terms(tmp_path):
     # 등장 용어가 없으면 용어 섹션 헤더는 생략, 단 기초 개념(lessons)은 항상 표시
     assert "오늘 리포트에 나온 용어" not in html
     assert "기초 개념" in html
+
+
+def test_render_glossary_page_has_all_terms(tmp_path):
+    from backend.education import glossary
+    from backend.report.render import render_glossary_page
+    out = tmp_path / "g.html"
+    render_glossary_page(out)
+    html = out.read_text(encoding="utf-8")
+    for t in glossary.all_terms():
+        assert t.key in html
+    assert "상승 추세로의 전환 신호" in html   # 골든크로스 long 포함
+    assert "기초 개념" in html                  # lessons 섹션
+    assert "손절" in html
