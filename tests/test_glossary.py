@@ -25,3 +25,9 @@ def test_terms_in_matches_rsi_reason():
     keys = {t.key for t in found}
     assert "RSI" in keys
     assert "과매수" in keys
+
+def test_terms_in_excludes_substring_false_positive():
+    keys = {t.key for t in g.terms_in("RSI 74 (과매수 — 과열 주의)")}
+    assert "과매수" in keys
+    assert "RSI" in keys
+    assert "매수" not in keys   # 과매수의 부분문자열이라 제외돼야 함
