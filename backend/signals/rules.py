@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
+from backend.analysis.backtest import backtest_strategy
+
 
 @dataclass
 class Signal:
@@ -47,3 +49,21 @@ def evaluate(df, code: str) -> Signal:
 
     confidence = max(1, min(5, len(reasons)))
     return Signal(code=code, action=action, confidence=confidence, reasons=reasons)
+
+
+# 신호 이유 문구 → 검증할 전략 키 매핑
+_REASON_TO_STRATEGY = {"골든크로스": "golden_cross", "과매도": "rsi_oversold"}
+
+
+def evaluate_with_gate(df, code: str) -> Signal:
+    """evaluate() 결과에 백테스트 게이트를 적용. 통과 시에만 advice=True."""
+    sig = evaluate(df, code)
+    passed = False
+    if sig.action == "buy":
+        for reason in sig.reasons:
+            for key, strat in _REASON_TO_STRATEGY.items():
+                if key in reason and backtest_strategy(df, strat).passed:
+                    passed = True
+    sig.advice = passed
+    sig._backtest_passed = passed  # 테스트 가시성용
+    return sig
