@@ -7,7 +7,7 @@ from backend.config import settings
 from backend.adapters.cache import OHLCVCache
 from backend.adapters.prices import PriceAdapter
 from backend.analysis.indicators import add_indicators
-from backend.signals.rules import evaluate
+from backend.signals.rules import evaluate_with_gate
 from backend.report.render import render_daily_report
 
 def generate_report(codes, out_path, cache_dir, source=None, history_days=400):
@@ -18,7 +18,7 @@ def generate_report(codes, out_path, cache_dir, source=None, history_days=400):
     for code in codes:
         df = adapter.get_ohlcv(code, start.isoformat(), end.isoformat())
         df = add_indicators(df)
-        signals.append(evaluate(df, code))
+        signals.append(evaluate_with_gate(df, code))
     return render_daily_report(signals, end.isoformat(), out_path)
 
 def main():
