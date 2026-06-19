@@ -26,12 +26,17 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     rp = sub.add_parser("report", help="관심종목 일일 HTML 리포트 생성")
     rp.add_argument("--force", action="store_true", help="캐시 무시하고 새로 받기")
+    sub.add_parser("glossary", help="용어·개념 학습 HTML 생성")
     args = p.parse_args()
     if args.cmd == "report":
         out = generate_report(settings.watchlist, "docs/report-daily.html",
                               settings.cache_dir, history_days=settings.history_days,
                               force=args.force)
         print(f"리포트 생성: {out}")
+    elif args.cmd == "glossary":
+        from backend.report.render import render_glossary_page
+        out = render_glossary_page("docs/glossary.html")
+        print(f"용어집 생성: {out}")
 
 if __name__ == "__main__":
     main()
