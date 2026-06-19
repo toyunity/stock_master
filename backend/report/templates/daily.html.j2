@@ -1,0 +1,28 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Master 일일 리포트 {{ date }}</title>
+<style>
+ body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+   max-width:760px;margin:0 auto;padding:16px;color:#1a1a2e;background:#f7f8fb}
+ h1{font-size:20px} .card{border:1px solid #e0e3eb;border-radius:12px;
+   padding:14px;margin:12px 0;background:#fff}
+ .buy{border-left:5px solid #1565c0} .sell{border-left:5px solid #c62828}
+ .hold{border-left:5px solid #9e9e9e}
+ .badge{font-size:12px;padding:2px 8px;border-radius:10px;color:#fff}
+ .b-buy{background:#1565c0} .b-sell{background:#c62828} .b-hold{background:#9e9e9e}
+ .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;
+   padding:10px;border-radius:8px;margin-top:16px}
+ ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
+</style></head><body>
+<h1>📊 Stock Master 일일 리포트 <small>{{ date }}</small></h1>
+{% for s in signals %}
+<div class="card {{ s.action }}">
+  <span class="badge b-{{ s.action }}">{{ s.action_ko }}</span>
+  <strong>{{ s.code }}</strong> · 신뢰도 {{ "★" * s.confidence }}{{ "☆" * (5 - s.confidence) }}
+  {% if s.advice %}<span class="badge b-buy">검증됨</span>{% endif %}
+  <ul>{% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+</div>
+{% endfor %}
+<div class="disc">⚠️ 본 정보는 참고용이며 투자 판단과 책임은 본인에게 있습니다.
+과거 성과는 미래 수익을 보장하지 않습니다.</div>
+</body></html>
