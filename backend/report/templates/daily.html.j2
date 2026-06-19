@@ -12,6 +12,7 @@
  .b-buy{background:#1565c0} .b-sell{background:#c62828} .b-hold{background:#9e9e9e}
  .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;
    padding:10px;border-radius:8px;margin-top:16px}
+ .bt{font-size:12px;color:#1565c0;margin-top:6px;background:#eef4fc;padding:6px 8px;border-radius:6px}
  ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
 </style></head><body>
 <h1>📊 Stock Master 일일 리포트 <small>{{ date }}</small></h1>
@@ -21,8 +22,8 @@
   <strong>{{ s.code }}</strong> · 신뢰도 {{ "★" * s.confidence }}{{ "☆" * (5 - s.confidence) }}
   {% if s.advice %}<span class="badge b-buy">검증됨</span>{% endif %}
   <ul>{% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+  {% if s.backtest %}<div class="bt">📈 백테스트 성과 — 승률 {{ s.backtest.win_rate }}% · {{ s.backtest.trades }}거래 · 손익비 {{ s.backtest.payoff }} · 최대낙폭(MDD) {{ s.backtest.mdd }}%</div>{% endif %}
 </div>
 {% endfor %}
-<div class="disc">⚠️ 본 정보는 참고용이며 투자 판단과 책임은 본인에게 있습니다.
-과거 성과는 미래 수익을 보장하지 않습니다.</div>
+<div class="disc">⚠️ 투자 유의 안내 — 본 애플리케이션이 제공하는 모든 정보·분석·신호는 참고용이며, 특정 종목의 매수·매도를 권유하지 않습니다. 모든 투자 판단과 그 결과에 대한 책임은 이용자 본인에게 있습니다. 과거 성과(백테스트)는 미래 수익을 보장하지 않습니다. 데이터는 KIS·DART·KRX·언론사 등에서 수집되며 오류·지연이 있을 수 있습니다.</div>
 </body></html>

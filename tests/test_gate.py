@@ -40,6 +40,9 @@ def test_advice_true_when_buy_and_backtest_passes():
         sig = evaluate_with_gate(df, "005930")
     assert sig.advice is True
     assert sig._backtest_passed is True
+    assert sig.backtest is not None
+    assert sig.backtest.win_rate == 0.8        # from the mocked BacktestResult
+    assert sig.backtest.trades == 10
 
 
 def test_advice_false_when_buy_but_backtest_fails():
@@ -48,3 +51,4 @@ def test_advice_false_when_buy_but_backtest_fails():
     with patch("backend.signals.rules.backtest_strategy", return_value=mock):
         sig = evaluate_with_gate(df, "005930")
     assert sig.advice is False
+    assert sig.backtest is None

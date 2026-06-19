@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
-from backend.analysis.backtest import backtest_strategy
+from backend.analysis.backtest import backtest_strategy, BacktestResult
 
 
 @dataclass
@@ -12,6 +12,7 @@ class Signal:
     reasons: list[str] = field(default_factory=list)
     advice: bool = False      # 백테스트 게이트 통과 시 True (S2에서 설정)
     _backtest_passed: bool = field(default=False, repr=False)
+    backtest: "BacktestResult | None" = None
 
 
 def _crossed_up(short, long_, lookback: int = 5) -> bool:
@@ -57,13 +58,16 @@ _REASON_TO_STRATEGY = {"골든크로스": "golden_cross", "과매도": "rsi_over
 
 
 def evaluate_with_gate(df, code: str) -> Signal:
-    """evaluate() 결과에 백테스트 게이트를 적용. 통과 시에만 advice=True."""
+    """evaluate() 결과에 백테스트 게이트를 적용. 통과 전략의 성과를 첨부한다."""
     sig = evaluate(df, code)
-    passed = False
     if sig.action == "buy":
         strategies = {strat for reason in sig.reasons
                       for key, strat in _REASON_TO_STRATEGY.items() if key in reason}
-        passed = any(backtest_strategy(df, s).passed for s in strategies)
-    sig.advice = passed
-    sig._backtest_passed = passed
+        for s in strategies:
+            res = backtest_strategy(df, s)
+            if res.passed:
+                sig.advice = True
+                sig._backtest_passed = True
+                sig.backtest = res
+                break
     return sig
