@@ -127,7 +127,11 @@ def _fetch_code_disclosures(api_key, stock_code, corp_code, bgn_de, end_de,
             timeout=_TIMEOUT,
         )
         data = resp.json()
-        status = data.get("status")
+        # status는 스키마상 zero-padded 문자열("000"/"013"). 라이브가 int(0/13)를
+        # 줄 경우의 silent-empty를 막기 위해 정규화한다(블라인드 빌드 방어).
+        status = str(data.get("status", "")).strip()
+        if status.isdigit():
+            status = status.zfill(3)
         if status == "013":
             break  # 데이터 없음(정상 빈 결과)
         if status != "000":
