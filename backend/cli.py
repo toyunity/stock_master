@@ -30,7 +30,7 @@ def _collect_issues(codes):
         news = []
     try:
         disclosures = fetch_disclosures(
-            settings.dart_api_key, codes, settings.news_lookback_days
+            settings.dart_api_key, codes, settings.disclosure_lookback_days
         )
     except Exception:
         log.warning("DART 공시 수집 실패 — 공시 없이 진행", exc_info=True)

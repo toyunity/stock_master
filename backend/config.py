@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         "https://www.yna.co.kr/rss/economy.xml",  # 연합 경제
         "https://www.yna.co.kr/rss/market.xml",   # 연합 마켓+
     ]
-    news_lookback_days: int = 2  # 공시 조회 기간(일)
+    disclosure_lookback_days: int = 7  # DART 공시 조회 기간(일). 2일은 주말이면 0건이라 7일.
     news_max_per_stock: int = 5  # 종목별 뉴스/공시 표시 상한
 
 
