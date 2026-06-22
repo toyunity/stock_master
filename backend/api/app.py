@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from backend.config import settings
-from backend.cli import build_daily_html
+from backend.cli import build_dashboard
 from backend.api import icons
 
 app = FastAPI(title="Stock Master")
@@ -22,9 +22,9 @@ app = FastAPI(title="Stock Master")
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
-    html = build_daily_html(settings.watchlist, settings.cache_dir,
-                            history_days=settings.history_days,
-                            with_news=True, pwa=True)
+    html = build_dashboard(settings.watchlist, settings.cache_dir,
+                           history_days=settings.history_days,
+                           with_news=True, pwa=True)
     return HTMLResponse(html)
 
 

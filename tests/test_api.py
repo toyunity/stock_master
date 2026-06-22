@@ -16,7 +16,7 @@ def test_index_serves_report(monkeypatch):
     fake = ("<html><head>"
             "<link rel=\"apple-touch-icon\" href=\"/icons/icon-180.png\">"
             "</head><body>005930 리포트</body></html>")
-    monkeypatch.setattr(appmod, "build_daily_html", lambda *a, **k: fake)
+    monkeypatch.setattr(appmod, "build_dashboard", lambda *a, **k: fake)
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]

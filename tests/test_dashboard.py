@@ -1,0 +1,58 @@
+import re
+
+import pandas as pd
+
+from backend.signals.rules import Signal
+from backend.report.dashboard import render_dashboard, assemble_stock, to_candles
+
+
+def _stock(**kw):
+    base = {"code": "005930", "name": "삼성전자", "action": "hold", "action_ko": "관망",
+            "confidence": 1, "advice": False, "reasons": ["신호 없음"], "backtest": None,
+            "close": 71000, "change": -2.1, "news": [], "disclosures": [],
+            "candles": [{"time": "2026-06-19", "open": 70, "high": 72, "low": 69, "close": 71}]}
+    base.update(kw)
+    return base
+
+
+def test_render_dashboard_is_self_contained():
+    html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자",
+                            "close": 71000, "change": -2.1}], "2026-06-22")
+    assert not re.search(r'(src|href)="https?://', html)   # 외부 리소스 로드 없음
+    assert "LightweightCharts" in html and "createChart" in html  # 차트 lib inline
+    assert '"candles"' in html and "삼성전자" in html       # 데이터 inline
+    assert "투자 유의" in html                              # 고지문
+
+
+def test_render_dashboard_escapes_script_close_in_data():
+    s = _stock(news=[{"title": "</script><b>BOOM</b>", "link": "https://x/1",
+                      "source": "s", "published": ""}])
+    html = render_dashboard([s], [], "2026-06-22")
+    assert "</script><b>BOOM" not in html   # 스크립트 조기 종료 차단(<\\/ 로 치환)
+    assert "BOOM" in html                    # 데이터 자체는 보존
+
+
+def test_pwa_head_only_when_pwa():
+    p = render_dashboard([], [], "2026-06-22", pwa=True)
+    n = render_dashboard([], [], "2026-06-22", pwa=False)
+    for m in ("apple-touch-icon", "/manifest.json", "새로고침"):
+        assert m in p and m not in n
+
+
+def test_to_candles_ascending_unique():
+    idx = pd.to_datetime(["2026-06-03", "2026-06-01", "2026-06-02", "2026-06-03"])
+    df = pd.DataFrame({"Open": [1, 2, 3, 4], "High": [1, 2, 3, 4],
+                       "Low": [1, 2, 3, 4], "Close": [1, 2, 3, 4]}, index=idx)
+    c = to_candles(df, days=10)
+    times = [x["time"] for x in c]
+    assert times == sorted(times) and len(times) == len(set(times))  # 오름차순 + 유니크
+    assert len(c) == 3  # 중복 06-03 1개로
+
+
+def test_assemble_stock_shape():
+    sig = Signal(code="005930", action="buy", confidence=3, reasons=["골든크로스"], advice=True)
+    s = assemble_stock(sig, {"news": [], "disclosures": []},
+                       [{"time": "2026-06-01", "open": 1, "high": 1, "low": 1, "close": 1}],
+                       {"close": 71000, "change": -2.1})
+    assert s["name"] == "삼성전자" and s["close"] == 71000
+    assert s["action_ko"] == "매수 관심" and s["candles"][0]["time"] == "2026-06-01"

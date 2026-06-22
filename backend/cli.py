@@ -14,6 +14,8 @@ from backend.ingest.rss_source import fetch_news
 from backend.ingest.dart_source import fetch_disclosures
 from backend.news.match import attach_issues
 from backend.news.names import STOCK_NAMES
+from backend.report.dashboard import render_dashboard, to_candles, assemble_stock
+from backend.market.universe import get_universe, price_map
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +57,26 @@ def build_daily_html(codes, cache_dir, source=None, history_days=400,
     return build_daily_report_html(signals, end.isoformat(), issues_by_code, pwa=pwa)
 
 
+def build_dashboard(codes, cache_dir, source=None, history_days=400,
+                    force: bool = False, with_news: bool = True, pwa: bool = False,
+                    chart_days: int = 120) -> str:
+    """대시보드(종목별 차트 + 검색 + 카드) 자기완결 HTML. CLI/웹앱 공용."""
+    adapter = PriceAdapter(OHLCVCache(cache_dir), source=source)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=history_days)
+    signals, candles = [], {}
+    for code in codes:
+        df = adapter.get_ohlcv(code, start.isoformat(), end.isoformat(), force=force)
+        signals.append(evaluate_with_gate(add_indicators(df), code))
+        candles[code] = to_candles(df, chart_days)
+    issues = _collect_issues(codes) if with_news else {}
+    universe = get_universe(cache_dir)
+    pm = price_map(universe)
+    stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code))
+              for s in signals]
+    return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa)
+
+
 def generate_report(codes, out_path, cache_dir, source=None, history_days=400,
                     force: bool = False, with_news: bool = True):
     html = build_daily_html(codes, cache_dir, source=source, history_days=history_days,
@@ -78,10 +100,13 @@ def main():
     sv.add_argument("--reload", action="store_true", help="코드 수정 시 자동 재시작(개발용)")
     args = p.parse_args()
     if args.cmd == "report":
-        out = generate_report(settings.watchlist, "docs/report-daily.html",
-                              settings.cache_dir, history_days=settings.history_days,
-                              force=args.force, with_news=not args.no_news)
-        print(f"리포트 생성: {out}")
+        html = build_dashboard(settings.watchlist, settings.cache_dir,
+                               history_days=settings.history_days,
+                               force=args.force, with_news=not args.no_news)
+        out = Path("docs/report-daily.html")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html, encoding="utf-8")
+        print(f"대시보드 생성: {out}")
     elif args.cmd == "glossary":
         from backend.report.render import render_glossary_page
         out = render_glossary_page("docs/glossary.html")
