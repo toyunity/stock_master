@@ -75,6 +75,7 @@ def main():
     sv = sub.add_parser("serve", help="웹앱 서버 실행(아이폰 등에서 접속)")
     sv.add_argument("--host", default="0.0.0.0", help="기본 0.0.0.0(같은 WiFi 기기 접속 허용)")
     sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--reload", action="store_true", help="코드 수정 시 자동 재시작(개발용)")
     args = p.parse_args()
     if args.cmd == "report":
         out = generate_report(settings.watchlist, "docs/report-daily.html",
@@ -89,7 +90,7 @@ def main():
         import uvicorn
         print(f"📲 웹앱 시작 — 아이폰 사파리에서 http://<맥의IP>:{args.port} 접속 (같은 WiFi)")
         print("   중지: Ctrl+C")
-        uvicorn.run("backend.api.app:app", host=args.host, port=args.port)
+        uvicorn.run("backend.api.app:app", host=args.host, port=args.port, reload=args.reload)
 
 
 if __name__ == "__main__":

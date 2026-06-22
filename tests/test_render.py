@@ -12,6 +12,7 @@ def test_render_writes_html_with_signals(tmp_path):
     render_daily_report(sigs, "2026-06-19", out)
     html = out.read_text(encoding="utf-8")
     assert "005930" in html
+    assert "삼성전자" in html  # 코드뿐 아니라 회사명 표시
     assert "골든크로스" in html
     assert "참고용" in html  # 고지문 포함
     assert "매수" in html    # action_ko 변환

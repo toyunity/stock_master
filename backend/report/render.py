@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from backend.education import glossary, lessons as lessons_mod
+from backend.news.names import display_name
 
 _ACTION_KO = {"buy": "매수 관심", "sell": "매도 고려", "hold": "관망"}
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -61,7 +62,7 @@ def build_daily_report_html(signals, date: str, issues_by_code=None, pwa: bool =
     pwa=True면 템플릿이 manifest/apple-touch-icon/새로고침 버튼을 포함한다(아이폰 설치용)."""
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
     tmpl = env.get_template("daily.html.j2")
-    view = [{"code": s.code, "action": s.action,
+    view = [{"code": s.code, "name": display_name(s.code), "action": s.action,
              "action_ko": _ACTION_KO[s.action], "confidence": s.confidence,
              "reasons": s.reasons, "advice": s.advice,
              "backtest": _bt_view(s.backtest),
