@@ -139,6 +139,21 @@ def test_sorted_newest_first_none_last():
     assert [i.title for i in out] == ["최신글", "오래된글", "날짜없음"]
 
 
+def test_default_parse_sends_browser_user_agent(monkeypatch):
+    # 한경 등은 feedparser 기본 UA에 403 → 기본 파서가 브라우저 UA를 실어야 한다(라이브 회귀).
+    captured = {}
+
+    def fake_parse(url, *args, **kwargs):
+        captured["url"] = url
+        captured["agent"] = kwargs.get("agent")
+        return None  # 반환값은 검증에 쓰지 않음(재귀 방지)
+
+    monkeypatch.setattr(feedparser, "parse", fake_parse)
+    src._default_parse("https://www.hankyung.com/feed/finance")
+    assert captured["url"] == "https://www.hankyung.com/feed/finance"
+    assert captured["agent"] and "Mozilla" in captured["agent"]
+
+
 def test_source_falls_back_to_hostname_when_no_channel_title():
     # channel <title> 비어있을 때 URL 호스트명(www 제거)으로 출처를 채운다.
     xml = (

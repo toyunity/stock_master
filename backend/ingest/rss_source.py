@@ -14,6 +14,16 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 _SUMMARY_MAX = 200
 
+# 일부 언론사(예: 한경)는 feedparser 기본 UA에 403을 준다 → 브라우저 UA 필요.
+# (라이브 e2e에서 한경 피드가 403으로 조용히 누락되던 것을 발견해 추가.)
+_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def _default_parse(url):
+    """프로덕션 기본 파서: 차단 회피용 브라우저 User-Agent를 실어 보낸다."""
+    return feedparser.parse(url, agent=_UA)
+
 
 def _clean_summary(raw: str) -> str:
     """RSS 요약의 HTML 태그/엔티티/잉여 공백을 제거하고 ~200자로 자른다.
@@ -48,7 +58,7 @@ def _to_datetime(parsed) -> dt.datetime | None:
         return None
 
 
-def fetch_news(feed_urls, *, parse=feedparser.parse) -> list[NewsItem]:
+def fetch_news(feed_urls, *, parse=_default_parse) -> list[NewsItem]:
     """여러 RSS 피드를 파싱해 NewsItem 목록을 반환한다.
 
     - parse: 주입 가능한 파서(기본 feedparser.parse). 테스트에서 교체.
