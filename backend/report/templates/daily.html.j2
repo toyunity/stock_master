@@ -25,8 +25,21 @@
  .issues li{font-size:13px;margin:2px 0}
  .issues a{color:#1565c0;text-decoration:none}
  .meta{font-size:11px;color:#999}
-</style></head><body>
+ .refresh{font-size:14px;padding:8px 14px;border:1px solid #1565c0;background:#1565c0;
+   color:#fff;border-radius:8px;margin-bottom:8px;cursor:pointer}
+</style>
+{% if pwa %}
+<meta name="theme-color" content="#1565c0">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Stock Master">
+{% endif %}
+</head><body>
 <h1>📊 Stock Master 일일 리포트 <small>{{ date }}</small></h1>
+{% if pwa %}<button class="refresh" onclick="location.reload()">🔄 새로고침</button>{% endif %}
 {% for s in signals %}
 <div class="card {{ s.action }}">
   <span class="badge b-{{ s.action }}">{{ s.action_ko }}</span>

@@ -100,6 +100,17 @@ def test_render_no_issues_section_when_none_or_empty(tmp_path):
     assert "관련 이슈" not in out2.read_text(encoding="utf-8")
 
 
+def test_build_html_pwa_head_only_when_pwa_true():
+    from backend.report.render import build_daily_report_html
+    sig = Signal(code="005930", action="hold", confidence=1, reasons=["신호 없음"], advice=False)
+    pwa = build_daily_report_html([sig], "2026-06-22", pwa=True)
+    plain = build_daily_report_html([sig], "2026-06-22", pwa=False)
+    # 아이폰 설치용 태그·새로고침 버튼은 pwa=True일 때만
+    for marker in ("apple-touch-icon", "/manifest.json", "새로고침", "apple-mobile-web-app-capable"):
+        assert marker in pwa, marker
+        assert marker not in plain, marker
+
+
 def test_render_glossary_page_has_all_terms(tmp_path):
     from backend.education import glossary
     from backend.report.render import render_glossary_page

@@ -3,10 +3,10 @@
 | 항목 | 값 |
 |---|---|
 | 갱신일 | 2026-06-22 |
-| 브랜치 | `main` (S3 뉴스/공시 병합 완료) |
-| 상태 | ✅ S0·S1·S2 + 교육 레이어 + **S3 뉴스/공시** 완료 |
-| 테스트 | **91 passed** (pytest) |
-| 실행 | 실제 시장(FDR) + 라이브 RSS(한경·연합) + **라이브 DART 공시**로 end-to-end 확인 |
+| 브랜치 | `feature/s6-webapp` (웹앱/PWA — 아이폰 설치 테스트 후 병합) · 베이스 `main` |
+| 상태 | ✅ S0·S1·S2 + 교육 + S3 뉴스/공시 + **S6 웹앱(PWA 셸)** |
+| 테스트 | **97 passed** (pytest) |
+| 실행 | end-to-end 확인(FDR + 라이브 RSS + 라이브 DART) · **웹 서버 curl 검증 완료** |
 
 ## 무엇이 동작하나
 명령 한 번으로 관심종목 일일 HTML 리포트를 생성한다:
@@ -31,6 +31,15 @@ python -m backend.cli glossary        # 용어·개념 학습 페이지 → docs
 - **정밀 매칭** (`backend/news/match.py`): 회사명 **경계 인식 매칭**(조사 허용, 복합어 배제) — `삼성전자⊄삼성전자서비스`, `현대차⊄현대차증권`, `네이버⊄네이버웹툰`. 공시는 stock_code 정확 일치. **호재/악재 감성태깅은 의도적 제외**(초보자 오해·무자문 설계 충돌). 라이브에서 '삼전'(슬랭)·'현대차증권'(타사) 오매칭 0 확인.
 - **리포트 통합**: 종목 카드에 "📌 관련 이슈(참고 정보·자동 수집·**매매 권유 아님**)" 섹션 — 공시(DART 출처)·뉴스(출처·시각) 딥링크. autoescape로 XSS 방어(인용부호/태그 이스케이프 확인).
 - **CLI**: `report`가 뉴스/공시를 자동 포함, 수집 실패는 **그레이스풀**(리포트 안 죽음). `--no-news`로 생략 가능.
+
+### 🌐 S6 웹앱 (PWA 셸 — 아이폰 설치, 구현됨)
+터미널·파일 열기 없이 **브라우저로 보는 웹앱**. `backend/api/app.py`(FastAPI):
+- `GET /` — 매 요청마다 일일 리포트를 새로 렌더해 서빙(시세 캐시, 뉴스 라이브) + **🔄 새로고침 버튼**.
+- `GET /manifest.json`·`GET /icons/{180,192,512}` — PWA 매니페스트 + Pillow로 그린 'SM' 아이콘(인메모리 캐시).
+- `GET /healthz`.
+- 템플릿에 `pwa=True`일 때만 **apple-touch-icon + apple meta**(아이폰 홈화면 설치) 주입. `render`는 `build_daily_report_html(str 반환)`/파일쓰기로 분리해 CLI·웹앱 공용.
+- 실행: `python -m backend.cli serve` → `0.0.0.0:8000` → 같은 WiFi 아이폰 사파리에서 `http://<맥IP>:8000` → 공유 → '홈 화면에 추가'.
+- ⚠️ **http-LAN은 secure context 아님** → service worker/오프라인/웹푸시는 불가(https 배포 시 가능). 설치 아이콘·전체화면은 Apple meta로 동작. 서버는 curl로 자체 검증 완료; **아이폰 실제 설치는 마스터 폰 테스트 대기**.
 
 ## 모듈 구조 (구현됨)
 ```
@@ -79,6 +88,6 @@ backend/
 - ✅ **S3 뉴스/이슈** — RSS(한경·연합) + DART 공시 **완료·라이브 검증**(DART REST 직접).
 - **S4 시장 스캐너** — KIS 순위 API(등락률/거래량 Top30) 또는 FDR EOD.
 - **S5 실시간** — KIS 웹소켓. **선행: 한국투자증권 실계좌 개설(본인인증, 수일 소요) → 모의투자 키 발급.**
-- **S6 나머지** — PWA(모바일 설치), Lightweight Charts 차트, 웹푸시 알림. (교육 콘텐츠는 위에서 완료)
+- **S6** — ✅ PWA 웹앱 셸(아이폰 설치) 완료. 남은 것: Lightweight Charts 차트, (https 배포 시) 오프라인·웹푸시 알림. (교육 콘텐츠도 완료)
 
 자세한 설계는 `docs/design.md`, 단계별 TDD 작업은 `docs/implementation-plan.md` 참조.

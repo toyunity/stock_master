@@ -54,7 +54,11 @@ def render_glossary_page(out_path) -> Path:
     return out
 
 
-def render_daily_report(signals, date: str, out_path, issues_by_code=None) -> Path:
+def build_daily_report_html(signals, date: str, issues_by_code=None, pwa: bool = False) -> str:
+    """일일 리포트 HTML 문자열을 만든다(파일 미저장).
+
+    CLI는 이 문자열을 파일로 쓰고, 웹앱(API)은 그대로 응답으로 서빙한다.
+    pwa=True면 템플릿이 manifest/apple-touch-icon/새로고침 버튼을 포함한다(아이폰 설치용)."""
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
     tmpl = env.get_template("daily.html.j2")
     view = [{"code": s.code, "action": s.action,
@@ -67,8 +71,12 @@ def render_daily_report(signals, date: str, out_path, issues_by_code=None) -> Pa
     glossary_view = [{"key": t.key, "short": t.short, "long": t.long}
                      for t in glossary.terms_in(all_reason_text)]
     lessons_view = [{"title": l.title, "body": l.body} for l in lessons_mod.LESSONS]
-    html = tmpl.render(signals=view, date=date,
-                       glossary_terms=glossary_view, lessons=lessons_view)
+    return tmpl.render(signals=view, date=date, glossary_terms=glossary_view,
+                       lessons=lessons_view, pwa=pwa)
+
+
+def render_daily_report(signals, date: str, out_path, issues_by_code=None) -> Path:
+    html = build_daily_report_html(signals, date, issues_by_code)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")

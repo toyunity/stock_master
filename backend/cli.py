@@ -2,13 +2,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import logging
+from pathlib import Path
 
 from backend.config import settings
 from backend.adapters.cache import OHLCVCache
 from backend.adapters.prices import PriceAdapter
 from backend.analysis.indicators import add_indicators
 from backend.signals.rules import evaluate_with_gate
-from backend.report.render import render_daily_report
+from backend.report.render import render_daily_report, build_daily_report_html
 from backend.ingest.rss_source import fetch_news
 from backend.ingest.dart_source import fetch_disclosures
 from backend.news.match import attach_issues
@@ -39,8 +40,9 @@ def _collect_issues(codes):
                          max_per_stock=settings.news_max_per_stock)
 
 
-def generate_report(codes, out_path, cache_dir, source=None, history_days=400,
-                    force: bool = False, with_news: bool = True):
+def build_daily_html(codes, cache_dir, source=None, history_days=400,
+                     force: bool = False, with_news: bool = True, pwa: bool = False) -> str:
+    """가격→지표→신호→(뉴스/공시)→리포트 HTML 문자열. CLI(파일 저장)와 웹앱(서빙) 공용."""
     adapter = PriceAdapter(OHLCVCache(cache_dir), source=source)
     end = dt.date.today()
     start = end - dt.timedelta(days=history_days)
@@ -50,8 +52,17 @@ def generate_report(codes, out_path, cache_dir, source=None, history_days=400,
         df = add_indicators(df)
         signals.append(evaluate_with_gate(df, code))
     issues_by_code = _collect_issues(codes) if with_news else None
-    return render_daily_report(signals, end.isoformat(), out_path,
-                               issues_by_code=issues_by_code)
+    return build_daily_report_html(signals, end.isoformat(), issues_by_code, pwa=pwa)
+
+
+def generate_report(codes, out_path, cache_dir, source=None, history_days=400,
+                    force: bool = False, with_news: bool = True):
+    html = build_daily_html(codes, cache_dir, source=source, history_days=history_days,
+                            force=force, with_news=with_news, pwa=False)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
 
 
 def main():
@@ -61,6 +72,9 @@ def main():
     rp.add_argument("--force", action="store_true", help="캐시 무시하고 새로 받기")
     rp.add_argument("--no-news", action="store_true", help="뉴스/공시 수집 생략")
     sub.add_parser("glossary", help="용어·개념 학습 HTML 생성")
+    sv = sub.add_parser("serve", help="웹앱 서버 실행(아이폰 등에서 접속)")
+    sv.add_argument("--host", default="0.0.0.0", help="기본 0.0.0.0(같은 WiFi 기기 접속 허용)")
+    sv.add_argument("--port", type=int, default=8000)
     args = p.parse_args()
     if args.cmd == "report":
         out = generate_report(settings.watchlist, "docs/report-daily.html",
@@ -71,6 +85,11 @@ def main():
         from backend.report.render import render_glossary_page
         out = render_glossary_page("docs/glossary.html")
         print(f"용어집 생성: {out}")
+    elif args.cmd == "serve":
+        import uvicorn
+        print(f"📲 웹앱 시작 — 아이폰 사파리에서 http://<맥의IP>:{args.port} 접속 (같은 WiFi)")
+        print("   중지: Ctrl+C")
+        uvicorn.run("backend.api.app:app", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
