@@ -12,7 +12,7 @@ class NewsItem:
     title: str
     summary: str
     link: str
-    published: dt.datetime | None  # 파싱 실패 시 None
+    published: dt.datetime | None  # KST naive datetime, 파싱 실패 시 None
     source: str  # 예: "한국경제", "연합뉴스"
 
 

@@ -52,8 +52,19 @@ def test_parses_core_fields_from_realistic_feed():
     assert item.title == "삼성전자 신고가"
     assert item.summary == "오늘 삼성전자가 신고가를 기록했다."
     assert item.link == "https://hankyung.com/news/1"
-    assert item.published == dt.datetime(2026, 6, 22, 9, 0, 0)
+    # 09:00 GMT → UTC 09:00 → +9h KST = 18:00
+    assert item.published == dt.datetime(2026, 6, 22, 18, 0, 0)
     assert item.source == "한국경제"
+
+
+def test_published_converted_to_kst_no_date_rollback():
+    # 피드가 +0900(KST)로 주면 feedparser가 UTC로 정규화 → 우리는 +9h로 KST 복원.
+    # 아침 08:00 KST 기사가 전날로 밀리지 않고 같은 날 08:00로 표시돼야 한다.
+    xml = _rss("연합", _item("아침기사", "요약", "https://x/morning",
+                            "Mon, 22 Jun 2026 08:00:00 +0900"))
+    url = "https://x/feed"
+    out = src.fetch_news([url], parse=_parser({url: xml}))
+    assert out[0].published == dt.datetime(2026, 6, 22, 8, 0, 0)
 
 
 def test_summary_strips_html_tags_and_entities():

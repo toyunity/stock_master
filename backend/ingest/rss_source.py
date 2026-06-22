@@ -46,14 +46,20 @@ def _source_name(result, url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def _to_datetime(parsed) -> dt.datetime | None:
-    """feedparser의 published_parsed(time.struct_time, UTC)를 naive datetime으로.
+_KST_OFFSET = dt.timedelta(hours=9)  # KST = UTC+9
 
+
+def _to_datetime(parsed) -> dt.datetime | None:
+    """feedparser의 published_parsed를 KST naive datetime으로 변환.
+
+    feedparser는 원본이 +0900이든 GMT든 published_parsed를 **항상 UTC**로
+    정규화한다. 그대로 표시하면 9시간 뒤로 보이고(아침 기사는 어제 날짜로 밀림),
+    한국 사용자에게 틀린 시각이 된다 → +9h로 KST 복원.
     없거나 파싱 실패 시 None."""
     if not parsed:
         return None
     try:
-        return dt.datetime(*parsed[:6])
+        return dt.datetime(*parsed[:6]) + _KST_OFFSET
     except (TypeError, ValueError):
         return None
 
