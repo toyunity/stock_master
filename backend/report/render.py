@@ -15,6 +15,33 @@ def _bt_view(bt):
             "payoff": payoff, "mdd": f"{bt.max_drawdown * 100:.1f}"}
 
 
+def _issues_view(issues):
+    """관심종목 1개의 매칭 이슈를 템플릿용 dict로 변환.
+
+    뉴스·공시가 모두 없으면(또는 issues가 None) None을 반환해 섹션을 렌더하지 않는다.
+    저작권 보호상 제목/이름/링크/시각/출처만 노출하며 본문은 다루지 않는다.
+    """
+    if not issues:
+        return None
+    news = issues.get("news") or []
+    disc = issues.get("disclosures") or []
+    if not news and not disc:
+        return None
+    return {
+        "disclosures": [
+            {"report_name": d.report_name,
+             "date": f"{d.rcept_dt[:4]}-{d.rcept_dt[4:6]}-{d.rcept_dt[6:8]}",
+             "link": d.link}
+            for d in disc
+        ],
+        "news": [
+            {"title": n.title, "link": n.link, "source": n.source,
+             "published": n.published.strftime("%m-%d %H:%M") if n.published else ""}
+            for n in news
+        ],
+    }
+
+
 def render_glossary_page(out_path) -> Path:
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
     tmpl = env.get_template("glossary.html.j2")
@@ -27,13 +54,15 @@ def render_glossary_page(out_path) -> Path:
     return out
 
 
-def render_daily_report(signals, date: str, out_path) -> Path:
+def render_daily_report(signals, date: str, out_path, issues_by_code=None) -> Path:
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
     tmpl = env.get_template("daily.html.j2")
     view = [{"code": s.code, "action": s.action,
              "action_ko": _ACTION_KO[s.action], "confidence": s.confidence,
              "reasons": s.reasons, "advice": s.advice,
-             "backtest": _bt_view(s.backtest)} for s in signals]
+             "backtest": _bt_view(s.backtest),
+             "issues": _issues_view(issues_by_code.get(s.code) if issues_by_code else None)}
+            for s in signals]
     all_reason_text = " ".join(r for s in signals for r in s.reasons)
     glossary_view = [{"key": t.key, "short": t.short, "long": t.long}
                      for t in glossary.terms_in(all_reason_text)]

@@ -18,6 +18,13 @@
  details{background:#fff;border:1px solid #e0e3eb;border-radius:8px;padding:8px 12px;margin:6px 0}
  summary{cursor:pointer;font-size:14px;font-weight:600}
  details p{font-size:13px;color:#444;line-height:1.6;margin:8px 0 2px}
+ .issues{margin-top:8px;border-top:1px dashed #e0e3eb;padding-top:8px}
+ .issues-label{font-size:12px;color:#888}
+ .issues h4{font-size:13px;margin:8px 0 2px;color:#444}
+ .issues ul{margin:2px 0 0 0}
+ .issues li{font-size:13px;margin:2px 0}
+ .issues a{color:#1565c0;text-decoration:none}
+ .meta{font-size:11px;color:#999}
 </style></head><body>
 <h1>📊 Stock Master 일일 리포트 <small>{{ date }}</small></h1>
 {% for s in signals %}
@@ -27,6 +34,19 @@
   {% if s.advice %}<span class="badge b-buy">검증됨</span>{% endif %}
   <ul>{% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
   {% if s.backtest %}<div class="bt">📈 백테스트 성과 — 승률 {{ s.backtest.win_rate }}% · {{ s.backtest.trades }}거래 · 손익비 {{ s.backtest.payoff }} · 최대낙폭(MDD) {{ s.backtest.mdd }}%</div>{% endif %}
+  {% if s.issues %}
+  <div class="issues">
+    <div class="issues-label">📌 관련 이슈 (참고 정보 · 자동 수집 · 매매 권유 아님)</div>
+    {% if s.issues.disclosures %}
+    <h4>공시 <span class="meta">(출처: DART·금융감독원)</span></h4>
+    <ul>{% for d in s.issues.disclosures %}<li><a href="{{ d.link }}" target="_blank" rel="noopener">{{ d.report_name }}</a> <span class="meta">{{ d.date }}</span></li>{% endfor %}</ul>
+    {% endif %}
+    {% if s.issues.news %}
+    <h4>뉴스</h4>
+    <ul>{% for n in s.issues.news %}<li><a href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a> <span class="meta">{{ n.source }}{% if n.published %} · {{ n.published }}{% endif %}</span></li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endfor %}
 {% if glossary_terms %}

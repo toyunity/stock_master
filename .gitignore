@@ -1,8 +1,9 @@
 __pycache__/
 *.pyc
 .venv/
-data/cache/*.parquet
+data/
 stock_master.db
+.DS_Store
 .env
 docs/report-daily.html
 *.egg-info/
