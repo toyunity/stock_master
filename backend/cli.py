@@ -115,7 +115,10 @@ def main():
         import uvicorn
         print(f"📲 웹앱 시작 — 아이폰 사파리에서 http://<맥의IP>:{args.port} 접속 (같은 WiFi)")
         print("   중지: Ctrl+C")
-        uvicorn.run("backend.api.app:app", host=args.host, port=args.port, reload=args.reload)
+        # timeout_graceful_shutdown: SSE 무한 스트림이 종료 드레인을 영원히 막아
+        # 프로세스가 좀비(KIS 웹소켓 세션 점유)로 남는 것을 방지(실측 2026-07-10)
+        uvicorn.run("backend.api.app:app", host=args.host, port=args.port,
+                    reload=args.reload, timeout_graceful_shutdown=3)
 
 
 if __name__ == "__main__":

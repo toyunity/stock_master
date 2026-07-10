@@ -106,6 +106,18 @@ def parse_program(rec: list) -> dict:
     }
 
 
+def subscribe_error(obj: dict) -> Optional[str]:
+    """구독 ACK(JSON)의 실패 메시지. 성공(rt_cd 0)·PINGPONG·기타 정보성이면 None.
+
+    실측(2026-07-10): 이전 프로세스의 좀비 세션이 남아 있으면 rt_cd=9
+    OPSP8996 'ALREADY IN USE...'가 오고 서버가 곧바로 연결을 끊는다."""
+    body = obj.get("body") or {}
+    rt = str(body.get("rt_cd", ""))
+    if rt in ("", "0"):
+        return None
+    return f"{body.get('msg_cd', '')} {body.get('msg1', '')}".strip()
+
+
 def build_subscribe(approval_key: str, tr_id: str, code: str, on: bool = True) -> str:
     """웹소켓 구독(tr_type=1)/해지(0) 메시지."""
     return json.dumps({

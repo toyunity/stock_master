@@ -30,6 +30,17 @@ app = FastAPI(title="Stock Master")
 _CODE_RE = re.compile(r"^\d{6}$")
 
 
+@app.on_event("shutdown")
+async def _stop_engines():
+    """종료 시 웹소켓을 클로즈 프레임과 함께 정리 — 좀비 세션(KIS 'ALREADY' 거부의
+    원인, 실측 2026-07-10)을 남기지 않는다."""
+    for eng in list(FlowEngine._registry.values()):
+        try:
+            await eng.shutdown()
+        except Exception:
+            pass
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     html = build_dashboard(settings.watchlist, settings.cache_dir,

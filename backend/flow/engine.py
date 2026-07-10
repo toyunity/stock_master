@@ -228,6 +228,12 @@ class FlowEngine:
                         if not parsed:
                             continue
                         kind, payload = parsed
+                        if kind == "json":
+                            err = kis.subscribe_error(payload)
+                            if err:  # 좀비 세션(ALREADY 등) — 길게 물러나 재시도
+                                backoff = max(backoff, 30)
+                                raise RuntimeError(f"구독 거부: {err}")
+                            continue
                         if kind != "data":
                             continue
                         tr_id, records = payload

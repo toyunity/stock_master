@@ -94,6 +94,17 @@ def test_parse_program_record():
     assert d["net_qty"] == 500 and d["net_value"] == 1093500000
 
 
+def test_subscribe_error_detection():
+    from backend.flow.kis import subscribe_error
+    ok = {"header": {"tr_id": "H0STCNT0"}, "body": {"rt_cd": "0", "msg1": "SUBSCRIBE SUCCESS"}}
+    assert subscribe_error(ok) is None
+    # 실측: 좀비 세션이 남아 있으면 rt_cd=9 OPSP8996 ALREADY → 직후 서버가 절단
+    zombie = {"header": {"tr_id": "(null)"}, "body": {"rt_cd": "9", "msg_cd": "OPSP8996",
+                                                      "msg1": "ALREADY IN USE appkey"}}
+    assert "OPSP8996" in subscribe_error(zombie)
+    assert subscribe_error({"header": {"tr_id": "PINGPONG"}}) is None
+
+
 def test_build_subscribe_roundtrip():
     msg = json.loads(build_subscribe("KEY123", "H0STPGM0", "000660"))
     assert msg["header"]["approval_key"] == "KEY123"
