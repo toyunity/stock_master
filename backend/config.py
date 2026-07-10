@@ -29,5 +29,10 @@ class Settings(BaseSettings):
     disclosure_lookback_days: int = 7  # DART 공시 조회 기간(일). 2일은 주말이면 0건이라 7일.
     news_max_per_stock: int = 5  # 종목별 뉴스/공시 표시 상한
 
+    # S5 실시간 수급 (KIS 오픈API — 키 없으면 데모 모드로 화면 검증 가능)
+    kis_app_key: Optional[str] = None      # SM_KIS_APP_KEY
+    kis_app_secret: Optional[str] = None   # SM_KIS_APP_SECRET
+    flow_mode: str = ""                    # ''=자동(키 있으면 live) | 'demo'=강제 데모
+
 
 settings = Settings()
