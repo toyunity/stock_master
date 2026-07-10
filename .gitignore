@@ -6,5 +6,6 @@ stock_master.db
 .DS_Store
 .env
 docs/report-daily.html
+docs/dashboard-test.html
 *.egg-info/
 docs/glossary.html

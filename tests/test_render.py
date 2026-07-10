@@ -12,6 +12,7 @@ def test_render_writes_html_with_signals(tmp_path):
     render_daily_report(sigs, "2026-06-19", out)
     html = out.read_text(encoding="utf-8")
     assert "005930" in html
+    assert "삼성전자" in html  # 코드뿐 아니라 회사명 표시
     assert "골든크로스" in html
     assert "참고용" in html  # 고지문 포함
     assert "매수" in html    # action_ko 변환
@@ -98,6 +99,17 @@ def test_render_no_issues_section_when_none_or_empty(tmp_path):
     render_daily_report([sig], "2026-06-19", out2,
                         issues_by_code={"005930": {"news": [], "disclosures": []}})
     assert "관련 이슈" not in out2.read_text(encoding="utf-8")
+
+
+def test_build_html_pwa_head_only_when_pwa_true():
+    from backend.report.render import build_daily_report_html
+    sig = Signal(code="005930", action="hold", confidence=1, reasons=["신호 없음"], advice=False)
+    pwa = build_daily_report_html([sig], "2026-06-22", pwa=True)
+    plain = build_daily_report_html([sig], "2026-06-22", pwa=False)
+    # 아이폰 설치용 태그·새로고침 버튼은 pwa=True일 때만
+    for marker in ("apple-touch-icon", "/manifest.json", "새로고침", "apple-mobile-web-app-capable"):
+        assert marker in pwa, marker
+        assert marker not in plain, marker
 
 
 def test_render_glossary_page_has_all_terms(tmp_path):
