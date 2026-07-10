@@ -139,10 +139,12 @@ async def fetch_scan(client=None) -> dict:
 
     async def call(path, tr_id, params, parser):
         try:
-            return parser(await client._get(path, tr_id, params))
+            result = parser(await client._get(path, tr_id, params))
         except Exception:
             log.warning("스캐너 %s 조회 실패", tr_id, exc_info=True)
-            return []
+            result = []
+        await asyncio.sleep(0.25)  # 연속 호출 간헐 500 완화(실측) — 콜 간 간격
+        return result
 
     frgn_buy = await call(_FIT_PATH, "FHPTJ04400000",
                           dict(_FIT_BASE, FID_RANK_SORT_CLS_CODE="0",

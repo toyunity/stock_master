@@ -127,6 +127,31 @@ def test_investor_detail_falls_back_to_previous_day(monkeypatch):
     assert len(calls) == 2 and calls[0] == today  # 오늘 시도 → 전일 폴백
 
 
+def test_get_retries_on_5xx(monkeypatch):
+    # KIS는 연속 호출에 간헐 HTTP 500을 반환(실측 2026-07-10) — 재시도로 흡수해야 한다.
+    import httpx
+
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(500, text="Internal Server Error")
+        return httpx.Response(200, json={"rt_cd": "0", "output": []})
+
+    c = KisClient("k", "s", "/tmp")
+    monkeypatch.setattr(c, "_client_factory",
+                        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+
+    async def fake_token():
+        return "TOK"
+    monkeypatch.setattr(c, "token", fake_token)
+    monkeypatch.setattr("backend.flow.kis._RETRY_BASE_SEC", 0.01)  # 테스트 가속
+    js = asyncio.get_event_loop().run_until_complete(
+        c._get("/x", "TR", {}))
+    assert js["rt_cd"] == "0" and calls["n"] == 3  # 500 두 번 → 재시도 끝에 성공
+
+
 def test_token_disk_cache_reused_without_network(tmp_path):
     cache = {"token": "CACHED-TOKEN", "expires_at": time.time() + 3600}
     (tmp_path / "kis_token.json").write_text(json.dumps(cache), encoding="utf-8")

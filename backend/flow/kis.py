@@ -9,6 +9,7 @@ from __future__ import annotations
 파서는 전부 순수 함수로 두어 픽스처만으로 테스트한다(실연결 불필요).
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+_RETRY_BASE_SEC = 0.5  # 5xx 재시도 시작 간격(지수 백오프)
 
 
 # H0STCNT0 46필드 중 사용 인덱스 (필드 순서는 공식 샘플 ccnl_krx.py 기준)
@@ -256,15 +259,29 @@ class KisClient:
         self._approval = key
         return key
 
-    async def _get(self, path: str, tr_id: str, params: dict) -> dict:
+    def _client_factory(self):
         import httpx
+        return httpx.AsyncClient(timeout=10)
+
+    async def _get(self, path: str, tr_id: str, params: dict,
+                   retries: int = 2) -> dict:
+        """KIS는 연속 호출에 간헐 HTTP 500을 반환(실측) → 지수 백오프 재시도."""
         headers = {"authorization": f"Bearer {await self.token()}",
                    "appkey": self.appkey, "appsecret": self.appsecret,
                    "tr_id": tr_id, "custtype": "P"}
-        async with httpx.AsyncClient(timeout=10) as cli:
-            r = await cli.get(f"{self.base}{path}", headers=headers, params=params)
-            r.raise_for_status()
-            return r.json()
+        delay = _RETRY_BASE_SEC
+        async with self._client_factory() as cli:
+            for attempt in range(retries + 1):
+                r = await cli.get(f"{self.base}{path}", headers=headers,
+                                  params=params)
+                if r.status_code >= 500 and attempt < retries:
+                    log.debug("KIS %s HTTP %d — %.1fs 후 재시도", tr_id,
+                              r.status_code, delay)
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                r.raise_for_status()
+                return r.json()
 
     async def daily_investor(self, code: str) -> list:
         js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-investor",
