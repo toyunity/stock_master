@@ -74,6 +74,7 @@ class DemoSource:
         self.state.set_status(connected=True,
                               note="데모 데이터(시뮬레이션) — 실데이터가 아닙니다. KIS 키 입력 시 라이브 전환.")
         price, acml_vol, acml_value, n, last_est = float(self.base), 0, 0, 0, 0.0
+        pgm_qty, pgm_val = 0, 0
         loop = asyncio.get_event_loop()
         start = loop.time()
         while not stop.is_set():
@@ -96,11 +97,14 @@ class DemoSource:
             })
             if n % 4 == 0:  # 프로그램매매는 체결보다 드문드문
                 q = rng.randint(-2_000, 2_000)
+                pgm_qty += q
+                pgm_val += q * tick_px
+                # 실제 H0STPGM0 와이어 형식과 동일하게 '당일 누적치'를 보낸다
                 self.state.apply_program({"t": now, "sell_qty": max(0, -q),
                                           "sell_value": max(0, -q) * tick_px,
                                           "buy_qty": max(0, q),
                                           "buy_value": max(0, q) * tick_px,
-                                          "net_qty": q, "net_value": q * tick_px})
+                                          "net_qty": pgm_qty, "net_value": pgm_val})
             elapsed = loop.time() - start
             if elapsed - last_est > 45:  # 잠정치 갱신 시뮬레이션(실제는 하루 4회)
                 last_est = elapsed

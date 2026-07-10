@@ -53,6 +53,37 @@ def test_demo_subscribe_yields_snapshots(monkeypatch):
     assert s2["daily"], "데모 일별 수급이 비어있음"
 
 
+def test_poll_rest_daily_survives_estimate_failure():
+    # 실운영에서 관찰(2026-07-10): 추정 TR이 간헐 500 → 일별 조회까지 죽으면 안 된다.
+    eng = FlowEngine("000660", interval=0.1)
+
+    class FakeClient:
+        async def program_trend(self, code):
+            return []
+
+        async def estimate(self, code):
+            raise RuntimeError("HTTP 500")
+
+        async def daily_investor(self, code):
+            return [{"date": "2026-07-09", "prsn": 1, "frgn": -2, "orgn": 1,
+                     "close": 100},
+                    {"date": "2026-07-10", "prsn": 0, "frgn": 0, "orgn": 0,
+                     "close": 100}]  # 미확정 당일 행은 걸러져야 함
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.get_event_loop().create_task(
+            eng._poll_rest(FakeClient(), stop))
+        await asyncio.sleep(0.3)
+        stop.set()
+        await asyncio.wait_for(task, 5)
+
+    _run(go())
+    snap = eng.state.snapshot()
+    assert len(snap["daily"]) == 1 and snap["daily"][0]["date"] == "2026-07-09"
+    assert "재시도" in snap["status"]["note"]  # 실패가 화면에 표시됨
+
+
 def test_registry_returns_same_engine():
     a = FlowEngine.get("000660")
     b = FlowEngine.get("000660")

@@ -97,7 +97,7 @@ class FlowEngine:
                              self._ws_loop(client, stop))
 
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
-        last_daily = 0.0
+        last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)
         loop = asyncio.get_event_loop()
         # 시작 백필: 프로그램추이(장중 재접속 대비) — 실패해도 WS 누적으로 계속
         try:
@@ -108,20 +108,33 @@ class FlowEngine:
         except Exception:
             log.warning("프로그램추이 백필 실패", exc_info=True)
         while not stop.is_set():
+            ok = True
+            # 추정과 일별은 서로 격리 — 한쪽(간헐 500 관찰됨)이 다른 쪽을 못 막는다
             try:
                 rows = await client.estimate(self.code)
                 if rows:
                     self.state.set_estimate(rows)
-                if loop.time() - last_daily > _DAILY_SEC:
-                    last_daily = loop.time()
-                    daily = await client.daily_investor(self.code)
+            except Exception:
+                ok = False
+                log.warning("KIS 추정치 조회 실패 — 재시도 예정", exc_info=True)
+            try:
+                if last_daily is None or loop.time() - last_daily > _DAILY_SEC:
+                    daily = kis.drop_empty_daily(await client.daily_investor(self.code))
                     if daily:
                         self.state.set_daily(daily)
+                    last_daily = loop.time()  # 성공 시에만 갱신(실패 시 곧 재시도)
             except Exception:
-                log.warning("KIS REST 폴링 실패 — 다음 주기에 재시도", exc_info=True)
+                ok = False
+                log.warning("KIS 일별 수급 조회 실패 — 재시도 예정", exc_info=True)
+            filled = bool(self.state.snapshot()["estimate"]["rows"])
+            if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
+            elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):
+                self.state.set_status(note="")
+            # 실패했거나 잠정 패널이 아직 비었으면 짧게(60s), 정상 정착 후엔 5분
+            timeout = 60 if (not ok or not filled) else _POLL_SEC
             try:
-                await asyncio.wait_for(stop.wait(), timeout=_POLL_SEC)
+                await asyncio.wait_for(stop.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 pass
 

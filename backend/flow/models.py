@@ -35,8 +35,10 @@ class FlowState:
                                "vol": d["vol"], "side": d["side"]})
 
     def apply_program(self, d: dict) -> None:
-        self._pgm_net_qty += d["net_qty"]
-        self._pgm_net_value += d["net_value"]
+        """프로그램 이벤트의 net_qty/net_value는 당일 '누적' 총계다(KIS 실측 2026-07-10)
+        — 더하지 말고 대입한다. 추이 차트에는 그 시점 누적을 append."""
+        self._pgm_net_qty = d["net_qty"]
+        self._pgm_net_value = d["net_value"]
         self._pgm_points.append({"t": d["t"], "net_qty": self._pgm_net_qty,
                                  "net_value": self._pgm_net_value})
 

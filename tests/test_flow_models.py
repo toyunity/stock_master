@@ -47,12 +47,15 @@ def test_tape_capped_at_30_newest_first():
     assert snap["tape"][0]["price"] == 2187000 + 39  # 최신이 맨 앞
 
 
-def test_program_accumulates_and_points_capped():
+def test_program_events_carry_cumulative_totals():
+    # H0STPGM0 이벤트는 당일 '누적치'를 담는다(실측 2026-07-10) — 대입이지 가산이 아니다.
     s = FlowState("000660", "SK하이닉스", "demo")
     for i in range(250):
-        s.apply_program(_pgm(net_qty=10, net_value=1000, t=f"10:{i // 60:02d}:{i % 60:02d}"))
+        cum = (i + 1) * 10
+        s.apply_program(_pgm(net_qty=cum, net_value=cum * 100,
+                             t=f"10:{i // 60:02d}:{i % 60:02d}"))
     snap = s.snapshot()
-    assert snap["program"]["net_qty"] == 2500      # 이벤트 순매수 누적
+    assert snap["program"]["net_qty"] == 2500      # 마지막 누적치 그대로
     assert snap["program"]["net_value"] == 250000
     assert len(snap["program"]["points"]) == 200   # 차트 포인트 상한
     assert snap["program"]["points"][-1]["net_value"] == 250000  # 누적 곡선

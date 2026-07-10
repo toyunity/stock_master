@@ -26,16 +26,18 @@ def test_parse_daily_investor():
     assert rows[1]["frgn"] == 150000
 
 
-def test_parse_estimate_maps_hour_gb():
+def test_parse_estimate_maps_hour_gb_and_sorts_ascending():
+    # 실API(2026-07-10 실측)는 최신순으로 내려온다 → 파서가 오름차순 보장해야
+    # '마지막 행=최신' 계약(UI·snapshot)이 성립한다.
     js = {"rt_cd": "0", "output2": [
-        {"bsop_hour_gb": "1", "frgn_fake_ntby_qty": "-50000",
-         "orgn_fake_ntby_qty": "0", "sum_fake_ntby_qty": "-50000"},
         {"bsop_hour_gb": "2", "frgn_fake_ntby_qty": "-70000",
          "orgn_fake_ntby_qty": "30000", "sum_fake_ntby_qty": "-40000"},
+        {"bsop_hour_gb": "1", "frgn_fake_ntby_qty": "-50000",
+         "orgn_fake_ntby_qty": "0", "sum_fake_ntby_qty": "-50000"},
     ]}
     rows = parse_estimate(js)
     assert rows[0] == {"asof": "09:30", "frgn": -50000, "orgn": 0, "sum": -50000}
-    assert rows[1]["asof"] == "10:00" and rows[1]["orgn"] == 30000
+    assert rows[-1]["asof"] == "10:00" and rows[-1]["orgn"] == 30000
 
 
 def test_parse_estimate_empty_output():
@@ -43,16 +45,25 @@ def test_parse_estimate_empty_output():
     assert parse_estimate({"rt_cd": "1"}) == []
 
 
-def test_parse_program_trend():
+def test_parse_program_trend_sorts_ascending():
     js = {"rt_cd": "0", "output": [
-        {"bsop_hour": "093000", "whol_smtn_ntby_qty": "500",
-         "whol_smtn_ntby_tr_pbmn": "1093500000"},
         {"bsop_hour": "094000", "whol_smtn_ntby_qty": "800",
          "whol_smtn_ntby_tr_pbmn": "1750000000"},
+        {"bsop_hour": "093000", "whol_smtn_ntby_qty": "500",
+         "whol_smtn_ntby_tr_pbmn": "1093500000"},
     ]}
     pts = parse_program_trend(js)
     assert pts[0] == {"t": "09:30:00", "net_qty": 500, "net_value": 1093500000}
-    assert pts[-1]["net_value"] == 1750000000
+    assert pts[-1]["net_value"] == 1750000000  # 차트 요구사항: 시간 오름차순
+
+
+def test_drop_empty_daily_removes_unsettled_today():
+    from backend.flow.kis import drop_empty_daily
+    rows = [{"date": "2026-07-10", "prsn": 0, "frgn": 0, "orgn": 0, "close": 2223000},
+            {"date": "2026-07-09", "prsn": 100, "frgn": -200, "orgn": 90,
+             "close": 2186000}]
+    out = drop_empty_daily(rows)
+    assert len(out) == 1 and out[0]["date"] == "2026-07-09"
 
 
 def test_token_disk_cache_reused_without_network(tmp_path):

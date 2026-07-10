@@ -89,7 +89,9 @@ def parse_ccnl(rec: list) -> dict:
 
 
 def parse_program(rec: list) -> dict:
-    """H0STPGM0 레코드 → 프로그램매매 dict."""
+    """H0STPGM0 레코드 → 프로그램매매 dict.
+
+    ⚠️ 값들은 당일 '누적' 체결량/대금이다(실측) — 이벤트별 증분이 아니다."""
     return {
         "t": _hhmmss(rec[1]),
         "sell_qty": _i(rec[2]),
@@ -136,7 +138,10 @@ def parse_daily_investor(js: dict) -> list:
 
 
 def parse_estimate(js: dict) -> list:
-    """HHPTJ04160200(외인기관 추정가집계) → [{asof,frgn,orgn,sum}] (장중 잠정)."""
+    """HHPTJ04160200(외인기관 추정가집계) → [{asof,frgn,orgn,sum}] (장중 잠정).
+
+    실API는 최신순으로 내려온다(2026-07-10 실측) → 시간 오름차순으로 정렬해
+    '마지막 행=최신' 계약을 보장한다(UI·snapshot이 이에 의존)."""
     rows = []
     for r in js.get("output2") or []:
         gb = str(r.get("bsop_hour_gb", ""))
@@ -144,17 +149,27 @@ def parse_estimate(js: dict) -> list:
                      "frgn": _i(r.get("frgn_fake_ntby_qty")),
                      "orgn": _i(r.get("orgn_fake_ntby_qty")),
                      "sum": _i(r.get("sum_fake_ntby_qty"))})
+    rows.sort(key=lambda r: r["asof"])
     return rows
 
 
 def parse_program_trend(js: dict) -> list:
-    """FHPPG04650101(프로그램매매추이) → [{t,net_qty,net_value}] 누적 시계열(백필용)."""
+    """FHPPG04650101(프로그램매매추이) → [{t,net_qty,net_value}] 누적 시계열(백필용).
+
+    차트(setData)는 시간 오름차순을 요구 → API 순서와 무관하게 정렬해 보장한다."""
     pts = []
     for r in js.get("output") or []:
         pts.append({"t": _hhmmss(r.get("bsop_hour", "")),
                     "net_qty": _i(r.get("whol_smtn_ntby_qty")),
                     "net_value": _i(r.get("whol_smtn_ntby_tr_pbmn"))})
+    pts.sort(key=lambda p: p["t"])
     return pts
+
+
+def drop_empty_daily(rows: list) -> list:
+    """일별 확정에서 전부 0인 행 제거 — 당일분은 장 종료 전까지 0으로 내려와(실측)
+    초보자가 '수급 없음'으로 오해한다. 확정된 날만 보여준다."""
+    return [r for r in rows if r["prsn"] or r["frgn"] or r["orgn"]]
 
 
 class KisClient:
