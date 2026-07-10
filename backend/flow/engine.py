@@ -122,10 +122,13 @@ class FlowEngine:
                     daily = kis.drop_empty_daily(await client.daily_investor(self.code))
                     if daily:
                         self.state.set_daily(daily)
+                    detail = await client.investor_detail(self.code)
+                    if detail:
+                        self.state.set_detail(detail)
                     last_daily = loop.time()  # 성공 시에만 갱신(실패 시 곧 재시도)
             except Exception:
                 ok = False
-                log.warning("KIS 일별 수급 조회 실패 — 재시도 예정", exc_info=True)
+                log.warning("KIS 일별/세부 수급 조회 실패 — 재시도 예정", exc_info=True)
             filled = bool(self.state.snapshot()["estimate"]["rows"])
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")

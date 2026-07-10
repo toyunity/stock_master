@@ -73,6 +73,12 @@ th:first-child,td:first-child{text-align:left}
 </div>
 
 <div class="panel">
+  <h2>🏛️ 기관 세부 수급 (연기금·투신·금융투자 …)</h2>
+  <div class="fresh" id="dt-fresh">확정 · 기준일 대기 · 기관계를 주체별로 분해한 확정치</div>
+  <table id="detail"></table>
+</div>
+
+<div class="panel">
   <h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2>
   <table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table>
 </div>
@@ -140,6 +146,13 @@ function render(S){
     for(const pt of P.points){const ts=toTs(pt.t);
       if(!seen[ts]){seen[ts]=1;pts.push({time:ts,value:pt.net_value/1e8});}}
     series.setData(pts); chart.timeScale().fitContent();
+  }
+  const DT=S.detail;
+  if(DT.rows.length){
+    document.getElementById('dt-fresh').textContent='확정 · '+DT.date+' 기준 · 장중 세부 분해는 제공되지 않음(거래소 확정 후 반영)';
+    document.getElementById('detail').innerHTML='<tr><th>주체</th><th>순매수</th><th>금액</th></tr>'
+      +DT.rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="'+cls(r.qty)+'">'+shares(r.qty)
+      +'</td><td class="'+cls(r.value)+'">'+eok(r.value)+'</td></tr>').join('');
   }
   document.getElementById('daily').innerHTML='<tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th></tr>'
     +S.daily.map(d=>'<tr><td>'+esc(d.date.slice(5))+'</td><td class="'+cls(d.prsn)+'">'+shares(d.prsn)

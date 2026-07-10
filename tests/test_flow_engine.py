@@ -49,8 +49,9 @@ def test_demo_subscribe_yields_snapshots(monkeypatch):
     for key in ("market", "tape", "program", "estimate", "daily", "status"):
         assert key in s1
     assert s2["ts"] >= s1["ts"]
-    # 데모 소스가 굴러가면 시장가·일별 확정이 채워진다
+    # 데모 소스가 굴러가면 시장가·일별 확정·기관 세부가 채워진다
     assert s2["daily"], "데모 일별 수급이 비어있음"
+    assert s2["detail"]["rows"], "데모 기관 세부가 비어있음"
 
 
 def test_poll_rest_daily_survives_estimate_failure():
@@ -70,6 +71,10 @@ def test_poll_rest_daily_survives_estimate_failure():
                     {"date": "2026-07-10", "prsn": 0, "frgn": 0, "orgn": 0,
                      "close": 100}]  # 미확정 당일 행은 걸러져야 함
 
+        async def investor_detail(self, code):
+            return {"date": "2026-07-09",
+                    "rows": [{"name": "연기금", "qty": 48907, "value": 113357000000}]}
+
     async def go():
         stop = asyncio.Event()
         task = asyncio.get_event_loop().create_task(
@@ -81,6 +86,7 @@ def test_poll_rest_daily_survives_estimate_failure():
     _run(go())
     snap = eng.state.snapshot()
     assert len(snap["daily"]) == 1 and snap["daily"][0]["date"] == "2026-07-09"
+    assert snap["detail"]["rows"][0]["name"] == "연기금"  # 세부도 추정 실패와 무관하게 채워짐
     assert "재시도" in snap["status"]["note"]  # 실패가 화면에 표시됨
 
 

@@ -19,6 +19,7 @@ def test_live_page_serves_html(monkeypatch):
     assert "DEMO" in r.text                 # 모드 배지
     assert "투자 유의" in r.text            # §16 고지
     assert "잠정" in r.text                 # 신선도 라벨
+    assert "기관 세부" in r.text            # 연기금/투신 등 세부 패널
     assert "apple-touch-icon" in r.text     # PWA 헤더 유지
 
 

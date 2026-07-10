@@ -25,6 +25,7 @@ class FlowState:
         self._pgm_points: deque = deque(maxlen=_POINTS_MAX)
         self._estimate_rows: list = []
         self._daily: list = []
+        self._detail: dict = {"date": None, "rows": []}  # 기관 세부(최신 확정일)
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -55,6 +56,9 @@ class FlowState:
     def set_daily(self, rows: list) -> None:
         self._daily = list(rows)[:10]
 
+    def set_detail(self, d: dict) -> None:
+        self._detail = {"date": d.get("date"), "rows": list(d.get("rows") or [])}
+
     def set_status(self, **kw) -> None:
         self._status.update(kw)
 
@@ -69,5 +73,7 @@ class FlowState:
                         "points": list(self._pgm_points)},
             "estimate": {"asof": est_asof, "rows": list(self._estimate_rows)},
             "daily": list(self._daily),
+            "detail": {"date": self._detail["date"],
+                       "rows": list(self._detail["rows"])},
             "status": dict(self._status),
         }

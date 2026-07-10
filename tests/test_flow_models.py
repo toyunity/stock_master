@@ -23,6 +23,8 @@ def test_snapshot_schema_and_json_safe():
     s.set_estimate([{"asof": "10:00", "frgn": -120000, "orgn": 50000, "sum": -70000}])
     s.set_daily([{"date": "2026-07-09", "prsn": 100, "frgn": -200, "orgn": 90,
                   "close": 2186000}])
+    s.set_detail({"date": "2026-07-09",
+                  "rows": [{"name": "연기금", "qty": 48907, "value": 113357000000}]})
     s.set_status(connected=True, note="")
     snap = s.snapshot()
     assert snap["code"] == "000660" and snap["name"] == "SK하이닉스"
@@ -34,6 +36,8 @@ def test_snapshot_schema_and_json_safe():
     assert snap["program"]["points"][-1]["net_value"] == 1093500000
     assert snap["estimate"]["rows"][0]["frgn"] == -120000
     assert snap["daily"][0]["frgn"] == -200
+    assert snap["detail"]["date"] == "2026-07-09"
+    assert snap["detail"]["rows"][0]["name"] == "연기금"
     assert snap["status"]["connected"] is True
     json.dumps(snap, ensure_ascii=False)  # 직렬화 가능해야 SSE로 나감
 
@@ -66,5 +70,6 @@ def test_empty_state_snapshot_has_nulls_not_crash():
     assert snap["market"]["price"] is None
     assert snap["tape"] == [] and snap["daily"] == []
     assert snap["estimate"]["rows"] == []
+    assert snap["detail"] == {"date": None, "rows": []}
     assert snap["program"]["net_qty"] == 0
     json.dumps(snap)
