@@ -94,6 +94,19 @@ def test_parse_program_record():
     assert d["net_qty"] == 500 and d["net_value"] == 1093500000
 
 
+def test_ws_tr_ids_by_market_div():
+    from backend.flow.kis import ws_tr_ids
+    assert ws_tr_ids("UN") == ("H0UNCNT0", "H0UNPGM0")  # KRX+NXT 통합(기본)
+    assert ws_tr_ids("J") == ("H0STCNT0", "H0STPGM0")
+    assert ws_tr_ids("NX") == ("H0NXCNT0", "H0NXPGM0")
+    assert ws_tr_ids("잘못") == ("H0UNCNT0", "H0UNPGM0")  # 미지정 → 통합
+
+
+def test_default_market_div_is_un():
+    from backend.config import Settings
+    assert Settings().market_div == "UN"  # NXT가 대형주 거래량 30%+ (실측)
+
+
 def test_subscribe_error_detection():
     from backend.flow.kis import subscribe_error
     ok = {"header": {"tr_id": "H0STCNT0"}, "body": {"rt_cd": "0", "msg1": "SUBSCRIBE SUCCESS"}}

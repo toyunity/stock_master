@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     kis_app_key: Optional[str] = None      # SM_KIS_APP_KEY
     kis_app_secret: Optional[str] = None   # SM_KIS_APP_SECRET
     flow_mode: str = ""                    # ''=자동(키 있으면 live) | 'demo'=강제 데모
+    # 시장 구분: UN=KRX+NXT 통합(기본 — NXT가 대형주 거래량의 30%+, 실측), J=KRX, NX=NXT
+    market_div: str = "UN"
 
 
 settings = Settings()

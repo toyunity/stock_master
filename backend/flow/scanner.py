@@ -132,7 +132,7 @@ def build_picks(frgn_buy: list, orgn_buy: list, value_top: list,
 
 def _default_client() -> KisClient:
     return KisClient(settings.kis_app_key, settings.kis_app_secret,
-                     settings.cache_dir)
+                     settings.cache_dir, market_div=settings.market_div)
 
 
 async def _call_rows(client, path, tr_id, params, label) -> list:

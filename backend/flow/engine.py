@@ -109,7 +109,8 @@ class FlowEngine:
         if self._client is None:  # 재사용 — approval_key 재발급 최소화
             self._client = kis.KisClient(settings.kis_app_key,
                                          settings.kis_app_secret,
-                                         settings.cache_dir)
+                                         settings.cache_dir,
+                                         market_div=settings.market_div)
         client = self._client
         try:
             await client.token()  # 인증 검증 — 실패 시 데모 강등
@@ -214,9 +215,10 @@ class FlowEngine:
         while not stop.is_set():
             try:
                 key = await client.approval_key()
+                ccnl_tr, pgm_tr = kis.ws_tr_ids(settings.market_div)
                 async with websockets.connect(kis.WS_URL, ping_interval=None) as ws:
-                    await ws.send(kis.build_subscribe(key, "H0STCNT0", self.code))
-                    await ws.send(kis.build_subscribe(key, "H0STPGM0", self.code))
+                    await ws.send(kis.build_subscribe(key, ccnl_tr, self.code))
+                    await ws.send(kis.build_subscribe(key, pgm_tr, self.code))
                     self.state.set_status(connected=True, note="")
                     backoff = 5
                     while not stop.is_set():
@@ -238,9 +240,9 @@ class FlowEngine:
                             continue
                         tr_id, records = payload
                         for rec in records:
-                            if tr_id in ("H0STCNT0", "H0UNCNT0"):
+                            if tr_id in ("H0STCNT0", "H0NXCNT0", "H0UNCNT0"):
                                 self.state.apply_tick(kis.parse_ccnl(rec))
-                            elif tr_id in ("H0STPGM0", "H0UNPGM0"):
+                            elif tr_id in ("H0STPGM0", "H0NXPGM0", "H0UNPGM0"):
                                 self.state.apply_program(kis.parse_program(rec))
             except asyncio.CancelledError:
                 raise

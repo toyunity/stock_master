@@ -187,7 +187,7 @@ function render(S){
     p.textContent=won(M.price)+' '+sgn[M.sign]+' '+(M.rate!=null?Math.abs(M.rate).toFixed(2)+'%':'');
     p.className='price '+M.sign;
     document.getElementById('pmeta').innerHTML='거래량 '+num(M.vol)+'주 · 거래대금 '+eok(M.value).replace('+','')
-      +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · '+esc(M.time||'')+' <span class="fresh">· 실시간</span>';
+      +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · '+esc(M.time||'')+' <span class="fresh">· 실시간 · __MKT__</span>';
   }
   const ED=S.estimate_detail;
   const E=S.estimate;
@@ -255,9 +255,14 @@ es.onerror=()=>{const c=document.getElementById('conn');c.textContent='재연결
 </script></body></html>"""
 
 
+_MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}
+
+
 def render_live_page(code: str, name: str, mode: str) -> str:
+    from backend.config import settings
     lib = _LIB_PATH.read_text(encoding="utf-8")
     return (_TEMPLATE
+            .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
             .replace("__CODE__", escape(code))
             .replace("__NAME__", escape(name))
             .replace("__MODE__", escape(mode.upper()))

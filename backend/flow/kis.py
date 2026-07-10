@@ -135,6 +135,14 @@ WS_URL = "ws://ops.koreainvestment.com:21000"
 # HHPTJ04160200 bsop_hour_gb(입력구분) → 잠정치 기준 시각
 _ESTIMATE_HOURS = {"1": "09:30", "2": "10:00", "3": "11:20", "4": "13:20", "5": "14:30"}
 
+# 시장구분 → 실시간 (체결가, 프로그램) TR — 필드 배열은 세 변형 모두 동일(공식 리포 검증)
+_WS_TRS = {"J": ("H0STCNT0", "H0STPGM0"), "NX": ("H0NXCNT0", "H0NXPGM0"),
+           "UN": ("H0UNCNT0", "H0UNPGM0")}
+
+
+def ws_tr_ids(div: str) -> tuple:
+    return _WS_TRS.get(div, _WS_TRS["UN"])
+
 
 def _date(v: str) -> str:
     return f"{v[0:4]}-{v[4:6]}-{v[6:8]}" if len(v) == 8 else v
@@ -248,8 +256,9 @@ class KisClient:
     """토큰(디스크 캐시) + 수급 REST 3종. httpx 비동기, 실패는 예외로 위임."""
 
     def __init__(self, appkey: str, appsecret: str, cache_dir: str,
-                 base: str = REST_BASE):
+                 base: str = REST_BASE, market_div: str = "UN"):
         self.appkey, self.appsecret, self.base = appkey, appsecret, base
+        self.div = market_div  # UN=KRX+NXT 통합(기본), J=KRX 전용, NX=NXT 전용
         self._token_path = Path(cache_dir) / "kis_token.json"
         self._approval: Optional[str] = None
 
@@ -324,7 +333,7 @@ class KisClient:
     async def daily_investor(self, code: str) -> list:
         js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-investor",
                              "FHKST01010900",
-                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+                             {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_daily_investor(js)
 
     async def estimate(self, code: str) -> list:
@@ -335,7 +344,7 @@ class KisClient:
     async def price(self, code: str) -> Optional[dict]:
         js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-price",
                              "FHKST01010100",
-                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+                             {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_price(js)
 
     async def investor_detail(self, code: str) -> Optional[dict]:
@@ -346,7 +355,7 @@ class KisClient:
             js = await self._get(
                 "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
                 "FHPTJ04160001",
-                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+                {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code,
                  "FID_INPUT_DATE_1": date, "FID_ORG_ADJ_PRC": "",
                  "FID_ETC_CLS_CODE": ""})
             d = parse_investor_detail(js)
@@ -357,5 +366,5 @@ class KisClient:
     async def program_trend(self, code: str) -> list:
         js = await self._get("/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
                              "FHPPG04650101",
-                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+                             {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_program_trend(js)
