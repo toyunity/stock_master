@@ -42,6 +42,19 @@ def test_snapshot_schema_and_json_safe():
     json.dumps(snap, ensure_ascii=False)  # 직렬화 가능해야 SSE로 나감
 
 
+def test_set_market_updates_price_without_touching_tape():
+    # 웹소켓 공백 시 REST 폴백 — 시세만 갱신하고 체결 테이프는 오염하지 않는다
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.apply_tick(_tick())
+    s.set_market({"price": 2244000, "sign": "up", "change": 58000, "rate": 2.65,
+                  "acml_vol": 3317403, "acml_value": 7371903475500,
+                  "time": "13:05:00"})
+    snap = s.snapshot()
+    assert snap["market"]["price"] == 2244000 and snap["market"]["time"] == "13:05:00"
+    assert snap["market"]["strength"] == 112.34  # 미제공 필드는 기존값 유지
+    assert len(snap["tape"]) == 1  # 테이프 불변
+
+
 def test_tape_capped_at_30_newest_first():
     s = FlowState("000660", "SK하이닉스", "demo")
     for i in range(40):

@@ -127,6 +127,18 @@ def test_investor_detail_falls_back_to_previous_day(monkeypatch):
     assert len(calls) == 2 and calls[0] == today  # 오늘 시도 → 전일 폴백
 
 
+def test_parse_price():
+    from backend.flow.kis import parse_price
+    js = {"rt_cd": "0", "output": {
+        "stck_prpr": "2244000", "prdy_vrss": "58000", "prdy_vrss_sign": "2",
+        "prdy_ctrt": "2.65", "acml_vol": "3317403",
+        "acml_tr_pbmn": "7371903475500"}}
+    d = parse_price(js)
+    assert d == {"price": 2244000, "sign": "up", "change": 58000, "rate": 2.65,
+                 "acml_vol": 3317403, "acml_value": 7371903475500}
+    assert parse_price({"rt_cd": "1"}) is None
+
+
 def test_get_retries_on_5xx(monkeypatch):
     # KIS는 연속 호출에 간헐 HTTP 500을 반환(실측 2026-07-10) — 재시도로 흡수해야 한다.
     import httpx

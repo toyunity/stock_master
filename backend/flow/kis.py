@@ -200,6 +200,18 @@ def parse_investor_detail(js: dict) -> Optional[dict]:
     return {"date": _date(r.get("stck_bsop_date", "")), "rows": rows}
 
 
+def parse_price(js: dict) -> Optional[dict]:
+    """FHKST01010100(주식현재가 시세) → 시세 요약. 웹소켓 공백 시 폴백용."""
+    if js.get("rt_cd") != "0":
+        return None
+    o = js.get("output") or {}
+    return {"price": _i(o.get("stck_prpr")),
+            "sign": _SIGN.get(str(o.get("prdy_vrss_sign", "")), ""),
+            "change": _i(o.get("prdy_vrss")), "rate": _f(o.get("prdy_ctrt")),
+            "acml_vol": _i(o.get("acml_vol")),
+            "acml_value": _i(o.get("acml_tr_pbmn"))}
+
+
 def parse_minute_candles(js: dict) -> list:
     """FHKST03010200(주식당일분봉) output2 → [{t,open,high,low,close,vol}] 오름차순.
 
@@ -307,6 +319,12 @@ class KisClient:
         js = await self._get("/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
                              "HHPTJ04160200", {"MKSC_SHRN_ISCD": code})
         return parse_estimate(js)
+
+    async def price(self, code: str) -> Optional[dict]:
+        js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-price",
+                             "FHKST01010100",
+                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+        return parse_price(js)
 
     async def investor_detail(self, code: str) -> Optional[dict]:
         """최신 확정일 기관 세부 분해. 장중엔 오늘 날짜가 rt_cd=2로 거부되므로 전일 폴백."""

@@ -38,6 +38,14 @@ class FlowState:
         self._tape.appendleft({"t": d["t"], "price": d["price"],
                                "vol": d["vol"], "side": d["side"]})
 
+    def set_market(self, d: dict) -> None:
+        """REST 폴백용 시세 갱신 — 테이프는 건드리지 않고, 미제공 필드는 유지."""
+        self._market.update({
+            "price": d.get("price"), "sign": d.get("sign", ""),
+            "change": d.get("change"), "rate": d.get("rate"),
+            "vol": d.get("acml_vol"), "value": d.get("acml_value"),
+            "time": d.get("time", self._market.get("time"))})
+
     def apply_program(self, d: dict) -> None:
         """프로그램 이벤트의 net_qty/net_value는 당일 '누적' 총계다(KIS 실측 2026-07-10)
         — 더하지 말고 대입한다. 추이 차트에는 그 시점 누적을 append."""
