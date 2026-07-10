@@ -200,6 +200,20 @@ def parse_investor_detail(js: dict) -> Optional[dict]:
     return {"date": _date(r.get("stck_bsop_date", "")), "rows": rows}
 
 
+def parse_minute_candles(js: dict) -> list:
+    """FHKST03010200(주식당일분봉) output2 → [{t,open,high,low,close,vol}] 오름차순.
+
+    실응답은 최신순·호출당 최대 30봉·당일만 제공(실측 2026-07-10)."""
+    bars = []
+    for r in js.get("output2") or []:
+        bars.append({"t": _hhmmss(r.get("stck_cntg_hour", "")),
+                     "open": _i(r.get("stck_oprc")), "high": _i(r.get("stck_hgpr")),
+                     "low": _i(r.get("stck_lwpr")), "close": _i(r.get("stck_prpr")),
+                     "vol": _i(r.get("cntg_vol"))})
+    bars.sort(key=lambda b: b["t"])
+    return bars
+
+
 def drop_empty_daily(rows: list) -> list:
     """일별 확정에서 전부 0인 행 제거 — 당일분은 장 종료 전까지 0으로 내려와(실측)
     초보자가 '수급 없음'으로 오해한다. 확정된 날만 보여준다."""

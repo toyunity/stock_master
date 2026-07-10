@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from backend.config import settings
 from backend.cli import build_dashboard
 from backend.api import icons
+from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
@@ -60,6 +61,17 @@ async def live_stream(code: str):
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/candles/{code}")
+async def candles_api(code: str, tf: str = "5m"):
+    """봉 차트 — tf: 1m/5m/15m(당일 분봉, LIVE는 KIS·데모는 합성) | 1d(일봉 120)."""
+    if not _CODE_RE.match(code):
+        return Response(status_code=404)
+    if tf not in candles.TIMEFRAMES:
+        return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
+                            status_code=400)
+    return JSONResponse(await candles.get_candles(code, tf))
 
 
 @app.get("/scanner", response_class=HTMLResponse)

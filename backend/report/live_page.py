@@ -37,6 +37,16 @@ th:first-child,td:first-child{text-align:left}
 #chart{height:180px}
 .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:16px}
 .note{font-size:12px;color:#ef6c00;margin-top:4px;min-height:14px}
+.tfrow{display:flex;gap:6px;margin-bottom:8px}
+.tf{font-size:12px;padding:4px 12px;border:1px solid #ccd4e0;background:#fff;border-radius:8px;cursor:pointer}
+.tf.on{background:#1565c0;color:#fff;border-color:#1565c0}
+#pchart{height:220px}
+details.panel summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent}
+details.panel summary::-webkit-details-marker{display:none}
+details.panel summary h2::before{content:'▸ ';color:#1565c0}
+details.panel[open] summary h2::before{content:'▾ ';color:#1565c0}
+details.panel summary h2{margin:0}
+details.panel[open] summary{margin-bottom:6px}
 </style></head><body>
 <div><a href="/">← 대시보드</a></div>
 <h1>__NAME__ <span class="code">__CODE__</span>
@@ -45,6 +55,17 @@ th:first-child,td:first-child{text-align:left}
 <div class="price" id="price">–</div>
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
 <div class="note" id="note"></div>
+
+<div class="panel">
+  <h2>📈 가격 차트 <span class="fresh" id="pc-fresh">· 불러오는 중</span></h2>
+  <div class="tfrow">
+    <button class="tf" data-tf="1m">1분</button>
+    <button class="tf on" data-tf="5m">5분</button>
+    <button class="tf" data-tf="15m">15분</button>
+    <button class="tf" data-tf="1d">일봉</button>
+  </div>
+  <div id="pchart"></div>
+</div>
 
 <div class="panel">
   <h2>💰 투자자별 순매수 (장중 추정)</h2>
@@ -71,21 +92,21 @@ th:first-child,td:first-child{text-align:left}
   <div class="meta">당일 누적 순매수 금액 추이(억원)</div>
 </div>
 
-<div class="panel">
-  <h2>📅 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2>
+<details class="panel">
+  <summary><h2>📅 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2></summary>
   <table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th></tr></table>
-</div>
+</details>
 
-<div class="panel">
-  <h2>🏛️ 기관 세부 수급 (연기금·투신·금융투자 …)</h2>
+<details class="panel">
+  <summary><h2>🏛️ 기관 세부 수급 (연기금·투신·금융투자 …)</h2></summary>
   <div class="fresh" id="dt-fresh">확정 · 기준일 대기 · 기관계를 주체별로 분해한 확정치</div>
   <table id="detail"></table>
-</div>
+</details>
 
-<div class="panel">
-  <h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2>
+<details class="panel">
+  <summary><h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2></summary>
   <table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table>
-</div>
+</details>
 
 <div class="disc">__DISCLAIMER__ 실시간 수급의 외국인/기관 수치는 장중 <b>추정치(잠정)</b>이며
 확정치는 다음 영업일에 제공됩니다. 데이터 출처: 한국투자증권 오픈API·KRX.</div>
@@ -111,6 +132,36 @@ const series=chart.addBaselineSeries({baseValue:{type:'price',price:0},
   bottomLineColor:'#1565c0',bottomFillColor:'rgba(21,101,192,.15)',lineWidth:2});
 function toTs(t){const[h,m,s]=t.split(':').map(Number);const d=new Date();
   d.setHours(h,m,s||0,0);return Math.floor(d.getTime()/1000);}
+
+// ── 가격 차트 (봉 주기 선택) ──
+const pchart=LightweightCharts.createChart(document.getElementById('pchart'),{autoSize:true,height:220,
+  layout:{background:{color:'#fff'},textColor:'#999',fontSize:10},
+  grid:{vertLines:{color:'#f4f4f4'},horzLines:{color:'#f4f4f4'}},
+  rightPriceScale:{borderColor:'#eee'},
+  timeScale:{borderColor:'#eee',timeVisible:true,secondsVisible:false}});
+const pseries=pchart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
+  borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0'});
+let TF='5m';
+const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','1d':'일봉 120일'};
+async function loadCandles(){
+  try{
+    const r=await fetch('/api/candles/'+CODE+'?tf='+TF);
+    if(!r.ok){document.getElementById('pc-fresh').textContent='· 차트 조회 실패';return;}
+    const d=await r.json();
+    if(!d.candles.length){document.getElementById('pc-fresh').textContent='· 데이터 없음(장전이거나 조회 실패)';return;}
+    pseries.setData(d.candles.map(c=>({time:TF==='1d'?c.t:toTs(c.t),
+      open:c.open,high:c.high,low:c.low,close:c.close})));
+    pchart.applyOptions({timeScale:{timeVisible:TF!=='1d'}});
+    pchart.timeScale().fitContent();
+    document.getElementById('pc-fresh').textContent='· '+TF_KO[TF]+(TF==='1d'?'':' · 60초 자동 갱신');
+  }catch(e){console.error(e);}
+}
+document.querySelectorAll('.tf').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tf').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); TF=b.dataset.tf; loadCandles();
+});
+loadCandles();
+setInterval(()=>{if(TF!=='1d')loadCandles();},60000);
 function nextSlot(){
   // 잠정치 발표 슬롯(±10분): 외국인 09:30~, 기관 10:00~ — 다음 예상 시점 안내
   const slots=['09:30','10:00','11:20','13:20','14:30'];
