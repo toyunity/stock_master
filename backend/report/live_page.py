@@ -50,12 +50,12 @@ th:first-child,td:first-child{text-align:left}
   <h2>💰 투자자별 순매수 (장중 추정)</h2>
   <div class="fresh" id="est-fresh">잠정 · 갱신 대기 · 장중 추정치는 익일 확정과 다를 수 있음</div>
   <div class="grid3">
-    <div><div class="lbl">개인+기타*</div><div class="val" id="est-prsn">–</div></div>
+    <div><div class="lbl" id="est-prsn-lbl">개인+기타*</div><div class="val" id="est-prsn">–</div></div>
     <div><div class="lbl">외국인</div><div class="val" id="est-frgn">–</div></div>
     <div><div class="lbl">기관</div><div class="val" id="est-orgn">–</div></div>
   </div>
   <table id="est-hist" style="margin-top:8px"></table>
-  <div class="meta">*개인+기타법인 = −(외국인+기관) 역산 — 장중 개인 집계는 어디에도 없어
+  <div class="meta" id="est-note">*개인+기타법인 = −(외국인+기관) 역산 — 장중 개인 집계는 어디에도 없어
   "전체 매매 합계는 0" 원리로 추정한 값</div>
   <table id="est-detail" style="margin-top:8px"></table>
   <div class="meta" id="est-detail-note"></div>
@@ -135,12 +135,20 @@ function render(S){
     document.getElementById('pmeta').innerHTML='거래량 '+num(M.vol)+'주 · 거래대금 '+eok(M.value).replace('+','')
       +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · '+esc(M.time||'')+' <span class="fresh">· 실시간</span>';
   }
+  const ED=S.estimate_detail;
   const E=S.estimate;
   if(E.rows.length){
     const last=E.rows[E.rows.length-1];
     document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · 다음 갱신 '+nextSlot()+' · 익일 확정';
-    const prsn=r=>-(r.frgn+r.orgn); // 개인+기타 역산(합계 0 원리)
-    for(const[v,id]of[[prsn(last),'est-prsn'],[last.frgn,'est-frgn'],[last.orgn,'est-orgn']]){
+    const combined=r=>-(r.frgn+r.orgn); // 개인+기타 역산(합계 0 원리)
+    // 기타법인 잠정(상위30 가집계)이 있으면 개인 단독까지 분리
+    const canSplit = ED.etc_qty!=null && ED.rows.length>0;
+    const pv = canSplit ? combined(last)-ED.etc_qty : combined(last);
+    document.getElementById('est-prsn-lbl').textContent = canSplit?'개인(추정)':'개인+기타*';
+    document.getElementById('est-note').textContent = canSplit
+      ? '개인 = −(외국인+기관+기타법인) 역산 · 기타법인 '+shares(ED.etc_qty)+' (장중 가집계, 1,000주 단위) · 아래 이력 표의 개인+기타는 슬롯별 역산값'
+      : '*개인+기타법인 = −(외국인+기관) 역산 — 장중 개인 집계는 어디에도 없어 "전체 매매 합계는 0" 원리로 추정한 값';
+    for(const[v,id]of[[pv,'est-prsn'],[last.frgn,'est-frgn'],[last.orgn,'est-orgn']]){
       const el=document.getElementById(id);
       el.textContent=shares(v); el.className='val '+cls(v);
     }
@@ -160,7 +168,6 @@ function render(S){
       if(!seen[ts]){seen[ts]=1;pts.push({time:ts,value:pt.net_value/1e8});}}
     series.setData(pts); chart.timeScale().fitContent();
   }
-  const ED=S.estimate_detail;
   if(ED.rows.length){
     document.getElementById('est-detail').innerHTML='<tr><th>↳ 기관 내역(잠정)</th><th>순매수</th><th>금액</th></tr>'
       +ED.rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="'+cls(r.qty)+'">'+shares(r.qty)

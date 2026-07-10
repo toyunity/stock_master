@@ -121,6 +121,9 @@ def test_intraday_detail_for_extracts_partial_breakdown():
     assert by["연기금"]["qty"] == 35000
     assert d["rows"][0]["name"] == "투신"  # |순매수| 내림차순
     assert "금융투자" not in by  # 이 TR엔 미제공(부분 세부)
+    # 기타법인은 기관이 아님 — rows에서 빼고 별도 필드로(개인 역산용)
+    assert "기타법인" not in by
+    assert d["etc_qty"] == 4000 and d["etc_value"] == 8800 * 1_000_000
     assert intraday_detail_for("999999", lists) is None  # 상위30 밖이면 없음
 
 
