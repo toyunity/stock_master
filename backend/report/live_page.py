@@ -47,14 +47,16 @@ th:first-child,td:first-child{text-align:left}
 <div class="note" id="note"></div>
 
 <div class="panel">
-  <h2>💰 투자자별 순매수 (외국인/기관 추정)</h2>
+  <h2>💰 투자자별 순매수 (장중 추정)</h2>
   <div class="fresh" id="est-fresh">잠정 · 갱신 대기 · 장중 추정치는 익일 확정과 다를 수 있음</div>
   <div class="grid3">
+    <div><div class="lbl">개인+기타*</div><div class="val" id="est-prsn">–</div></div>
     <div><div class="lbl">외국인</div><div class="val" id="est-frgn">–</div></div>
     <div><div class="lbl">기관</div><div class="val" id="est-orgn">–</div></div>
-    <div><div class="lbl">합산</div><div class="val" id="est-sum">–</div></div>
   </div>
   <table id="est-hist" style="margin-top:8px"></table>
+  <div class="meta">*개인+기타법인 = −(외국인+기관) 역산 — 장중 개인 집계는 어디에도 없어
+  "전체 매매 합계는 0" 원리로 추정한 값</div>
   <table id="est-detail" style="margin-top:8px"></table>
   <div class="meta" id="est-detail-note"></div>
 </div>
@@ -137,13 +139,15 @@ function render(S){
   if(E.rows.length){
     const last=E.rows[E.rows.length-1];
     document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · 다음 갱신 '+nextSlot()+' · 익일 확정';
-    for(const[k,id]of[['frgn','est-frgn'],['orgn','est-orgn'],['sum','est-sum']]){
+    const prsn=r=>-(r.frgn+r.orgn); // 개인+기타 역산(합계 0 원리)
+    for(const[v,id]of[[prsn(last),'est-prsn'],[last.frgn,'est-frgn'],[last.orgn,'est-orgn']]){
       const el=document.getElementById(id);
-      el.textContent=shares(last[k]); el.className='val '+cls(last[k]);
+      el.textContent=shares(v); el.className='val '+cls(v);
     }
-    document.getElementById('est-hist').innerHTML='<tr><th>기준</th><th>외국인</th><th>기관</th><th>합산</th></tr>'
-      +E.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.asof)+'</td><td class="'+cls(r.frgn)+'">'+shares(r.frgn)
-      +'</td><td class="'+cls(r.orgn)+'">'+shares(r.orgn)+'</td><td class="'+cls(r.sum)+'">'+shares(r.sum)+'</td></tr>').join('');
+    document.getElementById('est-hist').innerHTML='<tr><th>기준</th><th>개인+기타*</th><th>외국인</th><th>기관</th></tr>'
+      +E.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.asof)+'</td><td class="'+cls(prsn(r))+'">'+shares(prsn(r))
+      +'</td><td class="'+cls(r.frgn)+'">'+shares(r.frgn)
+      +'</td><td class="'+cls(r.orgn)+'">'+shares(r.orgn)+'</td></tr>').join('');
   }
   const P=S.program;
   const q=document.getElementById('pgm-qty');
@@ -158,14 +162,14 @@ function render(S){
   }
   const ED=S.estimate_detail;
   if(ED.rows.length){
-    document.getElementById('est-detail').innerHTML='<tr><th>장중 기관 세부(잠정)</th><th>순매수</th><th>금액</th></tr>'
+    document.getElementById('est-detail').innerHTML='<tr><th>↳ 기관 내역(잠정)</th><th>순매수</th><th>금액</th></tr>'
       +ED.rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="'+cls(r.qty)+'">'+shares(r.qty)
       +'</td><td class="'+cls(r.value)+'">'+eok(r.value)+'</td></tr>').join('');
     document.getElementById('est-detail-note').textContent=(ED.asof?ED.asof+' 조회 · ':'')
       +'1,000주 단위 가집계 · 금융투자/사모 미포함 · 수급 상위30 진입 시 제공';
   }else{
     document.getElementById('est-detail').innerHTML='';
-    document.getElementById('est-detail-note').textContent='장중 기관 세부: 이 종목이 외인/기관 수급 상위30에 들 때만 제공(거래소 제약). 확정 세부는 아래 패널.';
+    document.getElementById('est-detail-note').textContent='기관 내역(투신/연기금 등)은 이 종목이 외인/기관 수급 상위30에 들 때만 장중 제공(거래소 제약). 확정 내역은 아래 패널에 항상 표시.';
   }
   const DT=S.detail;
   if(DT.rows.length){
