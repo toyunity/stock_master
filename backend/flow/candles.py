@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 _MIN_PATH = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
 _TTL = 60.0
 _GAP = 0.2          # 연속 호출 간헐 500 완화(실측)
-_MAX_CALLS = 16     # 391분/30봉 = 14콜 + 여유
+_MAX_CALLS = 26     # UN(08:00~20:00) 최대 720분/30봉 = 24콜 + 여유
 _min_cache: dict = {}   # code -> (ts, bars)
 _daily_cache: dict = {}  # code -> (ts, candles)
 _client = None
@@ -35,8 +35,15 @@ def _get_client() -> KisClient:
     global _client
     if _client is None:
         _client = KisClient(settings.kis_app_key, settings.kis_app_secret,
-                            settings.cache_dir)
+                            settings.cache_dir, market_div=settings.market_div)
     return _client
+
+
+def _session_window() -> tuple:
+    """(시작, 마감 캡) — NXT 포함(UN/NX)이면 프리 08:00 ~ 애프터 20:00까지."""
+    if settings.market_div in ("UN", "NX"):
+        return "08:00:00", "200000"
+    return "09:00:00", "153000"
 
 
 def aggregate(bars: list, n: int) -> list:
@@ -59,10 +66,10 @@ def aggregate(bars: list, n: int) -> list:
     return [out[k] for k in sorted(out)]
 
 
-def _clip(bars: list, latest_t: str) -> list:
-    """조회 기준시각 이후로 찍힌 봉 제거 — 마지막 페이지가 09:00 이전을 채우려고
-    전일 잔재 행(15:27~ 등, 미래 시각 라벨)을 되감아 반환한다(실측 2026-07-10)."""
-    return [b for b in bars if "09:00:00" <= b["t"] <= latest_t]
+def _clip(bars: list, latest_t: str, earliest_t: str = "09:00:00") -> list:
+    """조회 기준시각 이후로 찍힌 봉 제거 — 마지막 페이지가 장 시작 이전을 채우려고
+    전일 잔재 행(미래 시각 라벨)을 되감아 반환한다(실측 2026-07-10)."""
+    return [b for b in bars if earliest_t <= b["t"] <= latest_t]
 
 
 async def _day_minutes(client: KisClient, code: str) -> list:
@@ -71,12 +78,13 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     hit = _min_cache.get(code)
     if hit and now - hit[0] < _TTL:
         return hit[1]
-    bars, hour = [], min(dt.datetime.now().strftime("%H%M%S"), "153000")
+    earliest, cap = _session_window()
+    bars, hour = [], min(dt.datetime.now().strftime("%H%M%S"), cap)
     latest_t = f"{hour[0:2]}:{hour[2:4]}:{hour[4:6]}"
     for _ in range(_MAX_CALLS):
         js = await client._get(_MIN_PATH, "FHKST03010200",
                                {"FID_ETC_CLS_CODE": "",
-                                "FID_COND_MRKT_DIV_CODE": "J",
+                                "FID_COND_MRKT_DIV_CODE": client.div,
                                 "FID_INPUT_ISCD": code,
                                 "FID_INPUT_HOUR_1": hour,
                                 "FID_PW_DATA_INCU_YN": "Y"})
@@ -85,7 +93,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
             break
         bars = chunk + bars
         oldest = chunk[0]["t"]
-        if oldest <= "09:00:00" or len(chunk) < 30:
+        if oldest <= earliest or len(chunk) < 30:
             break
         hh, mm, _ = oldest.split(":")
         m = int(hh) * 60 + int(mm) - 1
@@ -96,7 +104,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
         if b["t"] not in seen:
             seen.add(b["t"])
             out.append(b)
-    out = _clip(out, latest_t)
+    out = _clip(out, latest_t, earliest)
     out.sort(key=lambda b: b["t"])
     _min_cache[code] = (now, out)
     return out
