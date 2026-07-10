@@ -176,7 +176,9 @@ def intraday_detail_for(code: str, lists: dict):
     """가집계 상위30 리스트에서 종목을 찾아 장중 기관 부분 세부를 추출.
 
     상위30에 없으면 None — 거래소/증권사 체계상 종목 단위 장중 세부는 미제공이라
-    리스트 진입 시에만 얻을 수 있다(잠정·1,000주 단위)."""
+    리스트 진입 시에만 얻을 수 있다(잠정·1,000주 단위).
+    기타(법인+단체)는 기관이 아니므로 rows에서 분리해 etc_*로 — 개인 단독 역산용
+    (개인 = -(외국인+기관+기타))."""
     for rows in lists.values():
         for r in rows:
             if str(r.get("mksc_shrn_iscd", "")).strip() != code:
@@ -184,10 +186,11 @@ def intraday_detail_for(code: str, lists: dict):
             out = [{"name": name, "qty": _i(r.get(f"{p}_ntby_qty")),
                     "value": _i(r.get(f"{p}_ntby_tr_pbmn")) * 1_000_000}
                    for name, p in _FIT_DETAIL]
-            out.append({"name": "기타법인", "qty": _i(r.get("etc_corp_ntby_vol")),
-                        "value": _i(r.get("etc_corp_ntby_tr_pbmn")) * 1_000_000})
             out.sort(key=lambda x: abs(x["qty"]), reverse=True)
-            return {"rows": out}
+            etc_qty = _i(r.get("etc_corp_ntby_vol")) + _i(r.get("etc_orgt_ntby_vol"))
+            etc_value = (_i(r.get("etc_corp_ntby_tr_pbmn"))
+                         + _i(r.get("etc_orgt_ntby_tr_pbmn"))) * 1_000_000
+            return {"rows": out, "etc_qty": etc_qty, "etc_value": etc_value}
     return None
 
 

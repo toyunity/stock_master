@@ -88,7 +88,9 @@ class DemoSource:
             rem -= q
         ed.append({"name": "기타금융", "qty": rem, "value": rem * base})
         ed.sort(key=lambda r: abs(r["qty"]), reverse=True)
-        self.state.set_estimate_detail({"asof": "10:00", "rows": ed})
+        etc = rng.randint(-20_000, 20_000)
+        self.state.set_estimate_detail({"asof": "10:00", "rows": ed,
+                                        "etc_qty": etc, "etc_value": etc * base})
 
     async def run(self, stop: asyncio.Event) -> None:
         rng = self.rng
