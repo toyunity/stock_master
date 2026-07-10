@@ -54,7 +54,8 @@ h1{font-size:20px;margin:0 0 4px} .sub{color:#888;font-size:12px;margin-bottom:1
 .buy{border-left:5px solid #1565c0} .sell{border-left:5px solid #c62828} .hold{border-left:5px solid #9e9e9e}
 .badge{font-size:12px;padding:2px 8px;border-radius:10px;color:#fff}
 .b-buy{background:#1565c0} .b-sell{background:#c62828} .b-hold{background:#9e9e9e}
-.name{font-size:17px;font-weight:700} .code{font-size:12px;color:#999;font-weight:400}
+.name{font-size:17px;font-weight:700;color:inherit;text-decoration:none}
+a.name:active{opacity:.6} .code{font-size:12px;color:#999;font-weight:400}
 .conf{font-size:13px;color:#555;margin-top:4px}
 .chg{font-weight:600} .chg.up{color:#c62828} .chg.down{color:#1565c0}
 .chart{height:180px;margin:8px 0}
@@ -102,7 +103,7 @@ function issuesHtml(s){
 function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
-  h+='<span class="name">'+esc(s.name)+'</span> <span class="code">'+esc(s.code)+'</span>';
+  h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
   if(s.close!=null) h+=' · <b>'+won(s.close)+'</b> '+chg(s.change);
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
@@ -126,7 +127,7 @@ D.stocks.forEach(s=>{
 const q=document.getElementById('q'), res=document.getElementById('results');
 function searchRender(items){
   if(!items.length){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
-  res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span>'+esc(u.name)+' <span class="code">'+esc(u.code)+'</span></span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
+  res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span></span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
 }
 q.oninput=()=>{
   const t=q.value.trim().toLowerCase();
