@@ -175,8 +175,11 @@ function render(S){
   mode.textContent=S.mode.toUpperCase();
   mode.className='badge '+(S.mode==='live'?'b-live':'b-demo');
   const conn=document.getElementById('conn');
-  conn.textContent=S.status.connected?'수신 중':'끊김';
+  conn.textContent=S.status.connected?'수신 중':'재연결 중';
   conn.className='badge '+(S.status.connected?'b-live':'b-off');
+  if(S.market.price==null){
+    document.getElementById('price').textContent=S.status.connected?'체결 대기 중':'실시간 연결 중…';
+  }
   document.getElementById('note').textContent=S.status.note||'';
   const M=S.market;
   if(M.price!=null){

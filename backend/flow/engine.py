@@ -24,6 +24,7 @@ _POLL_SEC = 60       # 잠정 추정치·장중 세부 폴링 간격(슬롯 발�
 _DAILY_SEC = 1800    # 일별 확정 재조회 간격(장 종료 후 당일분 반영용)
 _LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재연결 churn이
                      # KIS 서버측 절단(EOF)을 유발하므로(실측) 즉시 해체 금지
+_FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 비지 않게)
 
 
 class FlowEngine:
@@ -119,7 +120,8 @@ class FlowEngine:
             await DemoSource(self.state).run(stop)
             return
         await asyncio.gather(self._poll_rest(client, stop),
-                             self._ws_loop(client, stop))
+                             self._ws_loop(client, stop),
+                             self._ws_fallback(client, stop))
 
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)
@@ -172,6 +174,34 @@ class FlowEngine:
                 await asyncio.wait_for(stop.wait(), timeout=_POLL_SEC)
             except asyncio.TimeoutError:
                 pass
+
+    async def _ws_fallback(self, client: "kis.KisClient",
+                           stop: asyncio.Event) -> None:
+        """웹소켓 재접속 창(재시작 직후 1키 1세션 보호 등)에도 화면이 비지 않게
+        REST 현재가/프로그램으로 10초 간격 폴백. 연결되면 아무것도 안 한다."""
+        n = 0
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=_FALLBACK_SEC)
+                return
+            except asyncio.TimeoutError:
+                pass
+            if self.state.snapshot()["status"]["connected"]:
+                continue
+            n += 1
+            try:
+                p = await client.price(self.code)
+                if p:
+                    import datetime as _dt
+                    self.state.set_market(
+                        dict(p, time=_dt.datetime.now().strftime("%H:%M:%S")))
+                if n % 3 == 1:  # 프로그램 누적은 30초에 한 번이면 충분
+                    pts = await client.program_trend(self.code)
+                    if pts:
+                        self.state.set_program_total(pts[-1]["net_qty"],
+                                                     pts[-1]["net_value"], pts)
+            except Exception:
+                log.warning("REST 시세 폴백 실패 — 다음 주기 재시도", exc_info=True)
 
     async def _ws_loop(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         import random

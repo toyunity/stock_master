@@ -128,6 +128,36 @@ def test_poll_rest_daily_survives_estimate_failure(monkeypatch):
     assert "재시도" in snap["status"]["note"]  # 실패가 화면에 표시됨
 
 
+def test_ws_fallback_fills_market_while_disconnected(monkeypatch):
+    # 웹소켓 재접속 창(서버 재시작 직후 등)에도 화면이 비지 않도록 REST 폴백
+    import backend.flow.engine as engmod
+    monkeypatch.setattr(engmod, "_FALLBACK_SEC", 0.05)
+    eng = FlowEngine("000660", interval=0.05)
+
+    class FakeClient:
+        async def price(self, code):
+            return {"price": 2244000, "sign": "up", "change": 58000,
+                    "rate": 2.65, "acml_vol": 3317403,
+                    "acml_value": 7371903475500}
+
+        async def program_trend(self, code):
+            return [{"t": "13:00:00", "net_qty": -550000, "net_value": -1}]
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.get_event_loop().create_task(
+            eng._ws_fallback(FakeClient(), stop))
+        await asyncio.sleep(0.2)
+        stop.set()
+        await asyncio.wait_for(task, 5)
+
+    _run(go())
+    snap = eng.state.snapshot()
+    assert snap["market"]["price"] == 2244000          # 시세 채워짐
+    assert snap["program"]["net_qty"] == -550000       # 프로그램도 백필
+    assert snap["tape"] == []                          # 테이프는 오염 안 됨
+
+
 def test_registry_returns_same_engine():
     a = FlowEngine.get("000660")
     b = FlowEngine.get("000660")
