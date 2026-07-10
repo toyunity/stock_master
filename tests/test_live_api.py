@@ -20,6 +20,7 @@ def test_live_page_serves_html(monkeypatch):
     assert "투자 유의" in r.text            # §16 고지
     assert "잠정" in r.text                 # 신선도 라벨
     assert "기관 세부" in r.text            # 연기금/투신 등 세부 패널
+    assert "nextSlot" in r.text             # 다음 잠정치 발표 슬롯 예고
     assert "apple-touch-icon" in r.text     # PWA 헤더 유지
 
 

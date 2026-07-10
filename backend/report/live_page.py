@@ -55,6 +55,8 @@ th:first-child,td:first-child{text-align:left}
     <div><div class="lbl">합산</div><div class="val" id="est-sum">–</div></div>
   </div>
   <table id="est-hist" style="margin-top:8px"></table>
+  <table id="est-detail" style="margin-top:8px"></table>
+  <div class="meta" id="est-detail-note"></div>
 </div>
 
 <div class="panel">
@@ -107,6 +109,13 @@ const series=chart.addBaselineSeries({baseValue:{type:'price',price:0},
   bottomLineColor:'#1565c0',bottomFillColor:'rgba(21,101,192,.15)',lineWidth:2});
 function toTs(t){const[h,m,s]=t.split(':').map(Number);const d=new Date();
   d.setHours(h,m,s||0,0);return Math.floor(d.getTime()/1000);}
+function nextSlot(){
+  // 잠정치 발표 슬롯(±10분): 외국인 09:30~, 기관 10:00~ — 다음 예상 시점 안내
+  const slots=['09:30','10:00','11:20','13:20','14:30'];
+  const n=new Date(), cur=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  for(const s of slots) if(s>cur) return '~'+s+' (±10분)';
+  return '다음 영업일 09:30';
+}
 
 function render(S){
   const mode=document.getElementById('mode');
@@ -127,7 +136,7 @@ function render(S){
   const E=S.estimate;
   if(E.rows.length){
     const last=E.rows[E.rows.length-1];
-    document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · 익일 확정과 다를 수 있음';
+    document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · 다음 갱신 '+nextSlot()+' · 익일 확정';
     for(const[k,id]of[['frgn','est-frgn'],['orgn','est-orgn'],['sum','est-sum']]){
       const el=document.getElementById(id);
       el.textContent=shares(last[k]); el.className='val '+cls(last[k]);
@@ -146,6 +155,17 @@ function render(S){
     for(const pt of P.points){const ts=toTs(pt.t);
       if(!seen[ts]){seen[ts]=1;pts.push({time:ts,value:pt.net_value/1e8});}}
     series.setData(pts); chart.timeScale().fitContent();
+  }
+  const ED=S.estimate_detail;
+  if(ED.rows.length){
+    document.getElementById('est-detail').innerHTML='<tr><th>장중 기관 세부(잠정)</th><th>순매수</th><th>금액</th></tr>'
+      +ED.rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="'+cls(r.qty)+'">'+shares(r.qty)
+      +'</td><td class="'+cls(r.value)+'">'+eok(r.value)+'</td></tr>').join('');
+    document.getElementById('est-detail-note').textContent=(ED.asof?ED.asof+' 조회 · ':'')
+      +'1,000주 단위 가집계 · 금융투자/사모 미포함 · 수급 상위30 진입 시 제공';
+  }else{
+    document.getElementById('est-detail').innerHTML='';
+    document.getElementById('est-detail-note').textContent='장중 기관 세부: 이 종목이 외인/기관 수급 상위30에 들 때만 제공(거래소 제약). 확정 세부는 아래 패널.';
   }
   const DT=S.detail;
   if(DT.rows.length){

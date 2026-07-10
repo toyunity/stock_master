@@ -73,6 +73,8 @@ def test_build_picks_cross_signals():
 def test_fetch_scan_caches(monkeypatch):
     import backend.flow.scanner as sc
     monkeypatch.setattr(sc, "_cache", {"ts": 0.0, "data": None})
+    monkeypatch.setattr(sc, "_fit_cache", {"ts": 0.0, "data": None})
+    monkeypatch.setattr(sc, "_CALL_GAP_SEC", 0)  # 테스트 가속
     calls = {"n": 0}
 
     class FakeClient:
@@ -89,11 +91,37 @@ def test_fetch_scan_caches(monkeypatch):
         d2 = loop.run_until_complete(fetch_scan(client=FakeClient()))
     finally:
         loop.close()
-    assert n1 == 5  # 외인매수/외인매도/기관매수/거래대금/급등 = 5콜
+    assert n1 == 6  # FIT 4종(외인·기관 × 매수·매도) + 거래대금 + 급등 = 6콜
     assert calls["n"] == n1  # 60초 내 재호출은 캐시
     assert d1 is d2
     assert d1["sections"]["frgn_buy"][0]["code"] == "005930"
+    assert d1["sections"]["orgn_sell"] is not None
     assert "asof" in d1 and "picks" in d1
+
+
+def _fit_row_detail(code="000660", name="SK하이닉스"):
+    """FIT 행 + 기관 부분 세부(실응답 컬럼 — 금융투자/사모는 이 TR에 없음)."""
+    return dict(_fit_row(code=code, name=name),
+                ivtr_ntby_qty="-120000", fund_ntby_qty="35000",
+                insu_ntby_qty="-8000", bank_ntby_qty="1000",
+                mrbn_ntby_qty="0", etc_corp_ntby_vol="4000",
+                ivtr_ntby_tr_pbmn="-264000", fund_ntby_tr_pbmn="77000",
+                insu_ntby_tr_pbmn="-17600", bank_ntby_tr_pbmn="2200",
+                mrbn_ntby_tr_pbmn="0", etc_corp_ntby_tr_pbmn="8800")
+
+
+def test_intraday_detail_for_extracts_partial_breakdown():
+    from backend.flow.scanner import intraday_detail_for
+    lists = {"frgn_buy": [], "frgn_sell": [_fit_row_detail()],
+             "orgn_buy": [], "orgn_sell": []}
+    d = intraday_detail_for("000660", lists)
+    by = {r["name"]: r for r in d["rows"]}
+    assert by["투신"]["qty"] == -120000
+    assert by["투신"]["value"] == -264000 * 1_000_000  # 백만원 → 원
+    assert by["연기금"]["qty"] == 35000
+    assert d["rows"][0]["name"] == "투신"  # |순매수| 내림차순
+    assert "금융투자" not in by  # 이 TR엔 미제공(부분 세부)
+    assert intraday_detail_for("999999", lists) is None  # 상위30 밖이면 없음
 
 
 def test_scanner_routes(monkeypatch):
