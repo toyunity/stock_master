@@ -54,6 +54,30 @@ def test_demo_subscribe_yields_snapshots(monkeypatch):
     assert s2["detail"]["rows"], "데모 기관 세부가 비어있음"
 
 
+def test_unsubscribe_lingers_not_immediate_stop(monkeypatch):
+    # 구독자 0명이 되어도 즉시 웹소켓/소스를 해체하지 않는다(유예) —
+    # 페이지 새로고침마다 KIS 웹소켓 재연결 churn → 서버측 절단 유발(실측 2026-07-10).
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "kis_app_secret", None)
+
+    async def go():
+        eng = FlowEngine("000660", interval=0.05)
+        gen = eng.subscribe()
+        await gen.__anext__()
+        await gen.aclose()          # 마지막 구독자 이탈
+        assert eng._task is not None and not eng._task.done()  # 소스는 유예로 계속
+        assert eng._stop_task is not None                       # 지연 정지 예약됨
+        gen2 = eng.subscribe()      # 재구독 → 같은 소스 재사용
+        await gen2.__anext__()
+        assert eng._stop_task is None  # 예약 취소됨
+        await gen2.aclose()
+        await eng.shutdown()        # 명시 종료는 즉시
+        assert eng._task is None
+
+    _run(go())
+
+
 def test_poll_rest_daily_survives_estimate_failure():
     # 실운영에서 관찰(2026-07-10): 추정 TR이 간헐 500 → 일별 조회까지 죽으면 안 된다.
     eng = FlowEngine("000660", interval=0.1)
