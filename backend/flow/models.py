@@ -26,6 +26,7 @@ class FlowState:
         self._estimate_rows: list = []
         self._daily: list = []
         self._detail: dict = {"date": None, "rows": []}  # 기관 세부(최신 확정일)
+        self._est_detail: dict = {"asof": None, "rows": []}  # 장중 부분 세부(잠정)
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -59,6 +60,10 @@ class FlowState:
     def set_detail(self, d: dict) -> None:
         self._detail = {"date": d.get("date"), "rows": list(d.get("rows") or [])}
 
+    def set_estimate_detail(self, d: dict) -> None:
+        self._est_detail = {"asof": d.get("asof"),
+                            "rows": list(d.get("rows") or [])}
+
     def set_status(self, **kw) -> None:
         self._status.update(kw)
 
@@ -72,6 +77,8 @@ class FlowState:
             "program": {"net_qty": self._pgm_net_qty, "net_value": self._pgm_net_value,
                         "points": list(self._pgm_points)},
             "estimate": {"asof": est_asof, "rows": list(self._estimate_rows)},
+            "estimate_detail": {"asof": self._est_detail["asof"],
+                                "rows": list(self._est_detail["rows"])},
             "daily": list(self._daily),
             "detail": {"date": self._detail["date"],
                        "rows": list(self._detail["rows"])},

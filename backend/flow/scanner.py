@@ -24,7 +24,9 @@ log = logging.getLogger(__name__)
 
 _CODE6 = re.compile(r"^\d{6}$")
 _TTL = 60.0
+_CALL_GAP_SEC = 0.25  # 연속 호출 간헐 500 완화(실측) — 콜 간 간격
 _cache = {"ts": 0.0, "data": None}
+_fit_cache = {"ts": 0.0, "data": None}  # 가집계 4종 원시행 — 스캐너·엔진 공유
 
 _FIT_PATH = "/uapi/domestic-stock/v1/quotations/foreign-institution-total"
 _FIT_BASE = {"FID_COND_MRKT_DIV_CODE": "V", "FID_COND_SCR_DIV_CODE": "16449",
@@ -128,42 +130,89 @@ def build_picks(frgn_buy: list, orgn_buy: list, value_top: list,
     return picks
 
 
+def _default_client() -> KisClient:
+    return KisClient(settings.kis_app_key, settings.kis_app_secret,
+                     settings.cache_dir)
+
+
+async def _call_rows(client, path, tr_id, params, label) -> list:
+    """랭킹 1콜 → 원시 output 행들. 실패는 빈 리스트(부분 결과 우선)."""
+    try:
+        rows = (await client._get(path, tr_id, params)).get("output") or []
+    except Exception:
+        log.warning("스캐너 %s(%s) 조회 실패", tr_id, label, exc_info=True)
+        rows = []
+    if _CALL_GAP_SEC:
+        await asyncio.sleep(_CALL_GAP_SEC)
+    return rows
+
+
+async def fit_lists(client=None) -> dict:
+    """외인/기관 × 매수/매도 가집계 상위30 원시행 4종 (60s 캐시).
+
+    스캐너 섹션과 /live 장중 기관 세부(자기 종목 추출)가 공유한다."""
+    now = time.time()
+    if _fit_cache["data"] is not None and now - _fit_cache["ts"] < _TTL:
+        return _fit_cache["data"]
+    if client is None:
+        client = _default_client()
+    out = {}
+    for key, etc, sort in (("frgn_buy", "1", "0"), ("frgn_sell", "1", "1"),
+                           ("orgn_buy", "2", "0"), ("orgn_sell", "2", "1")):
+        out[key] = await _call_rows(
+            client, _FIT_PATH, "FHPTJ04400000",
+            dict(_FIT_BASE, FID_RANK_SORT_CLS_CODE=sort, FID_ETC_CLS_CODE=etc),
+            key)
+    _fit_cache["ts"], _fit_cache["data"] = now, out
+    return out
+
+
+# FIT 행에 실리는 기관 '부분' 세부(실측) — 금융투자/사모는 이 TR에 없다
+_FIT_DETAIL = [("투신", "ivtr"), ("연기금", "fund"), ("보험", "insu"),
+               ("은행", "bank"), ("기타금융", "mrbn")]
+
+
+def intraday_detail_for(code: str, lists: dict):
+    """가집계 상위30 리스트에서 종목을 찾아 장중 기관 부분 세부를 추출.
+
+    상위30에 없으면 None — 거래소/증권사 체계상 종목 단위 장중 세부는 미제공이라
+    리스트 진입 시에만 얻을 수 있다(잠정·1,000주 단위)."""
+    for rows in lists.values():
+        for r in rows:
+            if str(r.get("mksc_shrn_iscd", "")).strip() != code:
+                continue
+            out = [{"name": name, "qty": _i(r.get(f"{p}_ntby_qty")),
+                    "value": _i(r.get(f"{p}_ntby_tr_pbmn")) * 1_000_000}
+                   for name, p in _FIT_DETAIL]
+            out.append({"name": "기타법인", "qty": _i(r.get("etc_corp_ntby_vol")),
+                        "value": _i(r.get("etc_corp_ntby_tr_pbmn")) * 1_000_000})
+            out.sort(key=lambda x: abs(x["qty"]), reverse=True)
+            return {"rows": out}
+    return None
+
+
 async def fetch_scan(client=None) -> dict:
-    """스캔 1회(5콜, 60s 캐시). 섹션별 실패는 빈 리스트로 강등(부분 결과 우선)."""
+    """스캔 1회(FIT 4콜 + 거래대금 + 급등 = 6콜, 60s 캐시)."""
     now = time.time()
     if _cache["data"] is not None and now - _cache["ts"] < _TTL:
         return _cache["data"]
     if client is None:
-        client = KisClient(settings.kis_app_key, settings.kis_app_secret,
-                           settings.cache_dir)
+        client = _default_client()
 
-    async def call(path, tr_id, params, parser):
-        try:
-            result = parser(await client._get(path, tr_id, params))
-        except Exception:
-            log.warning("스캐너 %s 조회 실패", tr_id, exc_info=True)
-            result = []
-        await asyncio.sleep(0.25)  # 연속 호출 간헐 500 완화(실측) — 콜 간 간격
-        return result
+    fl = await fit_lists(client)
+    value_rows = await _call_rows(client, _VOL_PATH, "FHPST01710000",
+                                  _VOL_PARAMS, "value_top")
+    gain_rows = await _call_rows(client, _FLUC_PATH, "FHPST01700000",
+                                 _FLUC_PARAMS, "gainers")
 
-    frgn_buy = await call(_FIT_PATH, "FHPTJ04400000",
-                          dict(_FIT_BASE, FID_RANK_SORT_CLS_CODE="0",
-                               FID_ETC_CLS_CODE="1"), parse_fit_rank)
-    frgn_sell = await call(_FIT_PATH, "FHPTJ04400000",
-                           dict(_FIT_BASE, FID_RANK_SORT_CLS_CODE="1",
-                                FID_ETC_CLS_CODE="1"), parse_fit_rank)
-    orgn_buy = await call(_FIT_PATH, "FHPTJ04400000",
-                          dict(_FIT_BASE, FID_RANK_SORT_CLS_CODE="0",
-                               FID_ETC_CLS_CODE="2"), parse_fit_rank)
-    value_top = await call(_VOL_PATH, "FHPST01710000", _VOL_PARAMS,
-                           parse_volume_rank)
-    gainers = await call(_FLUC_PATH, "FHPST01700000", _FLUC_PARAMS,
-                         parse_fluctuation)
+    sections = {k: parse_fit_rank({"output": fl[k]}) for k in
+                ("frgn_buy", "frgn_sell", "orgn_buy", "orgn_sell")}
+    sections["value_top"] = parse_volume_rank({"output": value_rows})
+    sections["gainers"] = parse_fluctuation({"output": gain_rows})
 
     data = {"asof": dt.datetime.now().strftime("%H:%M:%S"),
-            "sections": {"frgn_buy": frgn_buy, "frgn_sell": frgn_sell,
-                         "orgn_buy": orgn_buy, "value_top": value_top,
-                         "gainers": gainers},
-            "picks": build_picks(frgn_buy, orgn_buy, value_top, gainers)}
+            "sections": sections,
+            "picks": build_picks(sections["frgn_buy"], sections["orgn_buy"],
+                                 sections["value_top"], sections["gainers"])}
     _cache["ts"], _cache["data"] = now, data
     return data

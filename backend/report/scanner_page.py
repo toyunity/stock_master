@@ -83,6 +83,7 @@ function render(D){
   h+='<div class="panel"><h2>🌏 외국인 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_buy,fitCols,10)+'</div>';
   h+='<div class="panel"><h2>🏦 기관 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_buy,fitCols,10)+'</div>';
   h+='<div class="panel"><h2>🌏 외국인 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_sell,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2>🏦 기관 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_sell,fitCols,10)+'</div>';
   h+='<div class="panel"><h2>💵 거래대금 상위</h2><div class="fresh">실시간 · ETF/ETN/스팩 제외</div>'
     +tbl(S.value_top,[['종목',nameTd],['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
       ['거래대금',r=>'<td>'+eok(r.value).replace('+','')+'</td>'],

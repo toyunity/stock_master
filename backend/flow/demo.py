@@ -80,6 +80,15 @@ class DemoSource:
         orgn = rng.randint(-100_000, 100_000)
         self.state.set_estimate([{"asof": "10:00", "frgn": frgn, "orgn": orgn,
                                   "sum": frgn + orgn}])
+        # 장중 부분 세부(데모): 잠정 기관계를 5개 주체로 분배
+        ed, rem = [], orgn
+        for name in ("투신", "연기금", "보험", "은행"):
+            q = int(rem * rng.uniform(-0.3, 0.6))
+            ed.append({"name": name, "qty": q, "value": q * base})
+            rem -= q
+        ed.append({"name": "기타금융", "qty": rem, "value": rem * base})
+        ed.sort(key=lambda r: abs(r["qty"]), reverse=True)
+        self.state.set_estimate_detail({"asof": "10:00", "rows": ed})
 
     async def run(self, stop: asyncio.Event) -> None:
         rng = self.rng

@@ -52,6 +52,7 @@ def test_demo_subscribe_yields_snapshots(monkeypatch):
     # 데모 소스가 굴러가면 시장가·일별 확정·기관 세부가 채워진다
     assert s2["daily"], "데모 일별 수급이 비어있음"
     assert s2["detail"]["rows"], "데모 기관 세부가 비어있음"
+    assert s2["estimate_detail"]["rows"], "데모 장중 세부가 비어있음"
 
 
 def test_unsubscribe_lingers_not_immediate_stop(monkeypatch):
@@ -78,7 +79,7 @@ def test_unsubscribe_lingers_not_immediate_stop(monkeypatch):
     _run(go())
 
 
-def test_poll_rest_daily_survives_estimate_failure():
+def test_poll_rest_daily_survives_estimate_failure(monkeypatch):
     # 실운영에서 관찰(2026-07-10): 추정 TR이 간헐 500 → 일별 조회까지 죽으면 안 된다.
     eng = FlowEngine("000660", interval=0.1)
 
@@ -99,6 +100,15 @@ def test_poll_rest_daily_survives_estimate_failure():
             return {"date": "2026-07-09",
                     "rows": [{"name": "연기금", "qty": 48907, "value": 113357000000}]}
 
+    async def fake_fit_lists(client=None):
+        return {"frgn_buy": [], "frgn_sell": [
+            {"mksc_shrn_iscd": "000660", "hts_kor_isnm": "SK하이닉스",
+             "ivtr_ntby_qty": "-120000", "ivtr_ntby_tr_pbmn": "-264000",
+             "fund_ntby_qty": "35000", "fund_ntby_tr_pbmn": "77000"}],
+            "orgn_buy": [], "orgn_sell": []}
+    from backend.flow import scanner as sc
+    monkeypatch.setattr(sc, "fit_lists", fake_fit_lists)
+
     async def go():
         stop = asyncio.Event()
         task = asyncio.get_event_loop().create_task(
@@ -111,6 +121,10 @@ def test_poll_rest_daily_survives_estimate_failure():
     snap = eng.state.snapshot()
     assert len(snap["daily"]) == 1 and snap["daily"][0]["date"] == "2026-07-09"
     assert snap["detail"]["rows"][0]["name"] == "연기금"  # 세부도 추정 실패와 무관하게 채워짐
+    # 장중 부분 세부: 가집계 상위30 리스트에서 자기 종목을 찾아 추출
+    est_d = snap["estimate_detail"]
+    assert est_d["rows"] and est_d["rows"][0]["name"] == "투신"
+    assert est_d["rows"][0]["qty"] == -120000
     assert "재시도" in snap["status"]["note"]  # 실패가 화면에 표시됨
 
 
