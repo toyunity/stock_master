@@ -19,8 +19,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from backend.config import settings
 from backend.cli import build_dashboard
 from backend.api import icons
+from backend.flow import scanner as flow_scanner
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
+from backend.report.scanner_page import render_scanner_page
 
 app = FastAPI(title="Stock Master")
 
@@ -58,6 +60,21 @@ async def live_stream(code: str):
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
+
+
+@app.get("/scanner", response_class=HTMLResponse)
+def scanner_page():
+    """수급 스캐너 — 오늘 수급 특이 종목(외인/기관 가집계 × 거래대금/급등 교차)."""
+    return HTMLResponse(render_scanner_page())
+
+
+@app.get("/api/scanner")
+async def scanner_api():
+    if not (settings.kis_app_key and settings.kis_app_secret):
+        return JSONResponse(
+            {"error": "스캐너는 KIS 키가 필요합니다 (.env에 SM_KIS_APP_KEY/SECRET)"},
+            status_code=503)
+    return JSONResponse(await flow_scanner.fetch_scan())
 
 
 @app.get("/healthz")

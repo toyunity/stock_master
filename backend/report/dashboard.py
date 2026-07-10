@@ -68,7 +68,8 @@ ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
 .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:16px}
 </style></head><body>
 <h1>📊 Stock Master <small style="font-size:13px;color:#888">__DATE__</small></h1>
-<div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)</div>
+<div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
+ · <a href="/scanner" style="color:#1565c0;text-decoration:none">🔍 수급 스캐너</a></div>
 __REFRESH__
 <div class="search">
   <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">

@@ -9,6 +9,7 @@ from __future__ import annotations
 파서는 전부 순수 함수로 두어 픽스처만으로 테스트한다(실연결 불필요).
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+_RETRY_BASE_SEC = 0.5  # 5xx 재시도 시작 간격(지수 백오프)
 
 
 # H0STCNT0 46필드 중 사용 인덱스 (필드 순서는 공식 샘플 ccnl_krx.py 기준)
@@ -166,6 +169,37 @@ def parse_program_trend(js: dict) -> list:
     return pts
 
 
+# FHPTJ04160001 기관 세부 필드 — 사모·기타법인만 접미사가 _vol (실측 2026-07-10)
+_DETAIL_FIELDS = [
+    ("연기금", "fund_ntby_qty", "fund_ntby_tr_pbmn"),
+    ("투신", "ivtr_ntby_qty", "ivtr_ntby_tr_pbmn"),
+    ("금융투자", "scrt_ntby_qty", "scrt_ntby_tr_pbmn"),
+    ("사모펀드", "pe_fund_ntby_vol", "pe_fund_ntby_tr_pbmn"),
+    ("보험", "insu_ntby_qty", "insu_ntby_tr_pbmn"),
+    ("은행", "bank_ntby_qty", "bank_ntby_tr_pbmn"),
+    ("기타금융", "mrbn_ntby_qty", "mrbn_ntby_tr_pbmn"),
+    ("기타법인", "etc_corp_ntby_vol", "etc_corp_ntby_tr_pbmn"),
+]
+
+
+def parse_investor_detail(js: dict) -> Optional[dict]:
+    """FHPTJ04160001(종목별 투자자매매동향 일별) → 최신 확정일 기관 세부.
+
+    {date, rows:[{name,qty(주),value(원)}]} — |순매수| 내림차순.
+    장중 오늘 날짜 조회는 HTTP 200 + rt_cd=2('TIME LIMIT')로 오므로 rt_cd 확인 필수."""
+    if js.get("rt_cd") != "0":
+        return None
+    out = js.get("output2") or []
+    if not out:
+        return None
+    r = out[0]  # 최신 확정 거래일
+    rows = [{"name": name, "qty": _i(r.get(qf)),
+             "value": _i(r.get(vf)) * 1_000_000}  # 금액은 백만원 단위(실측)
+            for name, qf, vf in _DETAIL_FIELDS]
+    rows.sort(key=lambda x: abs(x["qty"]), reverse=True)
+    return {"date": _date(r.get("stck_bsop_date", "")), "rows": rows}
+
+
 def drop_empty_daily(rows: list) -> list:
     """일별 확정에서 전부 0인 행 제거 — 당일분은 장 종료 전까지 0으로 내려와(실측)
     초보자가 '수급 없음'으로 오해한다. 확정된 날만 보여준다."""
@@ -225,15 +259,29 @@ class KisClient:
         self._approval = key
         return key
 
-    async def _get(self, path: str, tr_id: str, params: dict) -> dict:
+    def _client_factory(self):
         import httpx
+        return httpx.AsyncClient(timeout=10)
+
+    async def _get(self, path: str, tr_id: str, params: dict,
+                   retries: int = 2) -> dict:
+        """KIS는 연속 호출에 간헐 HTTP 500을 반환(실측) → 지수 백오프 재시도."""
         headers = {"authorization": f"Bearer {await self.token()}",
                    "appkey": self.appkey, "appsecret": self.appsecret,
                    "tr_id": tr_id, "custtype": "P"}
-        async with httpx.AsyncClient(timeout=10) as cli:
-            r = await cli.get(f"{self.base}{path}", headers=headers, params=params)
-            r.raise_for_status()
-            return r.json()
+        delay = _RETRY_BASE_SEC
+        async with self._client_factory() as cli:
+            for attempt in range(retries + 1):
+                r = await cli.get(f"{self.base}{path}", headers=headers,
+                                  params=params)
+                if r.status_code >= 500 and attempt < retries:
+                    log.debug("KIS %s HTTP %d — %.1fs 후 재시도", tr_id,
+                              r.status_code, delay)
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                r.raise_for_status()
+                return r.json()
 
     async def daily_investor(self, code: str) -> list:
         js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-investor",
@@ -245,6 +293,22 @@ class KisClient:
         js = await self._get("/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
                              "HHPTJ04160200", {"MKSC_SHRN_ISCD": code})
         return parse_estimate(js)
+
+    async def investor_detail(self, code: str) -> Optional[dict]:
+        """최신 확정일 기관 세부 분해. 장중엔 오늘 날짜가 rt_cd=2로 거부되므로 전일 폴백."""
+        import datetime as dt
+        for delta in (0, 1):
+            date = (dt.date.today() - dt.timedelta(days=delta)).strftime("%Y%m%d")
+            js = await self._get(
+                "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
+                "FHPTJ04160001",
+                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+                 "FID_INPUT_DATE_1": date, "FID_ORG_ADJ_PRC": "",
+                 "FID_ETC_CLS_CODE": ""})
+            d = parse_investor_detail(js)
+            if d:
+                return d
+        return None
 
     async def program_trend(self, code: str) -> list:
         js = await self._get("/uapi/domestic-stock/v1/quotations/program-trade-by-stock",

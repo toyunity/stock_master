@@ -63,6 +63,19 @@ class DemoSource:
                               "close": int(base * (1 + rng.uniform(-0.03, 0.03)))})
             d -= dt.timedelta(days=1)
         self.state.set_daily(daily)
+        # 기관 세부(데모): 최근 확정일 기관계를 세부 주체로 분배 (실제 스키마와 동일)
+        last = daily[0]
+        parts, remain = [], last["orgn"]
+        names = ["연기금", "투신", "금융투자", "사모펀드", "보험", "은행", "기타금융"]
+        for name in names[:-1]:
+            q = int(remain * rng.uniform(-0.4, 0.6))
+            parts.append({"name": name, "qty": q, "value": q * base})
+            remain -= q
+        parts.append({"name": names[-1], "qty": remain, "value": remain * base})
+        parts.append({"name": "기타법인", "qty": rng.randint(-20_000, 20_000),
+                      "value": 0})
+        parts.sort(key=lambda r: abs(r["qty"]), reverse=True)
+        self.state.set_detail({"date": last["date"], "rows": parts})
         frgn = rng.randint(-200_000, 200_000)
         orgn = rng.randint(-100_000, 100_000)
         self.state.set_estimate([{"asof": "10:00", "frgn": frgn, "orgn": orgn,

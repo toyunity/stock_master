@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 
 _POLL_SEC = 300      # 잠정 추정치 폴링 간격(실제 갱신은 하루 4회라 5분이면 충분)
 _DAILY_SEC = 1800    # 일별 확정 재조회 간격(장 종료 후 당일분 반영용)
+_LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재연결 churn이
+                     # KIS 서버측 절단(EOF)을 유발하므로(실측) 즉시 해체 금지
 
 
 class FlowEngine:
@@ -32,6 +34,8 @@ class FlowEngine:
         self._subs = 0
         self._task = None
         self._stop = None
+        self._stop_task = None   # 지연 정지 예약
+        self._client = None      # KisClient 재사용(approval_key 메모리 캐시 유지)
 
     @classmethod
     def get(cls, code: str) -> "FlowEngine":
@@ -49,6 +53,9 @@ class FlowEngine:
     async def subscribe(self):
         """1초(interval)마다 전체 스냅샷 dict를 내보내는 비동기 제너레이터."""
         self._subs += 1
+        if self._stop_task is not None:
+            self._stop_task.cancel()
+            self._stop_task = None
         self._ensure_running()
         try:
             yield self.state.snapshot()
@@ -58,7 +65,17 @@ class FlowEngine:
         finally:
             self._subs -= 1
             if self._subs <= 0:
-                await self.shutdown()
+                self._stop_task = asyncio.get_event_loop().create_task(
+                    self._delayed_stop())
+
+    async def _delayed_stop(self) -> None:
+        try:
+            await asyncio.sleep(_LINGER_SEC)
+        except asyncio.CancelledError:
+            return
+        if self._subs <= 0:
+            self._stop_task = None
+            await self.shutdown()
 
     def _ensure_running(self) -> None:
         if self._task is None or self._task.done():
@@ -68,6 +85,9 @@ class FlowEngine:
             self._task = asyncio.get_event_loop().create_task(runner(self._stop))
 
     async def shutdown(self) -> None:
+        if self._stop_task is not None:
+            self._stop_task.cancel()
+            self._stop_task = None
         if self._stop is not None:
             self._stop.set()
         if self._task is not None:
@@ -83,8 +103,11 @@ class FlowEngine:
         await DemoSource(self.state).run(stop)
 
     async def _run_live(self, stop: asyncio.Event) -> None:
-        client = kis.KisClient(settings.kis_app_key, settings.kis_app_secret,
-                               settings.cache_dir)
+        if self._client is None:  # 재사용 — approval_key 재발급 최소화
+            self._client = kis.KisClient(settings.kis_app_key,
+                                         settings.kis_app_secret,
+                                         settings.cache_dir)
+        client = self._client
         try:
             await client.token()  # 인증 검증 — 실패 시 데모 강등
         except Exception as e:  # noqa: BLE001 — 원인 불문 화면은 살린다
@@ -122,10 +145,13 @@ class FlowEngine:
                     daily = kis.drop_empty_daily(await client.daily_investor(self.code))
                     if daily:
                         self.state.set_daily(daily)
+                    detail = await client.investor_detail(self.code)
+                    if detail:
+                        self.state.set_detail(detail)
                     last_daily = loop.time()  # 성공 시에만 갱신(실패 시 곧 재시도)
             except Exception:
                 ok = False
-                log.warning("KIS 일별 수급 조회 실패 — 재시도 예정", exc_info=True)
+                log.warning("KIS 일별/세부 수급 조회 실패 — 재시도 예정", exc_info=True)
             filled = bool(self.state.snapshot()["estimate"]["rows"])
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
