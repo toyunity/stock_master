@@ -59,6 +59,12 @@ def aggregate(bars: list, n: int) -> list:
     return [out[k] for k in sorted(out)]
 
 
+def _clip(bars: list, latest_t: str) -> list:
+    """조회 기준시각 이후로 찍힌 봉 제거 — 마지막 페이지가 09:00 이전을 채우려고
+    전일 잔재 행(15:27~ 등, 미래 시각 라벨)을 되감아 반환한다(실측 2026-07-10)."""
+    return [b for b in bars if "09:00:00" <= b["t"] <= latest_t]
+
+
 async def _day_minutes(client: KisClient, code: str) -> list:
     """당일 1분봉 전체 — 기준시각을 30분씩 당기며 조립."""
     now = time.time()
@@ -66,6 +72,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     if hit and now - hit[0] < _TTL:
         return hit[1]
     bars, hour = [], min(dt.datetime.now().strftime("%H%M%S"), "153000")
+    latest_t = f"{hour[0:2]}:{hour[2:4]}:{hour[4:6]}"
     for _ in range(_MAX_CALLS):
         js = await client._get(_MIN_PATH, "FHKST03010200",
                                {"FID_ETC_CLS_CODE": "",
@@ -89,6 +96,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
         if b["t"] not in seen:
             seen.add(b["t"])
             out.append(b)
+    out = _clip(out, latest_t)
     out.sort(key=lambda b: b["t"])
     _min_cache[code] = (now, out)
     return out

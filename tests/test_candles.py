@@ -42,6 +42,18 @@ def test_aggregate_5min_buckets_align_to_0900():
     assert agg[1]["t"] == "09:05:00" and agg[1]["close"] == 98
 
 
+def test_clip_drops_wrapped_previous_session_rows():
+    # 실측(2026-07-10): 마지막 페이지(hour=092600)가 08:57~09:26 대신
+    # 09:00~09:26 + 전일 잔재(15:27~15:30, 거래량 0/전일 종가)를 되감아 반환한다.
+    from backend.flow.candles import _clip
+    bars = [_bar("09:00:00"), _bar("09:26:00"),
+            _bar("15:29:00", v=0), _bar("15:30:00", c=2186000)]
+    out = _clip(bars, "12:56:35")  # 조회 시각(12:56) 이후 봉은 잔재
+    assert [b["t"] for b in out] == ["09:00:00", "09:26:00"]
+    # 장 마감 후 조회(latest=15:30)면 15:30 봉은 실데이터라 유지
+    assert len(_clip(bars, "15:30:00")) == 4
+
+
 def test_get_candles_demo_mode_synthesizes(monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "kis_app_key", None)
