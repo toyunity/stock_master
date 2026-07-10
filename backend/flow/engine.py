@@ -174,8 +174,13 @@ class FlowEngine:
                 pass
 
     async def _ws_loop(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
+        import random
+
         import websockets
-        backoff = 1
+        # KIS는 1키 1세션 — 프로세스 재시작 직후엔 이전 세션 정리 전까지
+        # 접속을 EOF로 거부한다(실측). 짧은 백오프로 두드리면 보호가 연장되므로
+        # 5초에서 시작해 지터를 섞는다.
+        backoff = 5
         while not stop.is_set():
             try:
                 key = await client.approval_key()
@@ -183,7 +188,7 @@ class FlowEngine:
                     await ws.send(kis.build_subscribe(key, "H0STCNT0", self.code))
                     await ws.send(kis.build_subscribe(key, "H0STPGM0", self.code))
                     self.state.set_status(connected=True, note="")
-                    backoff = 1
+                    backoff = 5
                     while not stop.is_set():
                         raw = await asyncio.wait_for(ws.recv(), timeout=60)
                         if kis.is_pingpong(raw):
@@ -208,7 +213,8 @@ class FlowEngine:
                 self.state.set_status(connected=False,
                                       note=f"실시간 연결 끊김 — {backoff}초 후 재접속")
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=backoff)
+                    await asyncio.wait_for(stop.wait(),
+                                           timeout=backoff + random.uniform(0, 3))
                 except asyncio.TimeoutError:
                     pass
                 backoff = min(backoff * 2, 60)
