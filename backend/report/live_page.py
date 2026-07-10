@@ -207,7 +207,7 @@ function render(S){
       el.textContent=shares(v); el.className='val '+cls(v);
     }
     document.getElementById('est-hist').innerHTML='<tr><th>기준</th><th>개인+기타*</th><th>외국인</th><th>기관</th></tr>'
-      +E.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.asof)+'</td><td class="'+cls(prsn(r))+'">'+shares(prsn(r))
+      +E.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.asof)+'</td><td class="'+cls(combined(r))+'">'+shares(combined(r))
       +'</td><td class="'+cls(r.frgn)+'">'+shares(r.frgn)
       +'</td><td class="'+cls(r.orgn)+'">'+shares(r.orgn)+'</td></tr>').join('');
   }
