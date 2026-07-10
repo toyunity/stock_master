@@ -15,7 +15,7 @@ from backend.config import settings
 
 log = logging.getLogger(__name__)
 
-_CACHE_NAME = "universe.json"
+_CACHE_NAME = "universe_v2.json"  # ETF 포함 버전(기존 캐시 무효화)
 _MAX_AGE = dt.timedelta(hours=12)
 
 
@@ -32,20 +32,44 @@ def _to_float(v):
     return None if f != f else f  # NaN 제거
 
 
+def _row(r):
+    """FDR 한 행 → {code,name,close,change}. 주식/ETF 목록의 상이한 컬럼명을 흡수.
+
+    주식(KRX): Code, Name, Close, ChagesRatio(철자 오타) /
+    ETF(ETF/KR): Symbol, Name, Price, ChangeRate."""
+    code = str(r.get("Code") or r.get("Symbol") or "").strip()
+    name = str(r.get("Name") or "").strip()
+    if not code or not name:
+        return None
+    close = None
+    for k in ("Close", "Price"):
+        if close is None:
+            close = _to_float(r.get(k))
+    change = None
+    for k in ("ChagesRatio", "ChangeRate", "ChangeRatio", "Changes"):
+        if change is None:
+            change = _to_float(r.get(k))
+    return {"code": code, "name": name, "close": close, "change": change}
+
+
 def _fetch_listing() -> list:
-    """FDR StockListing('KRX') → [{code,name,close,change}]."""
+    """FDR 주식(KRX) + ETF(ETF/KR)를 합쳐 [{code,name,close,change}].
+
+    한쪽 수집이 실패해도 다른 쪽은 살린다. 주식이 먼저라 코드 중복 시 주식이 우선."""
     import FinanceDataReader as fdr
 
-    df = fdr.StockListing("KRX")
-    rows = []
-    for _, r in df.iterrows():
-        code = str(r.get("Code") or "").strip()
-        name = str(r.get("Name") or "").strip()
-        if not code or not name:
+    rows, seen = [], set()
+    for market in ("KRX", "ETF/KR"):
+        try:
+            df = fdr.StockListing(market)
+        except Exception:
+            log.warning("StockListing(%s) 수집 실패", market, exc_info=True)
             continue
-        rows.append({"code": code, "name": name,
-                     "close": _to_float(r.get("Close")),
-                     "change": _to_float(r.get("ChagesRatio"))})  # FDR 철자: ChagesRatio
+        for _, r in df.iterrows():
+            row = _row(r)
+            if row and row["code"] not in seen:
+                seen.add(row["code"])
+                rows.append(row)
     return rows
 
 
