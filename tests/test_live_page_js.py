@@ -38,6 +38,10 @@ for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qt
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
+// 차트 시간축: 라이브러리는 epoch을 UTC로 포맷 → toTs 결과의 UTC 시:분이
+// 원본 문자열과 같아야 라벨이 KST로 보인다(2026-07-13 실사고: 09:32→00:32)
+const tzd = new Date(toTs('09:32:00')*1000);
+console.log('TXT:tots-utc=' + tzd.getUTCHours() + ':' + tzd.getUTCMinutes());
 """
 
 
@@ -94,6 +98,8 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # 일별 확정 테이블에 대차잔고 컬럼이 날짜 조인으로 들어갔는지(07-09 행)
     assert "대차잔고" in texts["daily-html"]
     assert "14,420,269" in texts["daily-html"] or "14420269" in texts["daily-html"]
+    # 시간축 라벨이 서버(KST) 시각 그대로 보이는지 — UTC 렌더 사고 재발 방지
+    assert texts["tots-utc"] == "9:32"
 
 
 def _parse_harness(stdout: str):

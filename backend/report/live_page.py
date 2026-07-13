@@ -150,7 +150,10 @@ const series=chart.addBaselineSeries({baseValue:{type:'price',price:0},
   topLineColor:'#c62828',topFillColor:'rgba(198,40,40,.15)',
   bottomLineColor:'#1565c0',bottomFillColor:'rgba(21,101,192,.15)',lineWidth:2});
 function toTs(t){const[h,m,s]=t.split(':').map(Number);const d=new Date();
-  d.setHours(h,m,s||0,0);return Math.floor(d.getTime()/1000);}
+  d.setHours(h,m,s||0,0);
+  // Lightweight Charts는 epoch을 UTC로 포맷 → 로컬 오프셋을 더해 서버(KST)
+  // 시각 문자열이 그대로 라벨로 보이게 한다(실사고 2026-07-13: 09:32가 00:32로 표시)
+  return Math.floor(d.getTime()/1000)-d.getTimezoneOffset()*60;}
 
 // ── 가격 차트 (봉 주기 선택) ──
 const pchart=LightweightCharts.createChart(document.getElementById('pchart'),{autoSize:true,height:220,
