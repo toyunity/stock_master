@@ -38,6 +38,7 @@ for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qt
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
+console.log('TXT:sb-hist-html=' + String((els['sb-hist']||{}).innerHTML));
 // 차트 시간축: 라이브러리는 epoch을 UTC로 포맷 → toTs 결과의 UTC 시:분이
 // 원본 문자열과 같아야 라벨이 KST로 보인다(2026-07-13 실사고: 09:32→00:32)
 const tzd = new Date(toTs('09:32:00')*1000);
@@ -134,3 +135,33 @@ def test_render_js_empty_day_shows_waiting_not_stale(tmp_path):
     _, texts = _parse_harness(r.stdout)
     assert "발표 전" in texts["est-fresh"]      # 전일 잠정 잔존 대신 대기 문구
     assert "데이터 없음" in texts["sb-note"]    # 대차잔고 실패 시에도 화면 유지
+
+
+@needs_node
+def test_render_js_mixed_sources_labeled(tmp_path):
+    # 협회·예탁원 혼합 시(집계 범위가 달라 절대치가 다름) 행별 출처를 표기하고
+    # 헤더에 혼합 경고를 띄운다 — 리뷰 확정 결함의 회귀 방지
+    import json as _json
+    from backend.flow.models import FlowState
+    from backend.report.live_page import render_live_page
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_short({"rows": [
+        {"date": "2026-07-09", "qty": 14420269, "value": 1, "chg": None,
+         "src": "kofia"},
+        {"date": "2026-07-10", "qty": 11121198, "value": 1, "chg": None,
+         "src": "seibro"}],
+        "asof": "2026-07-10", "source": "seibro", "updated": "t"})
+    snap = s.snapshot()
+    html_p, snap_p, js_p = (tmp_path / "live.html", tmp_path / "snap.json",
+                            tmp_path / "smoke.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap_p.write_text(_json.dumps(snap), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
+    _, texts = _parse_harness(r.stdout)
+    assert "혼합" in texts["sb-fresh"]           # 헤더 경고
+    assert "출처" in texts["sb-hist-html"]       # 출처 열
+    assert "협회" in texts["sb-hist-html"] and "예탁원" in texts["sb-hist-html"]

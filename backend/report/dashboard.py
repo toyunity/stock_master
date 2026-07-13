@@ -38,10 +38,17 @@ transition:width .5s ease;border-radius:0 2px 2px 0}
 #navload.on{width:85%}
 #navload.done{width:100%;opacity:0;transition:width .15s,opacity .3s .15s}</style>
 <script>(function(){
-var bar=null;
+var bar=null,tmo=null;
 function el(){if(!bar){bar=document.createElement('div');bar.id='navload';document.body.appendChild(bar);}return bar;}
-function show(){var b=el();b.classList.remove('done');void b.offsetWidth;b.classList.add('on');}
+function hide(){if(bar){bar.classList.remove('on');bar.classList.add('done');
+  setTimeout(function(){if(bar){bar.remove();bar=null;}},500);}
+  if(tmo){clearTimeout(tmo);tmo=null;}}
+function show(){var b=el();b.classList.remove('done');void b.offsetWidth;b.classList.add('on');
+  if(tmo)clearTimeout(tmo);
+  tmo=setTimeout(hide,12000);} // 취소된 내비게이션에서 85% 고착 방지
 document.addEventListener('click',function(e){
+  // 새 탭/보조버튼/취소된 클릭은 현재 페이지가 안 떠나므로 바를 켜지 않는다
+  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
   var t=e.target; while(t&&t.tagName!=='A')t=t.parentElement;
   if(!t||!t.getAttribute)return;
   var href=t.getAttribute('href')||'';
@@ -50,11 +57,8 @@ document.addEventListener('click',function(e){
   if(t.origin&&t.origin!==location.origin)return;
   show();
 },true);
-window.addEventListener('beforeunload',function(){show();});
-window.addEventListener('pageshow',function(){
-  if(bar){bar.classList.remove('on');bar.classList.add('done');
-    setTimeout(function(){if(bar){bar.remove();bar=null;}},500);}
-});
+// beforeunload 리스너는 bfcache를 무력화(Firefox 전면, Safari 일부)하므로 쓰지 않는다
+window.addEventListener('pageshow',hide);
 })();</script>"""
 
 _DISCLAIMER = (

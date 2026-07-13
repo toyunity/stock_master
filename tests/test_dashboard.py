@@ -66,4 +66,8 @@ def test_nav_loader_on_all_pages():
                  render_scanner_page(),
                  render_live_page("000660", "SK하이닉스", "live")):
         assert "navload" in html
-        assert "pageshow" in html  # bfcache 복귀 시 잔상 제거
+        assert "pageshow" in html      # bfcache 복귀 시 잔상 제거
+        assert "metaKey" in html       # Cmd/Ctrl+클릭(새 탭)엔 바를 켜지 않음
+    from backend.report.dashboard import _NAV_LOADER
+    # bfcache 무력화 리스너 금지(리뷰) — 설명 주석은 허용, 등록 구문만 금지
+    assert "addEventListener('beforeunload'" not in _NAV_LOADER

@@ -28,6 +28,12 @@ _LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재
 _FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 비지 않게)
 
 
+def _program_backfill_ok() -> bool:
+    """00~08시(NXT 프리마켓 전, 거래 없음)엔 프로그램 백필 금지 — 이 시간대
+    TR 응답이 전일 추이일 가능성(미검증)이 있어 자정 리셋을 되살릴 수 있다."""
+    return dt.datetime.now().hour >= 8
+
+
 class FlowEngine:
     _registry: dict = {}
 
@@ -143,10 +149,11 @@ class FlowEngine:
         self._rollover_if_new_day()  # 백필 전에 — 전일 잔재 위에 덧그리지 않게
         # 시작 백필: 프로그램추이(장중 재접속 대비) — 실패해도 WS 누적으로 계속
         try:
-            pts = await client.program_trend(self.code)
-            if pts:
-                self.state.set_program_total(pts[-1]["net_qty"],
-                                             pts[-1]["net_value"], pts)
+            if _program_backfill_ok():
+                pts = await client.program_trend(self.code)
+                if pts:
+                    self.state.set_program_total(pts[-1]["net_qty"],
+                                                 pts[-1]["net_value"], pts)
         except Exception:
             log.warning("프로그램추이 백필 실패", exc_info=True)
         while not stop.is_set():
@@ -183,9 +190,10 @@ class FlowEngine:
                 ok = False
                 log.warning("KIS 일별/세부 수급 조회 실패 — 재시도 예정", exc_info=True)
             try:
-                # 대차잔고(T+1) — 모듈 내부에 일 단위 캐시·시간당 재시도 스로틀이
-                # 있어 30분마다 불러도 원격 조회는 하루 한 번 수준. KIS와 무관한
-                # 소스이므로 실패해도 상단 노트(KIS 조회 실패)는 건드리지 않는다.
+                # 대차잔고(T+1) — 매분(_POLL_SEC) 불러도 모듈 내부의 일 캐시 +
+                # 실패 포함 1h 스로틀이 원격 조회를 하루 한두 번으로 제한.
+                # 최초 백필(빈 캐시)만 ~30초 걸림(1회성, 이 주기 지연 수용).
+                # KIS와 무관한 소스라 실패해도 상단 노트는 건드리지 않는다.
                 sb = await shortbal.get_history(self.code, settings.cache_dir)
                 if sb.get("rows"):
                     self.state.set_short(sb)
@@ -213,14 +221,16 @@ class FlowEngine:
                 pass
             if self.state.snapshot()["status"]["connected"]:
                 continue
-            n += 1
+            self._rollover_if_new_day()  # 자정 직후 이 폴백이 전일 프로그램
+            n += 1                       # 누적을 되살리지 않게 기준일 먼저 갱신
             try:
                 p = await client.price(self.code)
                 if p:
                     import datetime as _dt
                     self.state.set_market(
                         dict(p, time=_dt.datetime.now().strftime("%H:%M:%S")))
-                if n % 3 == 1:  # 프로그램 누적은 30초에 한 번이면 충분
+                # 프로그램 누적은 30초에 한 번이면 충분. 00~08시 생략(_program_backfill_ok)
+                if n % 3 == 1 and _program_backfill_ok():
                     pts = await client.program_trend(self.code)
                     if pts:
                         self.state.set_program_total(pts[-1]["net_qty"],

@@ -193,6 +193,8 @@ def test_ws_fallback_fills_market_while_disconnected(monkeypatch):
     # 웹소켓 재접속 창(서버 재시작 직후 등)에도 화면이 비지 않도록 REST 폴백
     import backend.flow.engine as engmod
     monkeypatch.setattr(engmod, "_FALLBACK_SEC", 0.05)
+    # 프로그램 백필의 00~08시 가드와 무관하게 검증(테스트 결정성)
+    monkeypatch.setattr(engmod, "_program_backfill_ok", lambda: True)
     eng = FlowEngine("000660", interval=0.05)
 
     class FakeClient:

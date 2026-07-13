@@ -94,6 +94,7 @@ def _kofia_fake_factory(calls):
 
 
 def test_backfill_then_cache_hit(tmp_path, monkeypatch):
+    monkeypatch.setattr(shortbal, "_last_try", {})
     calls = []
     monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
     monkeypatch.setattr(shortbal, "_kofia_day", _kofia_fake_factory(calls))
@@ -111,6 +112,7 @@ def test_backfill_then_cache_hit(tmp_path, monkeypatch):
 
 
 def test_kofia_market_discovery_kosdaq(tmp_path, monkeypatch):
+    monkeypatch.setattr(shortbal, "_last_try", {})
     calls = []
 
     async def kosdaq_only(cli, date, market):
@@ -129,6 +131,7 @@ def test_kofia_market_discovery_kosdaq(tmp_path, monkeypatch):
 
 
 def test_kofia_failure_falls_back_to_seibro(tmp_path, monkeypatch):
+    monkeypatch.setattr(shortbal, "_last_try", {})
     async def kofia_down(cli, date, market):
         raise RuntimeError("HTTP 503")
 
@@ -143,6 +146,7 @@ def test_kofia_failure_falls_back_to_seibro(tmp_path, monkeypatch):
 
 
 def test_total_failure_keeps_previous_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(shortbal, "_last_try", {})
     old = {"fetched": "2026-07-10T18:00:00", "market": "1",
            "rows": [{"date": "2026-07-09", "qty": 14420269,
                      "value": 31522708034000, "chg": None, "src": "kofia"}]}
@@ -160,6 +164,7 @@ def test_total_failure_keeps_previous_cache(tmp_path, monkeypatch):
 
 
 def test_retry_throttled_within_hour(tmp_path, monkeypatch):
+    monkeypatch.setattr(shortbal, "_last_try", {})
     # 최신 공시가 아직 없어도 원격 재시도는 시간당 1회 — 30분 엔진 주기에 안전
     p = tmp_path / "shortbal_000660.json"
     p.write_text(json.dumps({
@@ -178,3 +183,68 @@ def test_retry_throttled_within_hour(tmp_path, monkeypatch):
     d = _run(shortbal.get_history("000660", str(tmp_path)))
     assert d["rows"][0]["qty"] == 1
     assert called == []  # 스로틀 내엔 원격 조회 자체가 없어야 함
+
+
+def test_throttle_arms_even_on_total_failure(tmp_path, monkeypatch):
+    # 리뷰 확정: fetched는 성공 전용이라 총실패 시 스로틀이 안 걸려
+    # 엔진 매분 주기마다 원격 재시도가 됐다 — 실패 포함 _last_try로 차단
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    calls = []
+
+    async def down(*a, **k):
+        calls.append(1)
+        raise RuntimeError("outage")
+    monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
+    monkeypatch.setattr(shortbal, "_kofia_day", down)
+    monkeypatch.setattr(shortbal, "_seibro_range", down)
+    _run(shortbal.get_history("000660", str(tmp_path)))
+    n1 = len(calls)
+    assert n1 >= 2  # KOFIA + SEIBro 각 1회는 시도
+    _run(shortbal.get_history("000660", str(tmp_path)))
+    assert len(calls) == n1  # 1시간 내 재호출은 원격 시도 없음
+
+
+def test_small_days_does_not_shrink_shared_cache(tmp_path, monkeypatch):
+    # 리뷰 확정: CLI --days 3이 서버(20일)와 공유하는 캐시를 13행으로 줄이고
+    # 되돌릴 방법이 없었다 — 보존 하한 _CACHE_KEEP으로 방지
+    monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
+    calls = []
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    monkeypatch.setattr(shortbal, "_kofia_day", _kofia_fake_factory(calls))
+    _run(shortbal.get_history("000660", str(tmp_path), days=20))
+    n_before = len(json.loads(
+        (tmp_path / "shortbal_000660.json").read_text())["rows"])
+    # 스로틀·완비 캐시 우회해 재수집 경로 강제(최신 행 하나 지움 + 시도기록 초기화)
+    cache = json.loads((tmp_path / "shortbal_000660.json").read_text())
+    cache["rows"] = cache["rows"][:-1]
+    cache["fetched"] = "2020-01-01T00:00:00"
+    (tmp_path / "shortbal_000660.json").write_text(json.dumps(cache))
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=3))
+    assert len(d["rows"]) == 3  # 반환은 요청한 만큼
+    n_after = len(json.loads(
+        (tmp_path / "shortbal_000660.json").read_text())["rows"])
+    assert n_after >= min(n_before, shortbal._CACHE_KEEP)  # 캐시는 안 줄어듦
+
+
+def test_partial_backfill_preserved_on_midway_failure(tmp_path, monkeypatch):
+    # 리뷰 확정: 백필 중간 실패가 기수집 KOFIA 행까지 버리고 전체를 SEIBro로
+    # 대체했다 — 부분 보존 후 다음 주기에 이어가도록 수정
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
+    calls = []
+
+    async def flaky(cli, date, market):
+        calls.append(date)
+        if len(calls) > 5:
+            raise RuntimeError("HTTP 503")
+        qty = 14_000_000 + date.toordinal()
+        return {"ds1": [{"TMPV2": "000660", "TMPV5": qty, "TMPV6": qty * 2}]}
+
+    async def seibro_boom(*a, **k):
+        raise AssertionError("부분 수집이 있으면 SEIBro 폴백 금지")
+    monkeypatch.setattr(shortbal, "_kofia_day", flaky)
+    monkeypatch.setattr(shortbal, "_seibro_range", seibro_boom)
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
+    assert len(d["rows"]) == 5  # 실패 전까지 수집분 보존
+    assert all(r["src"] == "kofia" for r in d["rows"])

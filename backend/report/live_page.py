@@ -283,7 +283,11 @@ function render(S){
   const srcKo={kofia:'금융투자협회',seibro:'예탁결제원(SEIBro)',demo:'데모(시뮬레이션)'};
   if(SB.rows.length){
     const last=SB.rows[SB.rows.length-1];
-    document.getElementById('sb-fresh').textContent='확정 · '+last.date+' 기준 · T+1 공시 · 출처 '+(srcKo[last.src]||last.src);
+    // 협회·예탁원은 집계 범위가 달라 절대치가 다르다 — 혼합 시 행별 출처 표기
+    const srcShort={kofia:'협회',seibro:'예탁원',demo:'데모'};
+    const mixed=new Set(SB.rows.map(r=>r.src)).size>1;
+    document.getElementById('sb-fresh').textContent='확정 · '+last.date+' 기준 · T+1 공시 · 출처 '
+      +(srcKo[last.src]||last.src)+(mixed?' · ⚠ 기간 내 출처 혼합(추이 표의 출처 열 참조)':'');
     document.getElementById('sb-qty').textContent=num(last.qty)+'주';
     const sc=document.getElementById('sb-chg');
     sc.textContent=last.chg==null?'–':shares(last.chg);
@@ -296,10 +300,12 @@ function render(S){
         +' × 대차 '+(last.chg==null?'–':shares(last.chg));
       sg.className='sig sig-'+sig.tone;
     }else{sg.textContent='판정 대기 — 주가 등락·잔고 증감 확보 후 표시'; sg.className='sig sig-flat';}
-    document.getElementById('sb-hist').innerHTML='<tr><th>날짜</th><th>잔고(주)</th><th>전일 대비</th><th>금액</th></tr>'
+    document.getElementById('sb-hist').innerHTML='<tr><th>날짜</th><th>잔고(주)</th><th>전일 대비</th><th>금액</th>'
+      +(mixed?'<th>출처</th>':'')+'</tr>'
       +SB.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
       +'</td><td class="'+(r.chg==null?'flat':cls(r.chg))+'">'+(r.chg==null?'–':shares(r.chg))
-      +'</td><td>'+jo(r.value)+'</td></tr>').join('');
+      +'</td><td>'+jo(r.value)+'</td>'
+      +(mixed?'<td>'+esc(srcShort[r.src]||r.src)+'</td>':'')+'</tr>').join('');
     document.getElementById('sb-note').textContent='대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시). 늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호.'+(last.src==='seibro'?' ※ 예탁결제원 폴백 수치 — 협회 통계와 집계 범위가 달라요.':'');
   }else{
     document.getElementById('sb-fresh').textContent='· 데이터 없음';

@@ -37,8 +37,10 @@ _HEADERS = {  # 크롤링 차단 회피가 아니라 브라우저와 동일한 �
 }
 
 _SPACING_SEC = 1.2   # KOFIA 백필 시 호출 간격(무료 공공 포털 예의)
-_RETRY_SEC = 3600    # 최신 공시가 아직 없을 때 재시도 간격(엔진은 30분마다 문의)
+_RETRY_SEC = 3600    # 원격 재시도 간격 — 엔진은 매분 문의하지만 이 스로틀이 1회/시로 제한
 _BACKFILL_SCAN = 28  # 백필 시 훑는 평일 수 상한(휴일 감안해 20행 확보용)
+_CACHE_KEEP = 30     # 캐시 보존 행 하한 — CLI --days가 작아도 서버(20일) 몫을 지운다(리뷰)
+_last_try: dict = {}  # code → 마지막 원격 '시도' 시각(실패 포함; fetched는 성공 전용)
 
 
 # ── 순수 파서/계산 (픽스처만으로 테스트) ──────────────────────
@@ -155,13 +157,20 @@ async def _fetch_kofia(cli, code: str, need_dates: list,
     for i, d in enumerate(need_dates):
         if i:
             await asyncio.sleep(_SPACING_SEC)
-        found = None
-        for mkt in ([market] if market else ["1", "2"]):
-            js = await _kofia_day(cli, d, mkt)
-            got = parse_kofia(js, code)
-            if got:
-                found, market = got, mkt
+        try:
+            found = None
+            for mkt in ([market] if market else ["1", "2"]):
+                js = await _kofia_day(cli, d, mkt)
+                got = parse_kofia(js, code)
+                if got:
+                    found, market = got, mkt
+                    break
+        except Exception:
+            if rows:  # 중간 실패는 수집분 보존 — 나머지는 다음 스로틀 주기에 이어감
+                log.warning("KOFIA %s 조회 중단 — 기수집 %d행 보존", d, len(rows),
+                            exc_info=True)
                 break
+            raise  # 한 행도 못 얻었으면 SEIBro 폴백으로
         if found:
             rows.append({"date": d.isoformat(), "qty": found["qty"],
                          "value": found["value"], "src": "kofia"})
@@ -203,12 +212,17 @@ async def get_history(code: str, cache_dir: str, days: int = 20) -> dict:
 
     if rows and max(rows) >= exp.isoformat():
         return result()  # 오늘 몫(직전 평일분)까지 확보됨
-    try:  # 최신분 미공시 재시도 스로틀 — 엔진이 30분마다 불러도 시간당 1회만 원격 조회
-        last_try = dt.datetime.fromisoformat(cache.get("fetched") or "")
-        if (dt.datetime.now() - last_try).total_seconds() < _RETRY_SEC:
-            return result()
-    except ValueError:
-        pass
+    # 재시도 스로틀 — '실패 포함' 마지막 시도 기준(메모리). 실패 시 fetched를 안
+    # 찍는 설계라 fetched만 보면 총실패 때 매분 원격 재시도가 됐다(리뷰 확정).
+    last_try = _last_try.get(code)
+    if last_try is None:
+        try:
+            last_try = dt.datetime.fromisoformat(cache.get("fetched") or "")
+        except ValueError:
+            last_try = None
+    if last_try and (dt.datetime.now() - last_try).total_seconds() < _RETRY_SEC:
+        return result()
+    _last_try[code] = dt.datetime.now()
 
     # 필요 일자: 캐시 다음 날부터 직전 평일까지(빈 캐시면 백필 스캔 구간)
     scan = min(_BACKFILL_SCAN, days + 8)  # 휴일 감안 여유분(하루 1콜이라 예의상 상한)
@@ -239,9 +253,11 @@ async def get_history(code: str, cache_dir: str, days: int = 20) -> dict:
             rows[r["date"]] = r
         cache["fetched"] = dt.datetime.now().isoformat(timespec="seconds")
         cache["market"] = market
-        cache["rows"] = with_changes(list(rows.values()))[-(days + 10):]
+        cache["rows"] = with_changes(list(rows.values()))[-max(days + 10, _CACHE_KEEP):]
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        tmp = path.with_suffix(".json.tmp")  # 원자 교체 — CLI·서버 동시 쓰기 찢김 방지
+        tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
     except Exception:
         # 양쪽 모두 실패 — 이전 캐시로 화면 유지('데이터 없음' 또는 옛 asof 표시)
         log.warning("대차잔고 수집 실패(KOFIA·SEIBro) — 캐시 유지", exc_info=True)
