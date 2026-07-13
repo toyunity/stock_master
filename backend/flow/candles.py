@@ -82,6 +82,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     earliest, cap = _session_window()
     bars, hour = [], min(kst.now().strftime("%H%M%S"), cap)
     latest_t = f"{hour[0:2]}:{hour[2:4]}:{hour[4:6]}"
+    kdate = kst.today().strftime("%Y%m%d")  # 전일 봉 혼입 필터(간헐 실측)
     for _ in range(_MAX_CALLS):
         js = await client._get(_MIN_PATH, "FHKST03010200",
                                {"FID_ETC_CLS_CODE": "",
@@ -89,7 +90,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
                                 "FID_INPUT_ISCD": code,
                                 "FID_INPUT_HOUR_1": hour,
                                 "FID_PW_DATA_INCU_YN": "Y"})
-        chunk = parse_minute_candles(js)
+        chunk = parse_minute_candles(js, kdate)
         if not chunk:
             break
         bars = chunk + bars

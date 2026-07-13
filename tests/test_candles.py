@@ -23,6 +23,26 @@ def test_parse_minute_candles_real_fields_sorted_ascending():
                         "low": 2228000, "close": 2233000, "vol": 3159}
 
 
+def test_parse_minute_candles_drops_other_day_rows():
+    # 실사고(2026-07-13 21:53): 마감 후 조회에서 KIS가 금요일 19:5x 봉(2,20만원대)을
+    # 같은 시각 라벨로 간헐 혼입 — 월요일 −16% 차트 꼬리가 급반등처럼 보였다.
+    # date를 주면 다른 날짜 행 제거, 날짜 필드 없는 행은 보존(하위 호환).
+    js = {"rt_cd": "0", "output2": [
+        {"stck_bsop_date": "20260713", "stck_cntg_hour": "195900",
+         "stck_prpr": "1828000", "stck_oprc": "1829000", "stck_hgpr": "1829000",
+         "stck_lwpr": "1828000", "cntg_vol": "32799"},
+        {"stck_bsop_date": "20260710", "stck_cntg_hour": "195900",   # 금요일 잔재
+         "stck_prpr": "2201000", "stck_oprc": "2202000", "stck_hgpr": "2202000",
+         "stck_lwpr": "2200000", "cntg_vol": "23218"},
+        {"stck_cntg_hour": "195800", "stck_prpr": "1829000",          # 날짜 필드 없음
+         "stck_oprc": "1829000", "stck_hgpr": "1830000",
+         "stck_lwpr": "1828000", "cntg_vol": "21766"},
+    ]}
+    bars = parse_minute_candles(js, "20260713")
+    assert [b["close"] for b in bars] == [1829000, 1828000]  # 금요일 행 제거
+    assert len(parse_minute_candles(js)) == 3                # date 미지정=기존 동작
+
+
 def _bar(t, o=100, h=110, l=90, c=105, v=10):
     return {"t": t, "open": o, "high": h, "low": l, "close": c, "vol": v}
 

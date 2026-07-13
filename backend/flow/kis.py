@@ -232,12 +232,18 @@ def parse_price(js: dict) -> Optional[dict]:
             "acml_value": _i(o.get("acml_tr_pbmn"))}
 
 
-def parse_minute_candles(js: dict) -> list:
+def parse_minute_candles(js: dict, date: Optional[str] = None) -> list:
     """FHKST03010200(주식당일분봉) output2 → [{t,open,high,low,close,vol}] 오름차순.
 
-    실응답은 최신순·호출당 최대 30봉·당일만 제공(실측 2026-07-10)."""
+    실응답은 최신순·호출당 최대 30봉(실측 2026-07-10). date(YYYYMMDD)를 주면
+    다른 날짜 행을 제거한다 — 마감 후 조회에서 KIS가 전일 봉을 같은 시각
+    라벨로 '간헐적으로' 되감아 반환(실사고 2026-07-13 21:53: 금요일 19:5x
+    2,20만원대 봉이 월요일 −16% 차트 꼬리에 급반등처럼 붙음)."""
     bars = []
     for r in js.get("output2") or []:
+        d = str(r.get("stck_bsop_date", ""))
+        if date and d and d != date:
+            continue
         bars.append({"t": _hhmmss(r.get("stck_cntg_hour", "")),
                      "open": _i(r.get("stck_oprc")), "high": _i(r.get("stck_hgpr")),
                      "low": _i(r.get("stck_lwpr")), "close": _i(r.get("stck_prpr")),
