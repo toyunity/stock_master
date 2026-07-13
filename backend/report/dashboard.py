@@ -29,6 +29,34 @@ _PWA_HEAD = (
     '<meta name="apple-mobile-web-app-title" content="Stock Master">'
 )
 
+# 페이지 전환 로딩 바 — 내부 링크 클릭/이탈 시 상단 진행 바(전 페이지 공용).
+# 자기완결 HTML이 커서(차트 라이브러리 inline) 전환 공백이 체감됨 → 즉각 피드백.
+# bfcache 복귀(pageshow)에서 제거해 뒤로가기 잔상을 막는다.
+_NAV_LOADER = """<style>#navload{position:fixed;top:0;left:0;height:3px;width:0;
+background:linear-gradient(90deg,#1565c0,#42a5f5);z-index:9999;pointer-events:none;
+transition:width .5s ease;border-radius:0 2px 2px 0}
+#navload.on{width:85%}
+#navload.done{width:100%;opacity:0;transition:width .15s,opacity .3s .15s}</style>
+<script>(function(){
+var bar=null;
+function el(){if(!bar){bar=document.createElement('div');bar.id='navload';document.body.appendChild(bar);}return bar;}
+function show(){var b=el();b.classList.remove('done');void b.offsetWidth;b.classList.add('on');}
+document.addEventListener('click',function(e){
+  var t=e.target; while(t&&t.tagName!=='A')t=t.parentElement;
+  if(!t||!t.getAttribute)return;
+  var href=t.getAttribute('href')||'';
+  if(!href||href[0]==='#'||t.target==='_blank'||t.hasAttribute('download'))return;
+  if(/^(javascript:|mailto:|tel:)/i.test(href))return;
+  if(t.origin&&t.origin!==location.origin)return;
+  show();
+},true);
+window.addEventListener('beforeunload',function(){show();});
+window.addEventListener('pageshow',function(){
+  if(bar){bar.classList.remove('on');bar.classList.add('done');
+    setTimeout(function(){if(bar){bar.remove();bar=null;}},500);}
+});
+})();</script>"""
+
 _DISCLAIMER = (
     "⚠️ 투자 유의 안내 — 본 애플리케이션이 제공하는 모든 정보·분석·신호는 참고용이며, "
     "특정 종목의 매수·매도를 권유하지 않습니다. 모든 투자 판단과 그 결과에 대한 책임은 "
@@ -135,7 +163,7 @@ q.oninput=()=>{
   if(!t){res.innerHTML='';return;}
   searchRender(D.universe.filter(u=>u.name.toLowerCase().includes(t)||u.code.indexOf(t)>=0));
 };
-</script></body></html>"""
+</script>__NAV_LOADER__</body></html>"""
 
 
 def to_candles(df, days: int = 120) -> list:
@@ -173,6 +201,7 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
     refresh = '<button class="refresh" onclick="location.reload()">🔄 새로고침</button>' if pwa else ""
     return (_TEMPLATE
             .replace("__DATE__", escape(date))
+            .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD if pwa else "")
             .replace("__REFRESH__", refresh)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))

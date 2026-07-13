@@ -9,7 +9,8 @@ dashboard.py와 같은 패턴: 차트 라이브러리 inline + 렌더 JS inline.
 
 from html import escape
 
-from backend.report.dashboard import _DISCLAIMER, _LIB_PATH, _PWA_HEAD
+from backend.report.dashboard import (_DISCLAIMER, _LIB_PATH, _NAV_LOADER,
+                                      _PWA_HEAD)
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -47,6 +48,8 @@ details.panel summary h2::before{content:'▸ ';color:#1565c0}
 details.panel[open] summary h2::before{content:'▾ ';color:#1565c0}
 details.panel summary h2{margin:0}
 details.panel[open] summary{margin-bottom:6px}
+.sig{font-size:13px;font-weight:600;margin-top:8px;min-height:16px}
+.sig-good{color:#2e7d32} .sig-warn{color:#ef6c00} .sig-info{color:#1565c0} .sig-flat{color:#888}
 </style></head><body>
 <div><a href="/">← 대시보드</a></div>
 <h1>__NAME__ <span class="code">__CODE__</span>
@@ -94,8 +97,24 @@ details.panel[open] summary{margin-bottom:6px}
 
 <details class="panel">
   <summary><h2>📅 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2></summary>
-  <table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th></tr></table>
+  <table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table>
 </details>
+
+<div class="panel">
+  <h2>🩳 대차잔고 (공매도 선행지표) <span class="fresh" id="sb-fresh">· 데이터 대기</span></h2>
+  <div class="grid3">
+    <div><div class="lbl">잔고 주수</div><div class="val" id="sb-qty">–</div></div>
+    <div><div class="lbl">전일 대비</div><div class="val" id="sb-chg">–</div></div>
+    <div><div class="lbl">잔고 금액</div><div class="val" id="sb-val">–</div></div>
+  </div>
+  <div class="sig" id="sb-sig"></div>
+  <details style="margin-top:8px">
+    <summary class="meta" style="cursor:pointer">최근 20거래일 추이</summary>
+    <table id="sb-hist" style="margin-top:6px"></table>
+  </details>
+  <div class="meta" id="sb-note">대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시).
+  늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호로 읽는다.</div>
+</div>
 
 <details class="panel">
   <summary><h2>🏛️ 기관 세부 수급 (연기금·투신·금융투자 …)</h2></summary>
@@ -109,7 +128,7 @@ details.panel[open] summary{margin-bottom:6px}
 </details>
 
 <div class="disc">__DISCLAIMER__ 실시간 수급의 외국인/기관 수치는 장중 <b>추정치(잠정)</b>이며
-확정치는 다음 영업일에 제공됩니다. 데이터 출처: 한국투자증권 오픈API·KRX.</div>
+확정치는 다음 영업일에 제공됩니다. 데이터 출처: 한국투자증권 오픈API·KRX·금융투자협회(대차잔고).</div>
 
 <script>__LIB__</script>
 <script>
@@ -210,6 +229,15 @@ function render(S){
       +E.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.asof)+'</td><td class="'+cls(combined(r))+'">'+shares(combined(r))
       +'</td><td class="'+cls(r.frgn)+'">'+shares(r.frgn)
       +'</td><td class="'+cls(r.orgn)+'">'+shares(r.orgn)+'</td></tr>').join('');
+  }else{
+    // 날짜가 바뀌어 서버가 당일 상태를 비우면(전일 잠정 잔존 방지) 화면도 함께 비운다
+    document.getElementById('est-fresh').textContent='잠정 · 오늘 발표 전 — 첫 잠정치 '+nextSlot()+' · 익일 확정';
+    document.getElementById('est-prsn-lbl').textContent='개인+기타*';
+    document.getElementById('est-note').textContent='*개인+기타법인 = −(외국인+기관) 역산 — 장중 개인 집계는 어디에도 없어 "전체 매매 합계는 0" 원리로 추정한 값';
+    for(const id of ['est-prsn','est-frgn','est-orgn']){
+      const el=document.getElementById(id); el.textContent='–'; el.className='val';
+    }
+    document.getElementById('est-hist').innerHTML='';
   }
   const P=S.program;
   const q=document.getElementById('pgm-qty');
@@ -239,10 +267,46 @@ function render(S){
       +DT.rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="'+cls(r.qty)+'">'+shares(r.qty)
       +'</td><td class="'+cls(r.value)+'">'+eok(r.value)+'</td></tr>').join('');
   }
-  document.getElementById('daily').innerHTML='<tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th></tr>'
-    +S.daily.map(d=>'<tr><td>'+esc(d.date.slice(5))+'</td><td class="'+cls(d.prsn)+'">'+shares(d.prsn)
+  const SB=S.short||{rows:[]};
+  const sbm={}; SB.rows.forEach(r=>{sbm[r.date]=r;});
+  document.getElementById('daily').innerHTML='<tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr>'
+    +S.daily.map(d=>{const m=sbm[d.date];
+    return '<tr><td>'+esc(d.date.slice(5))+'</td><td class="'+cls(d.prsn)+'">'+shares(d.prsn)
     +'</td><td class="'+cls(d.frgn)+'">'+shares(d.frgn)+'</td><td class="'+cls(d.orgn)+'">'+shares(d.orgn)
-    +'</td><td>'+won(d.close)+'</td></tr>').join('');
+    +'</td><td>'+won(d.close)+'</td><td class="'+(m&&m.chg!=null?cls(m.chg):'flat')+'">'
+    +(m?num(m.qty):'–')+'</td></tr>';}).join('');
+  // ── 대차잔고 패널: 최신 잔고·증감(증가=적색/감소=청색)·판정 시그널·20일 추이 ──
+  const jo=n=>n==null?'–':(Math.abs(n)>=1e12?(n/1e12).toLocaleString('ko-KR',{maximumFractionDigits:1})+'조':eok(n).replace('+',''));
+  const srcKo={kofia:'금융투자협회',seibro:'예탁결제원(SEIBro)',demo:'데모(시뮬레이션)'};
+  if(SB.rows.length){
+    const last=SB.rows[SB.rows.length-1];
+    document.getElementById('sb-fresh').textContent='확정 · '+last.date+' 기준 · T+1 공시 · 출처 '+(srcKo[last.src]||last.src);
+    document.getElementById('sb-qty').textContent=num(last.qty)+'주';
+    const sc=document.getElementById('sb-chg');
+    sc.textContent=last.chg==null?'–':shares(last.chg);
+    sc.className='val '+(last.chg==null?'flat':cls(last.chg));
+    document.getElementById('sb-val').textContent=jo(last.value);
+    const sig=SB.signal;
+    const sg=document.getElementById('sb-sig');
+    if(sig){
+      sg.textContent='판정: '+sig.text+' — 주가 '+(M.rate==null?'–':(M.rate>0?'▲':(M.rate<0?'▼':''))+Math.abs(M.rate).toFixed(2)+'%')
+        +' × 대차 '+(last.chg==null?'–':shares(last.chg));
+      sg.className='sig sig-'+sig.tone;
+    }else{sg.textContent='판정 대기 — 주가 등락·잔고 증감 확보 후 표시'; sg.className='sig sig-flat';}
+    document.getElementById('sb-hist').innerHTML='<tr><th>날짜</th><th>잔고(주)</th><th>전일 대비</th><th>금액</th></tr>'
+      +SB.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
+      +'</td><td class="'+(r.chg==null?'flat':cls(r.chg))+'">'+(r.chg==null?'–':shares(r.chg))
+      +'</td><td>'+jo(r.value)+'</td></tr>').join('');
+    document.getElementById('sb-note').textContent='대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시). 늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호.'+(last.src==='seibro'?' ※ 예탁결제원 폴백 수치 — 협회 통계와 집계 범위가 달라요.':'');
+  }else{
+    document.getElementById('sb-fresh').textContent='· 데이터 없음';
+    for(const id of ['sb-qty','sb-chg','sb-val']){
+      const el=document.getElementById(id); el.textContent='–'; el.className='val';
+    }
+    document.getElementById('sb-sig').textContent=''; document.getElementById('sb-sig').className='sig';
+    document.getElementById('sb-hist').innerHTML='';
+    document.getElementById('sb-note').textContent='대차잔고: 데이터 없음 — 소스(금융투자협회·예탁결제원) 응답 실패 또는 미공시. 자동 재시도 중.';
+  }
   document.getElementById('tape').innerHTML='<tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr>'
     +S.tape.map(t=>'<tr><td>'+esc(t.t)+'</td><td>'+won(t.price)+'</td><td>'+num(t.vol)
     +'</td><td class="'+(t.side==='buy'?'up':(t.side==='sell'?'down':'flat'))+'">'
@@ -252,7 +316,7 @@ function render(S){
 const es=new EventSource('/api/live/'+CODE+'/stream');
 es.onmessage=e=>{try{render(JSON.parse(e.data));}catch(err){console.error(err);}};
 es.onerror=()=>{const c=document.getElementById('conn');c.textContent='재연결 중…';c.className='badge b-off';};
-</script></body></html>"""
+</script>__NAV_LOADER__</body></html>"""
 
 
 _MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}
@@ -263,6 +327,7 @@ def render_live_page(code: str, name: str, mode: str) -> str:
     lib = _LIB_PATH.read_text(encoding="utf-8")
     return (_TEMPLATE
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
+            .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__CODE__", escape(code))
             .replace("__NAME__", escape(name))
             .replace("__MODE__", escape(mode.upper()))

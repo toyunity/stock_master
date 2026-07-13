@@ -94,6 +94,9 @@ def main():
     rp.add_argument("--force", action="store_true", help="캐시 무시하고 새로 받기")
     rp.add_argument("--no-news", action="store_true", help="뉴스/공시 수집 생략")
     sub.add_parser("glossary", help="용어·개념 학습 HTML 생성")
+    sh = sub.add_parser("shortbal", help="대차잔고 수동 수집/조회 (T+1 공시, 협회→예탁원 폴백)")
+    sh.add_argument("--code", default="000660", help="6자리 종목코드 (기본 SK하이닉스)")
+    sh.add_argument("--days", type=int, default=20, help="최근 거래일 수")
     sv = sub.add_parser("serve", help="웹앱 서버 실행(아이폰 등에서 접속)")
     sv.add_argument("--host", default="0.0.0.0", help="기본 0.0.0.0(같은 WiFi 기기 접속 허용)")
     sv.add_argument("--port", type=int, default=8000)
@@ -107,6 +110,19 @@ def main():
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html, encoding="utf-8")
         print(f"대시보드 생성: {out}")
+    elif args.cmd == "shortbal":
+        import asyncio
+        from backend.flow import shortbal
+        d = asyncio.run(shortbal.get_history(args.code, settings.cache_dir,
+                                             days=args.days))
+        if not d["rows"]:
+            print("대차잔고: 데이터 없음 (수집 실패 또는 미공시)")
+        else:
+            print(f"{args.code} 대차잔고 — {d['asof']} 기준 · 출처 {d['source']}")
+            for r in d["rows"]:
+                chg = f"{r['chg']:+,}주" if r.get("chg") is not None else "–"
+                print(f"  {r['date']}  잔고 {r['qty']:>12,}주"
+                      f"  전일대비 {chg:>12}  금액 {r['value'] / 1e12:.2f}조")
     elif args.cmd == "glossary":
         from backend.report.render import render_glossary_page
         out = render_glossary_page("docs/glossary.html")

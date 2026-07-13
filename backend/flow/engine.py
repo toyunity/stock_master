@@ -15,6 +15,7 @@ import logging
 from backend.config import settings
 from backend.flow import kis
 from backend.flow import scanner
+from backend.flow import shortbal
 from backend.flow.demo import DemoSource, lookup_stock
 from backend.flow.models import FlowState
 
@@ -39,6 +40,7 @@ class FlowEngine:
         self._stop = None
         self._stop_task = None   # 지연 정지 예약
         self._client = None      # KisClient 재사용(approval_key 메모리 캐시 유지)
+        self._day = dt.date.today()  # 당일 한정 패널의 기준일(날짜 변경 감지용)
 
     @classmethod
     def get(cls, code: str) -> "FlowEngine":
@@ -101,6 +103,17 @@ class FlowEngine:
                 pass
             self._task = None
 
+    def _rollover_if_new_day(self) -> None:
+        """엔진·FlowState는 레지스트리에 영속 → 서버가 주말을 넘겨 떠 있으면
+        금요일 잠정/프로그램/테이프가 월요일 화면에 남는다(실사고 2026-07-13).
+        장전엔 잠정 TR이 빈 배열이라 'if rows' 가드가 갱신을 건너뛰므로
+        날짜가 바뀐 순간 당일 한정 상태를 명시적으로 비운다."""
+        today = dt.date.today()
+        if today != self._day:
+            self._day = today
+            self.state.reset_intraday()
+            log.info("날짜 변경(%s) — 당일 한정 패널 초기화", today)
+
     # ── 소스 ──────────────────────────────────────────────
     async def _run_demo(self, stop: asyncio.Event) -> None:
         await DemoSource(self.state).run(stop)
@@ -127,6 +140,7 @@ class FlowEngine:
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)
         loop = asyncio.get_event_loop()
+        self._rollover_if_new_day()  # 백필 전에 — 전일 잔재 위에 덧그리지 않게
         # 시작 백필: 프로그램추이(장중 재접속 대비) — 실패해도 WS 누적으로 계속
         try:
             pts = await client.program_trend(self.code)
@@ -137,6 +151,7 @@ class FlowEngine:
             log.warning("프로그램추이 백필 실패", exc_info=True)
         while not stop.is_set():
             ok = True
+            self._rollover_if_new_day()
             # 추정과 일별은 서로 격리 — 한쪽(간헐 500 관찰됨)이 다른 쪽을 못 막는다
             try:
                 rows = await client.estimate(self.code)
@@ -167,6 +182,15 @@ class FlowEngine:
             except Exception:
                 ok = False
                 log.warning("KIS 일별/세부 수급 조회 실패 — 재시도 예정", exc_info=True)
+            try:
+                # 대차잔고(T+1) — 모듈 내부에 일 단위 캐시·시간당 재시도 스로틀이
+                # 있어 30분마다 불러도 원격 조회는 하루 한 번 수준. KIS와 무관한
+                # 소스이므로 실패해도 상단 노트(KIS 조회 실패)는 건드리지 않는다.
+                sb = await shortbal.get_history(self.code, settings.cache_dir)
+                if sb.get("rows"):
+                    self.state.set_short(sb)
+            except Exception:
+                log.warning("대차잔고 조회 실패 — 다음 주기 재시도", exc_info=True)
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
             elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):

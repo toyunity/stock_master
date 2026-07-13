@@ -33,8 +33,11 @@ global.setInterval = () => {};
 eval(code);
 render(snap);
 console.log('RENDER OK');
-for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist'])
-  console.log(id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
+for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig'])
+  console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
+for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig'])
+  console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
+console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
 """
 
 
@@ -56,6 +59,13 @@ def _full_snapshot():
                   "orgn": 404365, "close": 2186000}])
     s.set_detail({"date": "2026-07-09",
                   "rows": [{"name": "연기금", "qty": 48907, "value": 113357000000}]})
+    s.set_short({"rows": [
+        {"date": "2026-07-09", "qty": 14420269, "value": 31522708034000,
+         "chg": None, "src": "kofia"},
+        {"date": "2026-07-10", "qty": 14140221, "value": 30825681780000,
+         "chg": -280048, "src": "kofia"}],
+        "asof": "2026-07-10", "source": "kofia",
+        "updated": "2026-07-13T09:00:00"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
@@ -73,7 +83,48 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
                        capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
-    # 마지막 패널들(프로그램·일별·세부·체결)까지 실제로 채워졌는지
-    filled = dict(line.split("=") for line in r.stdout.strip().splitlines()[1:])
-    for key in ("pgm-qty", "daily", "detail", "tape", "est-hist"):
+    filled, texts = _parse_harness(r.stdout)
+    # 마지막 패널들(프로그램·일별·세부·체결·대차)까지 실제로 채워졌는지
+    for key in ("pgm-qty", "daily", "detail", "tape", "est-hist",
+                "sb-qty", "sb-hist", "sb-sig"):
         assert int(filled[key]) > 0, f"{key} 패널이 비어 있음"
+    # 주가 ▲3.11% × 대차 −280,048주 → '건강한 상승 (숏 이탈)' 4분면
+    assert "건강한 상승" in texts["sb-sig"]
+    assert "금융투자협회" in texts["sb-fresh"]  # 출처 표기
+    # 일별 확정 테이블에 대차잔고 컬럼이 날짜 조인으로 들어갔는지(07-09 행)
+    assert "대차잔고" in texts["daily-html"]
+    assert "14,420,269" in texts["daily-html"] or "14420269" in texts["daily-html"]
+
+
+def _parse_harness(stdout: str):
+    filled, texts = {}, {}
+    for line in stdout.strip().splitlines():
+        if line.startswith("LEN:"):
+            k, v = line[4:].split("=", 1)
+            filled[k] = v
+        elif line.startswith("TXT:"):
+            k, v = line[4:].split("=", 1)
+            texts[k] = v
+    return filled, texts
+
+
+@needs_node
+def test_render_js_empty_day_shows_waiting_not_stale(tmp_path):
+    # 실사고(2026-07-13): 날짜가 바뀌어 서버가 당일 상태를 비웠는데도 브라우저가
+    # 이전 DOM을 유지하면 전일 잠정이 계속 보인다 — 빈 rows에서 명시적 대기 표시.
+    import json as _json
+    from backend.flow.models import FlowState
+    from backend.report.live_page import render_live_page
+    snap = FlowState("000660", "SK하이닉스", "live").snapshot()
+    html_p, snap_p, js_p = (tmp_path / "live.html", tmp_path / "snap.json",
+                            tmp_path / "smoke.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap_p.write_text(_json.dumps(snap), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
+    _, texts = _parse_harness(r.stdout)
+    assert "발표 전" in texts["est-fresh"]      # 전일 잠정 잔존 대신 대기 문구
+    assert "데이터 없음" in texts["sb-note"]    # 대차잔고 실패 시에도 화면 유지

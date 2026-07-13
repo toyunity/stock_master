@@ -10,6 +10,8 @@ import time
 from collections import deque
 from typing import Optional
 
+from backend.flow.shortbal import short_signal
+
 _TAPE_MAX = 30     # 체결 테이프 표시 건수
 _POINTS_MAX = 200  # 프로그램 누적 차트 포인트 상한
 
@@ -29,6 +31,9 @@ class FlowState:
         # 장중 부분 세부(잠정): 기관 내역 rows + 기타(법인·단체) — 개인 역산용
         self._est_detail: dict = {"asof": None, "rows": [],
                                   "etc_qty": None, "etc_value": None}
+        # 대차잔고(T+1 공시): rows=[{date,qty,value,chg,src}…오름차순]
+        self._short: dict = {"rows": [], "asof": None, "source": None,
+                             "updated": None}
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -76,8 +81,25 @@ class FlowState:
                             "etc_qty": d.get("etc_qty"),
                             "etc_value": d.get("etc_value")}
 
+    def set_short(self, d: dict) -> None:
+        self._short = {"rows": list(d.get("rows") or []),
+                       "asof": d.get("asof"), "source": d.get("source"),
+                       "updated": d.get("updated")}
+
     def set_status(self, **kw) -> None:
         self._status.update(kw)
+
+    def reset_intraday(self) -> None:
+        """날짜가 바뀌면 '당일 한정' 데이터를 비운다 — 서버가 며칠씩 떠 있으면
+        전일 잠정치가 오늘 것처럼 화면에 남는 실사고(2026-07-13 월 아침) 방지.
+        시세(폴백 10초 내 자가 수정)·일별/세부/대차(여러 날 확정치)는 유지."""
+        self._tape.clear()
+        self._pgm_net_qty = 0
+        self._pgm_net_value = 0
+        self._pgm_points.clear()
+        self._estimate_rows = []
+        self._est_detail = {"asof": None, "rows": [],
+                            "etc_qty": None, "etc_value": None}
 
     def snapshot(self) -> dict:
         est_asof = self._estimate_rows[-1]["asof"] if self._estimate_rows else None
@@ -96,5 +118,16 @@ class FlowState:
             "daily": list(self._daily),
             "detail": {"date": self._detail["date"],
                        "rows": list(self._detail["rows"])},
+            "short": self._short_snapshot(),
             "status": dict(self._status),
         }
+
+    def _short_snapshot(self) -> dict:
+        """대차잔고 + 판정 시그널. 시그널은 '당일 등락률 × 최신 잔고 증감'이라
+        틱마다 변할 수 있어 스냅샷 시점에 계산한다."""
+        rows = self._short["rows"]
+        last_chg = rows[-1].get("chg") if rows else None
+        return {"rows": list(rows), "asof": self._short["asof"],
+                "source": self._short["source"],
+                "updated": self._short["updated"],
+                "signal": short_signal(self._market.get("rate"), last_chg)}
