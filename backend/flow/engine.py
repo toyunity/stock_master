@@ -15,6 +15,7 @@ import logging
 from backend.config import settings
 from backend.flow import kis
 from backend.flow import scanner
+from backend.flow import shortbal
 from backend.flow.demo import DemoSource, lookup_stock
 from backend.flow.models import FlowState
 
@@ -25,6 +26,12 @@ _DAILY_SEC = 1800    # 일별 확정 재조회 간격(장 종료 후 당일분 �
 _LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재연결 churn이
                      # KIS 서버측 절단(EOF)을 유발하므로(실측) 즉시 해체 금지
 _FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 비지 않게)
+
+
+def _program_backfill_ok() -> bool:
+    """00~08시(NXT 프리마켓 전, 거래 없음)엔 프로그램 백필 금지 — 이 시간대
+    TR 응답이 전일 추이일 가능성(미검증)이 있어 자정 리셋을 되살릴 수 있다."""
+    return dt.datetime.now().hour >= 8
 
 
 class FlowEngine:
@@ -39,6 +46,7 @@ class FlowEngine:
         self._stop = None
         self._stop_task = None   # 지연 정지 예약
         self._client = None      # KisClient 재사용(approval_key 메모리 캐시 유지)
+        self._day = dt.date.today()  # 당일 한정 패널의 기준일(날짜 변경 감지용)
 
     @classmethod
     def get(cls, code: str) -> "FlowEngine":
@@ -101,6 +109,17 @@ class FlowEngine:
                 pass
             self._task = None
 
+    def _rollover_if_new_day(self) -> None:
+        """엔진·FlowState는 레지스트리에 영속 → 서버가 주말을 넘겨 떠 있으면
+        금요일 잠정/프로그램/테이프가 월요일 화면에 남는다(실사고 2026-07-13).
+        장전엔 잠정 TR이 빈 배열이라 'if rows' 가드가 갱신을 건너뛰므로
+        날짜가 바뀐 순간 당일 한정 상태를 명시적으로 비운다."""
+        today = dt.date.today()
+        if today != self._day:
+            self._day = today
+            self.state.reset_intraday()
+            log.info("날짜 변경(%s) — 당일 한정 패널 초기화", today)
+
     # ── 소스 ──────────────────────────────────────────────
     async def _run_demo(self, stop: asyncio.Event) -> None:
         await DemoSource(self.state).run(stop)
@@ -127,16 +146,19 @@ class FlowEngine:
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)
         loop = asyncio.get_event_loop()
+        self._rollover_if_new_day()  # 백필 전에 — 전일 잔재 위에 덧그리지 않게
         # 시작 백필: 프로그램추이(장중 재접속 대비) — 실패해도 WS 누적으로 계속
         try:
-            pts = await client.program_trend(self.code)
-            if pts:
-                self.state.set_program_total(pts[-1]["net_qty"],
-                                             pts[-1]["net_value"], pts)
+            if _program_backfill_ok():
+                pts = await client.program_trend(self.code)
+                if pts:
+                    self.state.set_program_total(pts[-1]["net_qty"],
+                                                 pts[-1]["net_value"], pts)
         except Exception:
             log.warning("프로그램추이 백필 실패", exc_info=True)
         while not stop.is_set():
             ok = True
+            self._rollover_if_new_day()
             # 추정과 일별은 서로 격리 — 한쪽(간헐 500 관찰됨)이 다른 쪽을 못 막는다
             try:
                 rows = await client.estimate(self.code)
@@ -167,6 +189,16 @@ class FlowEngine:
             except Exception:
                 ok = False
                 log.warning("KIS 일별/세부 수급 조회 실패 — 재시도 예정", exc_info=True)
+            try:
+                # 대차잔고(T+1) — 매분(_POLL_SEC) 불러도 모듈 내부의 일 캐시 +
+                # 실패 포함 1h 스로틀이 원격 조회를 하루 한두 번으로 제한.
+                # 최초 백필(빈 캐시)만 ~30초 걸림(1회성, 이 주기 지연 수용).
+                # KIS와 무관한 소스라 실패해도 상단 노트는 건드리지 않는다.
+                sb = await shortbal.get_history(self.code, settings.cache_dir)
+                if sb.get("rows"):
+                    self.state.set_short(sb)
+            except Exception:
+                log.warning("대차잔고 조회 실패 — 다음 주기 재시도", exc_info=True)
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
             elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):
@@ -189,14 +221,16 @@ class FlowEngine:
                 pass
             if self.state.snapshot()["status"]["connected"]:
                 continue
-            n += 1
+            self._rollover_if_new_day()  # 자정 직후 이 폴백이 전일 프로그램
+            n += 1                       # 누적을 되살리지 않게 기준일 먼저 갱신
             try:
                 p = await client.price(self.code)
                 if p:
                     import datetime as _dt
                     self.state.set_market(
                         dict(p, time=_dt.datetime.now().strftime("%H:%M:%S")))
-                if n % 3 == 1:  # 프로그램 누적은 30초에 한 번이면 충분
+                # 프로그램 누적은 30초에 한 번이면 충분. 00~08시 생략(_program_backfill_ok)
+                if n % 3 == 1 and _program_backfill_ok():
                     pts = await client.program_trend(self.code)
                     if pts:
                         self.state.set_program_total(pts[-1]["net_qty"],

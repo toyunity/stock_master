@@ -86,3 +86,56 @@ def test_empty_state_snapshot_has_nulls_not_crash():
     assert snap["detail"] == {"date": None, "rows": []}
     assert snap["program"]["net_qty"] == 0
     json.dumps(snap)
+
+
+def test_short_balance_snapshot_and_signal():
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.apply_tick(_tick())  # rate=-1.84 (하락)
+    s.set_short({"rows": [
+        {"date": "2026-07-09", "qty": 14420269, "value": 31522708034000,
+         "chg": None, "src": "kofia"},
+        {"date": "2026-07-10", "qty": 14140221, "value": 30825681780000,
+         "chg": -280048, "src": "kofia"}],
+        "asof": "2026-07-10", "source": "kofia",
+        "updated": "2026-07-13T09:00:00"})
+    snap = s.snapshot()
+    sb = snap["short"]
+    assert sb["rows"][-1]["qty"] == 14140221 and sb["source"] == "kofia"
+    # 주가 하락(-1.84%) × 잔고 감소(-280,048) → 숏커버링 구간
+    assert sb["signal"]["text"] == "숏커버링 가능 구간"
+    assert sb["signal"]["tone"] == "info"
+    json.dumps(snap, ensure_ascii=False)
+
+
+def test_short_signal_none_without_price_or_rows():
+    s = FlowState("000660", "SK하이닉스", "live")
+    assert s.snapshot()["short"]["signal"] is None  # 데이터 없음 → 판정 안 함
+    s.set_short({"rows": [{"date": "2026-07-10", "qty": 1, "value": 1,
+                           "chg": 5, "src": "kofia"}]})
+    assert s.snapshot()["short"]["signal"] is None  # 주가 등락 미확보
+
+
+def test_reset_intraday_clears_day_scoped_keeps_confirmed():
+    # 서버가 주말을 넘겨 떠 있으면 전일 잠정이 남는 실사고(2026-07-13) 방지
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.apply_tick(_tick())
+    s.apply_program(_pgm())
+    s.set_estimate([{"asof": "14:30", "frgn": -1, "orgn": 1, "sum": 0}])
+    s.set_estimate_detail({"asof": "14:30", "rows": [{"name": "투신", "qty": 1,
+                           "value": 1}], "etc_qty": 2, "etc_value": 2})
+    s.set_daily([{"date": "2026-07-10", "prsn": 1, "frgn": -1, "orgn": 0,
+                  "close": 2180000}])
+    s.set_detail({"date": "2026-07-10", "rows": [{"name": "연기금", "qty": 1,
+                  "value": 1}]})
+    s.set_short({"rows": [{"date": "2026-07-10", "qty": 1, "value": 1,
+                           "chg": None, "src": "kofia"}]})
+    s.reset_intraday()
+    snap = s.snapshot()
+    assert snap["tape"] == []                          # 당일 한정 → 비움
+    assert snap["program"] == {"net_qty": 0, "net_value": 0, "points": []}
+    assert snap["estimate"]["rows"] == []
+    assert snap["estimate_detail"]["rows"] == []
+    assert snap["estimate_detail"]["etc_qty"] is None
+    assert snap["daily"] and snap["detail"]["rows"]    # 확정 데이터는 유지
+    assert snap["short"]["rows"]                       # 대차잔고도 유지(여러 날)
+    assert snap["market"]["price"] == 2187000          # 시세는 폴백이 곧 자가수정

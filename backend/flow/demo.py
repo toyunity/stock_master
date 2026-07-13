@@ -91,6 +91,20 @@ class DemoSource:
         etc = rng.randint(-20_000, 20_000)
         self.state.set_estimate_detail({"asof": "10:00", "rows": ed,
                                         "etc_qty": etc, "etc_value": etc * base})
+        # 대차잔고(데모): 20거래일 랜덤워크 — 실데이터 스키마와 동일
+        srows, bal = [], rng.randint(8_000_000, 15_000_000)
+        d = today - dt.timedelta(days=28)
+        while d < today:
+            if d.weekday() < 5:
+                chg = rng.randint(-400_000, 400_000)
+                bal = max(0, bal + chg)
+                srows.append({"date": d.isoformat(), "qty": bal,
+                              "value": bal * base, "chg": chg, "src": "demo"})
+            d += dt.timedelta(days=1)
+        srows = srows[-20:]
+        self.state.set_short({"rows": srows, "asof": srows[-1]["date"],
+                              "source": "demo",
+                              "updated": dt.datetime.now().isoformat(timespec="seconds")})
 
     async def run(self, stop: asyncio.Event) -> None:
         rng = self.rng

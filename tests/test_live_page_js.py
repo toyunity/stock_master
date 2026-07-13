@@ -33,8 +33,16 @@ global.setInterval = () => {};
 eval(code);
 render(snap);
 console.log('RENDER OK');
-for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist'])
-  console.log(id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
+for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig'])
+  console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
+for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig'])
+  console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
+console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
+console.log('TXT:sb-hist-html=' + String((els['sb-hist']||{}).innerHTML));
+// 차트 시간축: 라이브러리는 epoch을 UTC로 포맷 → toTs 결과의 UTC 시:분이
+// 원본 문자열과 같아야 라벨이 KST로 보인다(2026-07-13 실사고: 09:32→00:32)
+const tzd = new Date(toTs('09:32:00')*1000);
+console.log('TXT:tots-utc=' + tzd.getUTCHours() + ':' + tzd.getUTCMinutes());
 """
 
 
@@ -56,6 +64,13 @@ def _full_snapshot():
                   "orgn": 404365, "close": 2186000}])
     s.set_detail({"date": "2026-07-09",
                   "rows": [{"name": "연기금", "qty": 48907, "value": 113357000000}]})
+    s.set_short({"rows": [
+        {"date": "2026-07-09", "qty": 14420269, "value": 31522708034000,
+         "chg": None, "src": "kofia"},
+        {"date": "2026-07-10", "qty": 14140221, "value": 30825681780000,
+         "chg": -280048, "src": "kofia"}],
+        "asof": "2026-07-10", "source": "kofia",
+        "updated": "2026-07-13T09:00:00"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
@@ -73,7 +88,80 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
                        capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
-    # 마지막 패널들(프로그램·일별·세부·체결)까지 실제로 채워졌는지
-    filled = dict(line.split("=") for line in r.stdout.strip().splitlines()[1:])
-    for key in ("pgm-qty", "daily", "detail", "tape", "est-hist"):
+    filled, texts = _parse_harness(r.stdout)
+    # 마지막 패널들(프로그램·일별·세부·체결·대차)까지 실제로 채워졌는지
+    for key in ("pgm-qty", "daily", "detail", "tape", "est-hist",
+                "sb-qty", "sb-hist", "sb-sig"):
         assert int(filled[key]) > 0, f"{key} 패널이 비어 있음"
+    # 주가 ▲3.11% × 대차 −280,048주 → '건강한 상승 (숏 이탈)' 4분면
+    assert "건강한 상승" in texts["sb-sig"]
+    assert "금융투자협회" in texts["sb-fresh"]  # 출처 표기
+    # 일별 확정 테이블에 대차잔고 컬럼이 날짜 조인으로 들어갔는지(07-09 행)
+    assert "대차잔고" in texts["daily-html"]
+    assert "14,420,269" in texts["daily-html"] or "14420269" in texts["daily-html"]
+    # 시간축 라벨이 서버(KST) 시각 그대로 보이는지 — UTC 렌더 사고 재발 방지
+    assert texts["tots-utc"] == "9:32"
+
+
+def _parse_harness(stdout: str):
+    filled, texts = {}, {}
+    for line in stdout.strip().splitlines():
+        if line.startswith("LEN:"):
+            k, v = line[4:].split("=", 1)
+            filled[k] = v
+        elif line.startswith("TXT:"):
+            k, v = line[4:].split("=", 1)
+            texts[k] = v
+    return filled, texts
+
+
+@needs_node
+def test_render_js_empty_day_shows_waiting_not_stale(tmp_path):
+    # 실사고(2026-07-13): 날짜가 바뀌어 서버가 당일 상태를 비웠는데도 브라우저가
+    # 이전 DOM을 유지하면 전일 잠정이 계속 보인다 — 빈 rows에서 명시적 대기 표시.
+    import json as _json
+    from backend.flow.models import FlowState
+    from backend.report.live_page import render_live_page
+    snap = FlowState("000660", "SK하이닉스", "live").snapshot()
+    html_p, snap_p, js_p = (tmp_path / "live.html", tmp_path / "snap.json",
+                            tmp_path / "smoke.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap_p.write_text(_json.dumps(snap), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
+    _, texts = _parse_harness(r.stdout)
+    assert "발표 전" in texts["est-fresh"]      # 전일 잠정 잔존 대신 대기 문구
+    assert "데이터 없음" in texts["sb-note"]    # 대차잔고 실패 시에도 화면 유지
+
+
+@needs_node
+def test_render_js_mixed_sources_labeled(tmp_path):
+    # 협회·예탁원 혼합 시(집계 범위가 달라 절대치가 다름) 행별 출처를 표기하고
+    # 헤더에 혼합 경고를 띄운다 — 리뷰 확정 결함의 회귀 방지
+    import json as _json
+    from backend.flow.models import FlowState
+    from backend.report.live_page import render_live_page
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_short({"rows": [
+        {"date": "2026-07-09", "qty": 14420269, "value": 1, "chg": None,
+         "src": "kofia"},
+        {"date": "2026-07-10", "qty": 11121198, "value": 1, "chg": None,
+         "src": "seibro"}],
+        "asof": "2026-07-10", "source": "seibro", "updated": "t"})
+    snap = s.snapshot()
+    html_p, snap_p, js_p = (tmp_path / "live.html", tmp_path / "snap.json",
+                            tmp_path / "smoke.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap_p.write_text(_json.dumps(snap), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
+    _, texts = _parse_harness(r.stdout)
+    assert "혼합" in texts["sb-fresh"]           # 헤더 경고
+    assert "출처" in texts["sb-hist-html"]       # 출처 열
+    assert "협회" in texts["sb-hist-html"] and "예탁원" in texts["sb-hist-html"]

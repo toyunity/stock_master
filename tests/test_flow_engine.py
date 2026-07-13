@@ -79,8 +79,21 @@ def test_unsubscribe_lingers_not_immediate_stop(monkeypatch):
     _run(go())
 
 
+def _no_shortbal(monkeypatch):
+    """_poll_rest 테스트 공통 — 대차잔고 원격 조회 차단(외부 네트워크 금지)."""
+    from backend.flow import shortbal
+
+    async def fake(code, cache_dir, days=20):
+        return {"rows": [{"date": "2026-07-10", "qty": 14140221,
+                          "value": 30825681780000, "chg": -280048,
+                          "src": "kofia"}],
+                "asof": "2026-07-10", "source": "kofia", "updated": "t"}
+    monkeypatch.setattr(shortbal, "get_history", fake)
+
+
 def test_poll_rest_daily_survives_estimate_failure(monkeypatch):
     # 실운영에서 관찰(2026-07-10): 추정 TR이 간헐 500 → 일별 조회까지 죽으면 안 된다.
+    _no_shortbal(monkeypatch)
     eng = FlowEngine("000660", interval=0.1)
 
     class FakeClient:
@@ -126,12 +139,62 @@ def test_poll_rest_daily_survives_estimate_failure(monkeypatch):
     assert est_d["rows"] and est_d["rows"][0]["name"] == "투신"
     assert est_d["rows"][0]["qty"] == -120000
     assert "재시도" in snap["status"]["note"]  # 실패가 화면에 표시됨
+    assert snap["short"]["rows"][0]["qty"] == 14140221  # 대차잔고도 편입됨
+
+
+def test_new_day_resets_stale_intraday_panels(monkeypatch):
+    # 실사고(2026-07-13 월 아침): 서버가 금요일부터 떠 있으면 금요일 잠정치가
+    # 월요일 화면에 남는다 — 장전 잠정 TR은 빈 배열이라 'if rows' 가드가
+    # 갱신을 건너뛰기 때문. 날짜 변경 감지 시 당일 한정 상태를 비워야 한다.
+    import datetime as dt
+    _no_shortbal(monkeypatch)
+    eng = FlowEngine("000660", interval=0.1)
+    eng.state.set_estimate([{"asof": "14:30", "frgn": -812000, "orgn": 135000,
+                             "sum": -677000}])  # 금요일 마지막 슬롯
+    eng.state.apply_program({"t": "15:29:00", "sell_qty": 1, "sell_value": 1,
+                             "buy_qty": 1, "buy_value": 1,
+                             "net_qty": -953000, "net_value": -1})
+    eng._day = dt.date.today() - dt.timedelta(days=3)  # 금요일 기동으로 가장
+
+    class FakeClient:
+        async def program_trend(self, code):
+            return []
+
+        async def estimate(self, code):
+            return []  # 장전 실측(2026-07-13 08:56): output2가 빈 배열로 온다
+
+        async def daily_investor(self, code):
+            return []
+
+        async def investor_detail(self, code):
+            return None
+
+    async def fake_fit_lists(client=None):
+        return {"frgn_buy": [], "frgn_sell": [], "orgn_buy": [], "orgn_sell": []}
+    from backend.flow import scanner as sc
+    monkeypatch.setattr(sc, "fit_lists", fake_fit_lists)
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.get_event_loop().create_task(
+            eng._poll_rest(FakeClient(), stop))
+        await asyncio.sleep(0.2)
+        stop.set()
+        await asyncio.wait_for(task, 5)
+
+    _run(go())
+    snap = eng.state.snapshot()
+    assert snap["estimate"]["rows"] == []      # 전일 잠정 잔존 금지
+    assert snap["program"]["net_qty"] == 0     # 전일 프로그램 누적도 리셋
+    assert eng._day == dt.date.today()
 
 
 def test_ws_fallback_fills_market_while_disconnected(monkeypatch):
     # 웹소켓 재접속 창(서버 재시작 직후 등)에도 화면이 비지 않도록 REST 폴백
     import backend.flow.engine as engmod
     monkeypatch.setattr(engmod, "_FALLBACK_SEC", 0.05)
+    # 프로그램 백필의 00~08시 가드와 무관하게 검증(테스트 결정성)
+    monkeypatch.setattr(engmod, "_program_backfill_ok", lambda: True)
     eng = FlowEngine("000660", interval=0.05)
 
     class FakeClient:

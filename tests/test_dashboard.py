@@ -56,3 +56,18 @@ def test_assemble_stock_shape():
                        {"close": 71000, "change": -2.1})
     assert s["name"] == "삼성전자" and s["close"] == 71000
     assert s["action_ko"] == "매수 관심" and s["candles"][0]["time"] == "2026-06-01"
+
+
+def test_nav_loader_on_all_pages():
+    # 페이지 전환 로딩 바(2026-07-13 요청) — 세 페이지 모두 포함돼야 한다
+    from backend.report.scanner_page import render_scanner_page
+    from backend.report.live_page import render_live_page
+    for html in (render_dashboard([], [], "2026-07-13"),
+                 render_scanner_page(),
+                 render_live_page("000660", "SK하이닉스", "live")):
+        assert "navload" in html
+        assert "pageshow" in html      # bfcache 복귀 시 잔상 제거
+        assert "metaKey" in html       # Cmd/Ctrl+클릭(새 탭)엔 바를 켜지 않음
+    from backend.report.dashboard import _NAV_LOADER
+    # bfcache 무력화 리스너 금지(리뷰) — 설명 주석은 허용, 등록 구문만 금지
+    assert "addEventListener('beforeunload'" not in _NAV_LOADER

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from html import escape
 
-from backend.report.dashboard import _DISCLAIMER, _PWA_HEAD
+from backend.report.dashboard import _DISCLAIMER, _NAV_LOADER, _PWA_HEAD
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -110,10 +110,11 @@ async function load(){
 }
 load();
 setInterval(load, 60000);
-</script></body></html>"""
+</script>__NAV_LOADER__</body></html>"""
 
 
 def render_scanner_page() -> str:
     return (_TEMPLATE
+            .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER)))
