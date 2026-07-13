@@ -74,8 +74,159 @@ def test_program_events_carry_cumulative_totals():
     snap = s.snapshot()
     assert snap["program"]["net_qty"] == 2500      # 마지막 누적치 그대로
     assert snap["program"]["net_value"] == 250000
-    assert len(snap["program"]["points"]) == 200   # 차트 포인트 상한
+    # 분 단위 버킷(같은 분은 마지막 값으로 교체) — 250초 이벤트 → 10:00~10:04 5버킷
+    assert len(snap["program"]["points"]) == 5
     assert snap["program"]["points"][-1]["net_value"] == 250000  # 누적 곡선
+
+
+def test_program_points_bucketed_per_minute_keep_whole_day():
+    # 활발한 날 웹소켓 이벤트가 초당 수건이어도 분당 1점만 유지 — 당일 전체
+    # 곡선이 deque 상한에 밀려나지 않는다(P0-1 플랫라인 사고의 근본 원인).
+    s = FlowState("000660", "SK하이닉스", "demo")
+    for m in range(60):            # 09:00~09:59, 분당 4이벤트
+        for sec in (0, 15, 30, 45):
+            v = (m * 60 + sec) * 1000
+            s.apply_program(_pgm(net_qty=m, net_value=v, t=f"09:{m:02d}:{sec:02d}"))
+    pts = s.snapshot()["program"]["points"]
+    assert len(pts) == 60                       # 분당 1점
+    assert pts[0]["t"] == "09:00:45"            # 각 분의 마지막 이벤트로 교체
+    assert pts[-1]["net_value"] == (59 * 60 + 45) * 1000
+
+
+def test_program_day_range_tracks_all_events_and_backfill():
+    # Y축 도메인은 '당일 누적값 전체' min/max — 버킷으로 접힌 중간 극값도 포함
+    s = FlowState("000660", "SK하이닉스", "demo")
+    s.apply_program(_pgm(net_value=-500, t="09:01:10"))
+    s.apply_program(_pgm(net_value=-9000, t="09:01:20"))   # 같은 분의 극값
+    s.apply_program(_pgm(net_value=-100, t="09:01:30"))    # 버킷은 이 값으로 교체
+    p = s.snapshot()["program"]
+    assert len(p["points"]) == 1 and p["points"][0]["net_value"] == -100
+    assert p["day_min"] == -9000 and p["day_max"] == -100
+    # REST 백필 포인트도 범위에 반영
+    s.set_program_total(10, 7000, points=[
+        {"t": "09:00:00", "net_qty": 1, "net_value": -12000},
+        {"t": "09:30:00", "net_qty": 10, "net_value": 7000}])
+    p = s.snapshot()["program"]
+    assert p["day_min"] == -12000 and p["day_max"] == 7000
+
+
+def test_stall_detected_after_threshold(monkeypatch):
+    # 마지막 실체결 수신 후 stall_sec(기본 90초) 경과 → 서버가 정지로 판정
+    import backend.flow.models as models
+    base = 1_700_000_000.0
+    monkeypatch.setattr(models.time, "time", lambda: base)
+    s = FlowState("000660", "SK하이닉스", "live")
+    assert s.snapshot()["stall"] == {"stalled": False, "since": None, "sec": None}
+    s.apply_tick(_tick(t="10:15:00"))
+    monkeypatch.setattr(models.time, "time", lambda: base + 89)
+    assert s.snapshot()["stall"]["stalled"] is False
+    monkeypatch.setattr(models.time, "time", lambda: base + 91)
+    st = s.snapshot()["stall"]
+    assert st["stalled"] is True and st["since"] == "10:15:00" and st["sec"] == 91
+
+
+def test_rest_fallback_resets_stall_only_on_new_volume(monkeypatch):
+    # VI 중엔 REST 시세가 응답해도 누적 거래량이 안 늘어난다 — 정지 판정 유지
+    import backend.flow.models as models
+    base = 1_700_000_000.0
+    monkeypatch.setattr(models.time, "time", lambda: base)
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.apply_tick(_tick(t="10:15:00"))
+    monkeypatch.setattr(models.time, "time", lambda: base + 120)
+    s.set_market({"price": 2187000, "acml_vol": 1179948, "time": "10:17:00"})
+    st = s.snapshot()["stall"]
+    assert st["stalled"] is True                        # 거래량 동일 → 정지 유지
+    assert st["since"] == "10:15:00"  # 폴백이 time을 덮어써도 정지 시각은 고정(리뷰)
+    s.set_market({"price": 2187000, "acml_vol": 1180000, "time": "10:17:10"})
+    assert s.snapshot()["stall"]["stalled"] is False    # 신규 체결 → 해제
+
+
+def test_volume_gate_requires_increase_not_difference(monkeypatch):
+    # 자정 카운터 리셋(감소)·재시작 첫 폴링(이전값 None)은 수신이 아니다(리뷰 확정)
+    import backend.flow.models as models
+    base = 1_700_000_000.0
+    monkeypatch.setattr(models.time, "time", lambda: base)
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_market({"price": 100, "acml_vol": 0, "time": "08:00:00"})   # 재시작 직후
+    assert s.snapshot()["stall"]["since"] is None                     # 수신 아님
+    s.apply_tick(_tick(t="15:00:00"))          # 실체결(acml_vol=1179948)
+    s.reset_intraday()                         # 자정 롤오버 — market.vol은 남는다
+    s.set_market({"price": 100, "acml_vol": 0, "time": "08:00:01"})   # 프리오픈 리셋
+    assert s.snapshot()["stall"]["since"] is None                     # 수신 오인 금지
+
+
+def test_market_state_estimation():
+    import datetime as dt
+
+    from backend.flow.models import market_state
+    mon = dt.datetime(2026, 7, 13, 10, 0)     # 월요일 정규장
+    assert market_state(mon, False, True)["state"] == "open"
+    assert market_state(mon, True, True)["state"] == "halt"      # 공백 → VI/CB 의심
+    assert market_state(mon, True, False)["state"] == "open"     # 데이터 자체가 없으면 대기
+    assert market_state(dt.datetime(2026, 7, 11, 10, 0), False, True)["state"] == "closed"  # 토
+    assert market_state(dt.datetime(2026, 7, 13, 7, 0), False, True)["state"] == "closed"
+    assert market_state(dt.datetime(2026, 7, 13, 8, 30), True, True)["state"] == "pre"
+    assert market_state(dt.datetime(2026, 7, 13, 16, 0), True, True)["state"] == "after"
+    assert market_state(dt.datetime(2026, 7, 13, 21, 0), False, True)["state"] == "closed"
+    # 장마감 동시호가(15:20~30): 체결 공백이 정상 — halt 오탐 금지(리뷰 확정 회귀)
+    assert market_state(dt.datetime(2026, 7, 13, 15, 25), True, True)["state"] == "auction"
+
+
+def test_program_points_thinned_for_sse():
+    # 720분 하루치도 스냅샷은 ≤241점(1초마다 전문 재전송 — 대역 절약), 마지막 점 보존
+    s = FlowState("000660", "SK하이닉스", "demo")
+    for m in range(720):
+        s.apply_program(_pgm(net_value=m, t=f"{8 + m // 60:02d}:{m % 60:02d}:00"))
+    pts = s.snapshot()["program"]["points"]
+    assert len(pts) <= 241
+    assert pts[-1]["net_value"] == 719   # 최신 누적치는 반드시 포함
+    assert pts == sorted(pts, key=lambda p: p["t"])
+
+
+def test_adr_snapshot_computes_conversion_and_premium():
+    # 환산가 = DR가격 × 비율 × 환율, 괴리율 = (환산-원주)/원주 — 원주가는 틱마다
+    # 변하므로 스냅샷 시점 계산
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_adr({"sym": "SKHYV", "usd": 150.0, "base_usd": 149.0, "fx": 1500.0,
+               "ratio": 10.0, "us_open": False, "src": "kis", "fetched": "10:00:00"})
+    a = s.snapshot()["adr"]
+    assert a["converted"] == 2_250_000
+    assert a["premium_pct"] is None          # 원주 체결 전 — 판정 보류
+    s.apply_tick(_tick(price=2_187_000))
+    a = s.snapshot()["adr"]
+    assert a["ord_price"] == 2_187_000
+    assert a["premium_pct"] == 2.88          # (2.25M/2.187M - 1)*100
+    assert FlowState("005930", "삼성전자", "live").snapshot()["adr"] is None
+
+
+def test_credit_and_shortsale_snapshot_with_signal():
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_credit({"rows": [
+        {"date": "2026-07-09", "qty": 3_310_000, "ratio": 0.45, "new": 0,
+         "rdmp": 0, "close": 2_110_000, "value": 1, "chg": None},
+        {"date": "2026-07-10", "qty": 3_240_000, "ratio": 0.44, "new": 0,
+         "rdmp": 0, "close": 2_130_000, "value": 1, "chg": -70_000}],
+        "asof": "2026-07-10"})
+    s.set_shortsale({"rows": [{"date": "2026-07-10", "qty": 254_632,
+                               "vol": 4_827_239, "ratio": 5.27, "value": 1,
+                               "close": 2_180_000}], "asof": "2026-07-10"})
+    snap = s.snapshot()
+    assert snap["credit"]["asof"] == "2026-07-10"
+    assert snap["credit"]["signal"]["tone"] in ("good", "info", "warn", "flat")
+    assert snap["shortsale"]["rows"][-1]["ratio"] == 5.27
+    import json
+    json.dumps(snap, ensure_ascii=False)
+
+
+def test_snapshot_has_kst_clock_fields():
+    # 표시 시각의 단일 진실원 — 클라이언트는 로컬 시계 대신 이 값을 쓴다(P0-3)
+    import re
+
+    from backend.flow import kst
+    snap = FlowState("000660", "SK하이닉스", "live").snapshot()
+    assert snap["kst_date"] == kst.today().isoformat()
+    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", snap["kst_time"])
+    assert snap["market_state"]["label"]
 
 
 def test_empty_state_snapshot_has_nulls_not_crash():
@@ -132,7 +283,9 @@ def test_reset_intraday_clears_day_scoped_keeps_confirmed():
     s.reset_intraday()
     snap = s.snapshot()
     assert snap["tape"] == []                          # 당일 한정 → 비움
-    assert snap["program"] == {"net_qty": 0, "net_value": 0, "points": []}
+    assert snap["program"] == {"net_qty": 0, "net_value": 0, "points": [],
+                               "day_min": None, "day_max": None}
+    assert snap["stall"]["since"] is None              # 정지 판정 기준도 리셋
     assert snap["estimate"]["rows"] == []
     assert snap["estimate_detail"]["rows"] == []
     assert snap["estimate_detail"]["etc_qty"] is None

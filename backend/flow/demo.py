@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from backend.config import settings
+from backend.flow import kst
 from backend.news.names import _DISPLAY_NAMES
 
 
@@ -52,7 +53,7 @@ class DemoSource:
 
     def _seed_panels(self) -> None:
         rng, base = self.rng, self.base
-        today = dt.date.today()
+        today = kst.today()
         daily, d = [], today - dt.timedelta(days=1)
         while len(daily) < 10:
             if d.weekday() < 5:  # 주말 제외
@@ -104,7 +105,34 @@ class DemoSource:
         srows = srows[-20:]
         self.state.set_short({"rows": srows, "asof": srows[-1]["date"],
                               "source": "demo",
-                              "updated": dt.datetime.now().isoformat(timespec="seconds")})
+                              "updated": kst.now().isoformat(timespec="seconds")})
+        # ADR·신용잔고·공매도(데모): 실데이터 스키마와 동일하게 시드
+        fx = 1500.0
+        self.state.set_adr({"sym": "DEMO", "usd": round(
+            base / fx / 10 * (1 + rng.uniform(-0.05, 0.05)), 2),
+            "base_usd": round(base / fx / 10, 2), "fx": fx, "ratio": 10.0,
+            "us_open": False, "src": "demo",
+            "fetched": kst.now().strftime("%H:%M:%S")})
+        crows, cbal = [], rng.randint(2_500_000, 4_000_000)
+        xrows = []
+        d = today - dt.timedelta(days=28)
+        while d < today:
+            if d.weekday() < 5:
+                chg = rng.randint(-120_000, 120_000)
+                cbal = max(0, cbal + chg)
+                close = int(base * (1 + rng.uniform(-0.03, 0.03)))
+                crows.append({"date": d.isoformat(), "qty": cbal,
+                              "ratio": round(cbal / 728e6 * 100, 2),
+                              "new": max(0, chg), "rdmp": max(0, -chg),
+                              "close": close, "value": cbal * close, "chg": chg})
+                vol = rng.randint(3_000_000, 8_000_000)
+                sq = int(vol * rng.uniform(0.005, 0.06))
+                xrows.append({"date": d.isoformat(), "qty": sq, "vol": vol,
+                              "ratio": round(sq / vol * 100, 2),
+                              "value": sq * close, "close": close})
+            d += dt.timedelta(days=1)
+        self.state.set_credit({"rows": crows[-20:], "asof": crows[-1]["date"]})
+        self.state.set_shortsale({"rows": xrows[-20:], "asof": xrows[-1]["date"]})
 
     async def run(self, stop: asyncio.Event) -> None:
         rng = self.rng
@@ -123,7 +151,7 @@ class DemoSource:
             vol = rng.randint(1, 500)
             acml_vol += vol
             acml_value += vol * tick_px
-            now = dt.datetime.now().strftime("%H:%M:%S")
+            now = kst.now().strftime("%H:%M:%S")
             rate = (tick_px - self.base) / self.base * 100
             self.state.apply_tick({
                 "t": now, "price": tick_px,
@@ -149,7 +177,7 @@ class DemoSource:
                 rows = list(self.state.snapshot()["estimate"]["rows"])[-4:]
                 frgn = rng.randint(-200_000, 200_000)
                 orgn = rng.randint(-100_000, 100_000)
-                rows.append({"asof": dt.datetime.now().strftime("%H:%M"),
+                rows.append({"asof": kst.now().strftime("%H:%M"),
                              "frgn": frgn, "orgn": orgn, "sum": frgn + orgn})
                 self.state.set_estimate(rows)
             try:

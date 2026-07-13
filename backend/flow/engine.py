@@ -13,9 +13,13 @@ import datetime as dt
 import logging
 
 from backend.config import settings
+from backend.flow import adr
+from backend.flow import credit
 from backend.flow import kis
+from backend.flow import kst
 from backend.flow import scanner
 from backend.flow import shortbal
+from backend.flow import shortsale
 from backend.flow.demo import DemoSource, lookup_stock
 from backend.flow.models import FlowState
 
@@ -31,7 +35,7 @@ _FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 
 def _program_backfill_ok() -> bool:
     """00~08시(NXT 프리마켓 전, 거래 없음)엔 프로그램 백필 금지 — 이 시간대
     TR 응답이 전일 추이일 가능성(미검증)이 있어 자정 리셋을 되살릴 수 있다."""
-    return dt.datetime.now().hour >= 8
+    return kst.now().hour >= 8
 
 
 class FlowEngine:
@@ -46,7 +50,7 @@ class FlowEngine:
         self._stop = None
         self._stop_task = None   # 지연 정지 예약
         self._client = None      # KisClient 재사용(approval_key 메모리 캐시 유지)
-        self._day = dt.date.today()  # 당일 한정 패널의 기준일(날짜 변경 감지용)
+        self._day = kst.today()  # 당일 한정 패널의 기준일(날짜 변경 감지용, KST)
 
     @classmethod
     def get(cls, code: str) -> "FlowEngine":
@@ -114,7 +118,7 @@ class FlowEngine:
         금요일 잠정/프로그램/테이프가 월요일 화면에 남는다(실사고 2026-07-13).
         장전엔 잠정 TR이 빈 배열이라 'if rows' 가드가 갱신을 건너뛰므로
         날짜가 바뀐 순간 당일 한정 상태를 명시적으로 비운다."""
-        today = dt.date.today()
+        today = kst.today()
         if today != self._day:
             self._day = today
             self.state.reset_intraday()
@@ -173,7 +177,7 @@ class FlowEngine:
                     self.code, await scanner.fit_lists(client))
                 if d:
                     self.state.set_estimate_detail(
-                        dict(d, asof=dt.datetime.now().strftime("%H:%M")))
+                        dict(d, asof=kst.now().strftime("%H:%M")))
             except Exception:
                 ok = False
                 log.warning("가집계 장중 세부 조회 실패 — 재시도 예정", exc_info=True)
@@ -199,6 +203,26 @@ class FlowEngine:
                     self.state.set_short(sb)
             except Exception:
                 log.warning("대차잔고 조회 실패 — 다음 주기 재시도", exc_info=True)
+            # 아래 셋은 부가 패널 — 각자 격리, 실패해도 ok/노트는 건드리지 않는다.
+            # (모듈 내부 TTL 캐시가 원격 호출을 60s/1h로 제한 — 매분 불러도 안전)
+            try:
+                q = await adr.get_quote(client, self.code)
+                if q:
+                    self.state.set_adr(q)
+            except Exception:
+                log.warning("ADR/환율 조회 실패 — 다음 주기 재시도", exc_info=True)
+            try:
+                cr = await credit.get_history(client, self.code)
+                if cr.get("rows"):
+                    self.state.set_credit(cr)
+            except Exception:
+                log.warning("신용잔고 조회 실패 — 다음 주기 재시도", exc_info=True)
+            try:
+                ss = await shortsale.get_history(client, self.code)
+                if ss.get("rows"):
+                    self.state.set_shortsale(ss)
+            except Exception:
+                log.warning("공매도 일별 조회 실패 — 다음 주기 재시도", exc_info=True)
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
             elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):
@@ -226,9 +250,8 @@ class FlowEngine:
             try:
                 p = await client.price(self.code)
                 if p:
-                    import datetime as _dt
                     self.state.set_market(
-                        dict(p, time=_dt.datetime.now().strftime("%H:%M:%S")))
+                        dict(p, time=kst.now().strftime("%H:%M:%S")))
                 # 프로그램 누적은 30초에 한 번이면 충분. 00~08시 생략(_program_backfill_ok)
                 if n % 3 == 1 and _program_backfill_ok():
                     pts = await client.program_trend(self.code)

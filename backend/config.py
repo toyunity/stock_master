@@ -36,5 +36,18 @@ class Settings(BaseSettings):
     # 시장 구분: UN=KRX+NXT 통합(기본 — NXT가 대형주 거래량의 30%+, 실측), J=KRX, NX=NXT
     market_div: str = "UN"
 
+    # 수신 정지 감지(초): 정규장 중 마지막 체결/프로그램 수신 후 이 시간이 지나면
+    # 차트에 "수신 정지" 오버레이 (VI/서킷브레이커/장중단 오해 방지)
+    stall_sec: int = 90
+    # 감시선: 코드별 [{price, label}] — SM_WATCH_LINES='{"000660":[...]}' JSON으로 재정의
+    watch_lines: dict[str, list[dict]] = {
+        "000660": [{"price": 1_853_000, "label": "절대선"},
+                   {"price": 2_600_000, "label": "예약매도"}]}
+    # ADR/DR 환산: 원주 1주 = DR N주. SK하이닉스는 2026-07-10 나스닥 상장 DR 'SKHYV'
+    # (10 DR = 원주 1주 — DR 상장주식수 7.08B ≈ 원주 728M×10으로 실측 검증).
+    # ※ 구 OTC ADR 'HXSCL'은 2014년 이후 거래 없음 — 쓰지 말 것.
+    adr_map: dict[str, str] = {"000660": "SKHYV"}  # 원주 코드 → 나스닥 DR 심볼
+    adr_ratio: float = 10.0
+
 
 settings = Settings()

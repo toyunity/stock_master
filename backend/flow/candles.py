@@ -15,6 +15,7 @@ import random
 import time
 
 from backend.config import settings
+from backend.flow import kst
 from backend.flow.demo import lookup_stock
 from backend.flow.kis import KisClient, parse_minute_candles
 
@@ -79,7 +80,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     if hit and now - hit[0] < _TTL:
         return hit[1]
     earliest, cap = _session_window()
-    bars, hour = [], min(dt.datetime.now().strftime("%H%M%S"), cap)
+    bars, hour = [], min(kst.now().strftime("%H%M%S"), cap)
     latest_t = f"{hour[0:2]}:{hour[2:4]}:{hour[4:6]}"
     for _ in range(_MAX_CALLS):
         js = await client._get(_MIN_PATH, "FHKST03010200",
@@ -151,8 +152,12 @@ def _daily_candles(code: str) -> list:
 
 
 async def get_candles(code: str, tf: str) -> dict:
+    # date: 분봉의 KST 기준일 — 프런트 시간축이 클라이언트 로컬 날짜/시계 없이
+    # 서버 기준으로 epoch을 만들도록 항상 내려준다(P0-3).
+    kdate = kst.today().isoformat()
     if tf == "1d":
-        return {"tf": tf, "candles": await asyncio.to_thread(_daily_candles, code)}
+        return {"tf": tf, "date": kdate,
+                "candles": await asyncio.to_thread(_daily_candles, code)}
     live = (settings.kis_app_key and settings.kis_app_secret
             and settings.flow_mode != "demo")
     if live:
@@ -167,4 +172,4 @@ async def get_candles(code: str, tf: str) -> dict:
         bars = aggregate(bars, 5)
     elif tf == "15m":
         bars = aggregate(bars, 15)
-    return {"tf": tf, "candles": bars}
+    return {"tf": tf, "date": kdate, "candles": bars}

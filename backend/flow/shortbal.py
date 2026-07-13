@@ -200,7 +200,10 @@ async def get_history(code: str, cache_dir: str, days: int = 20) -> dict:
     path = Path(cache_dir) / f"shortbal_{code}.json"
     cache = _load_cache(path)
     rows = {r["date"]: r for r in cache["rows"]}
-    today = dt.date.today()
+    # 기준일은 KST — 해외/UTC 환경에서 '직전 평일' 계산이 밀리지 않게(P0-3).
+    # 아래 스로틀의 dt.datetime.now()는 상대 시간 비교뿐이라 그대로 둔다.
+    from backend.flow import kst
+    today = kst.today()
     exp = expected_latest(today)
 
     def result() -> dict:
