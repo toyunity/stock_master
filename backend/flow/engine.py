@@ -15,8 +15,10 @@ import logging
 from backend.config import settings
 from backend.flow import adr
 from backend.flow import credit
+from backend.flow import exvol
 from backend.flow import kis
 from backend.flow import kst
+from backend.flow import member
 from backend.flow import scanner
 from backend.flow import shortbal
 from backend.flow import shortsale
@@ -223,6 +225,18 @@ class FlowEngine:
                     self.state.set_shortsale(ss)
             except Exception:
                 log.warning("공매도 일별 조회 실패 — 다음 주기 재시도", exc_info=True)
+            try:
+                xv = await exvol.get_split(client, self.code)
+                if xv.get("krx") or xv.get("nxt"):
+                    self.state.set_exvol(xv)
+            except Exception:
+                log.warning("거래소별 거래량 조회 실패 — 다음 주기 재시도", exc_info=True)
+            try:
+                mb = await member.get_member(client, self.code)
+                if mb.get("sell") or mb.get("buy"):
+                    self.state.set_member(mb)
+            except Exception:
+                log.warning("거래원 조회 실패 — 다음 주기 재시도", exc_info=True)
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
             elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):

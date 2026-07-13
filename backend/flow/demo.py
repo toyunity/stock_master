@@ -133,6 +133,35 @@ class DemoSource:
             d += dt.timedelta(days=1)
         self.state.set_credit({"rows": crows[-20:], "asof": crows[-1]["date"]})
         self.state.set_shortsale({"rows": xrows[-20:], "asof": xrows[-1]["date"]})
+        # 거래소별 거래량·거래원(데모): 실데이터 스키마와 동일
+        kv, nv = rng.randint(5_000_000, 9_000_000), rng.randint(2_000_000, 6_000_000)
+        now_t = kst.now().strftime("%H:%M:%S")
+        self.state.set_exvol({
+            "krx": {"price": base, "vol": kv, "pbmn": kv * base},
+            "nxt": {"price": int(base * 0.998), "vol": nv, "pbmn": nv * base},
+            "nxt_share_pct": round(nv / (kv + nv) * 100, 1),
+            "sessions": {"pre": int(nv * 0.15), "main": int(nv * 0.65),
+                         "after": int(nv * 0.2)},
+            "warn": {"move_pct": -0.2, "after_share_pct": 2.5,
+                     "text": "시간외 변동 미미", "tone": "flat"},
+            "asof": now_t})
+        names = [("키움증권", False), ("미래에셋증권", False), ("삼성증권", False),
+                 ("JP모간", True), ("모간서울", True), ("KB증권", False),
+                 ("NH투자증권", False)]
+        def desk_rows():
+            picks = rng.sample(names, 5)
+            qs = sorted((rng.randint(100_000, 900_000) for _ in picks),
+                        reverse=True)
+            return [{"name": n, "qty": q, "rlim": round(q / (kv + nv) * 100, 2),
+                     "foreign": f} for (n, f), q in zip(picks, qs)]
+        sell, buy = desk_rows(), desk_rows()
+        g_sell = sum(r["qty"] for r in sell if r["foreign"])
+        g_buy = sum(r["qty"] for r in buy if r["foreign"])
+        self.state.set_member({"sell": sell, "buy": buy, "basis": "UN",
+                               "glob": {"seln": g_sell, "shnu": g_buy,
+                                        "ntby": g_buy - g_sell,
+                                        "seln_rlim": 0.0, "shnu_rlim": 0.0},
+                               "asof": now_t})
 
     async def run(self, stop: asyncio.Event) -> None:
         rng = self.rng

@@ -21,6 +21,7 @@ from backend.cli import build_dashboard
 from backend.api import icons
 from backend.flow import candles
 from backend.flow import scanner as flow_scanner
+from backend.flow import semi
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
@@ -98,6 +99,12 @@ async def scanner_api():
             {"error": "스캐너는 KIS 키가 필요합니다 (.env에 SM_KIS_APP_KEY/SECRET)"},
             status_code=503)
     return JSONResponse(await flow_scanner.fetch_scan())
+
+
+@app.get("/api/semi")
+async def semi_api():
+    """반도체 동향(메모리 중심) — 미국(SOX·나스닥)+국내 시세 요약, 60초 캐시."""
+    return JSONResponse(await semi.get_overview())
 
 
 @app.get("/healthz")

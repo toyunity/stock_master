@@ -36,11 +36,13 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
-                  'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall'])
+                  'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
+console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:pstall-class=' + String((els['pstall']||{}).className));
 console.log('TXT:watch-lines=' + global.__lines.map(l=>l.title).join(','));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
@@ -61,6 +63,14 @@ if (process.argv[4]) {  // 두 번째 스냅샷 — 연속 렌더 동작(감시�
 def _full_snapshot():
     from backend.flow.models import FlowState
     s = FlowState("000660", "SK하이닉스", "live")
+    # 세 세션 모두 규모 분포 표본을 넣는다(체결 규모 패널이 어느 세션에서도 그려지게).
+    # 마지막 tick이 market.price가 되므로 13:00 tick을 마지막에 둔다.
+    s.apply_tick({"t": "08:30:00", "price": 2250000, "sign": "up", "change": 1,
+                  "rate": 0.1, "vol": 5, "acml_vol": 1000, "acml_value": 1,
+                  "strength": 100.0, "side": "buy"})
+    s.apply_tick({"t": "16:10:00", "price": 2250000, "sign": "up", "change": 1,
+                  "rate": 0.1, "vol": 300, "acml_vol": 2000, "acml_value": 2,
+                  "strength": 100.0, "side": "sell"})
     s.apply_tick({"t": "13:00:00", "price": 2254000, "sign": "up",
                   "change": 68000, "rate": 3.11, "vol": 10, "acml_vol": 4000000,
                   "acml_value": 9000000000000, "strength": 88.5, "side": "buy"})
@@ -97,6 +107,22 @@ def _full_snapshot():
          "value": 1, "close": 2186000},
         {"date": "2026-07-10", "qty": 254632, "vol": 4827239, "ratio": 5.27,
          "value": 564882324000, "close": 2180000}], "asof": "2026-07-10"})
+    s.set_exvol({"krx": {"price": 1845000, "vol": 7951404, "pbmn": 1},
+                 "nxt": {"price": 1843000, "vol": 5195600, "pbmn": 1},
+                 "nxt_share_pct": 39.5,
+                 "sessions": {"pre": 863404, "main": 3300000, "after": 1032196},
+                 "warn": {"move_pct": -0.11, "after_share_pct": 7.85,
+                          "text": "시간외 변동 미미", "tone": "flat"},
+                 "asof": "16:31:13"})
+    s.set_member({"sell": [
+        {"name": "삼성증권", "qty": 915123, "rlim": 11.51, "foreign": False},
+        {"name": "모간서울", "qty": 479029, "rlim": 6.02, "foreign": True}],
+        "buy": [
+        {"name": "키움증권", "qty": 825492, "rlim": 10.38, "foreign": False},
+        {"name": "JP모간", "qty": 739909, "rlim": 9.31, "foreign": True}],
+        "glob": {"seln": 831835, "shnu": 739909, "ntby": -91926,
+                 "seln_rlim": 10.46, "shnu_rlim": 9.31},
+        "asof": "16:31:13"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
@@ -117,8 +143,18 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     filled, texts = _parse_harness(r.stdout)
     # 마지막 패널들(프로그램·일별·세부·체결·대차·ADR·공매도·신용)까지 실제로 채워졌는지
     for key in ("pgm-qty", "daily", "detail", "tape", "est-hist",
-                "sb-qty", "sb-hist", "sb-sig", "adr-usd", "ss-hist", "cr-hist"):
+                "sb-qty", "sb-hist", "sb-sig", "adr-usd", "ss-hist", "cr-hist",
+                "sz-bars"):
         assert int(filled[key]) > 0, f"{key} 패널이 비어 있음"
+    # 체결 규모 분포(주체 추정): 표본 부족 시 판정 보류 + 추정 라벨
+    assert "보류" in texts["sz-sig"] or "판정:" in texts["sz-sig"]
+    assert "추정" in texts["sz-fresh"] or "표본" in texts["sz-fresh"]
+    # 거래소별 거래량: 세션 표 + 판정 문구
+    assert "판정:" in texts["xv-sig"] and "16:31:13" in texts["xv-fresh"]
+    # 거래원: 외국계 표시 + 정규장 기준 순매도 요약
+    assert "fgn" in texts["mb-tbl-html"] and "모간서울" in texts["mb-tbl-html"]
+    assert "순매도 우위(추정)" in texts["mb-sig"] and "정규장 기준" in texts["mb-sig"]
+    assert "추정" in texts["mb-fresh"]
     # 주가 ▲3.11% × 대차 −280,048주 → '건강한 상승 (숏 이탈)' 4분면
     assert "건강한 상승" in texts["sb-sig"]
     assert "금융투자협회" in texts["sb-fresh"]  # 출처 표기

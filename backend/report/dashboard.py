@@ -98,11 +98,25 @@ ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
 .issues ul{margin:2px 0 0 0} .issues li{font-size:13px;margin:2px 0} .issues a{color:#1565c0;text-decoration:none}
 .meta{font-size:11px;color:#999}
 .disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:16px}
+.semigrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.scard{background:#f7f8fb;border-radius:8px;padding:8px 6px;text-align:center}
+.scard .nm{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scard .px{font-size:14px;font-weight:700}
+.scard .rt{font-size:12px;font-weight:600}
+.rt.up{color:#c62828}.rt.down{color:#1565c0}.rt.flat{color:#888}
 </style></head><body>
 <h1>📊 Stock Master <small style="font-size:13px;color:#888">__DATE__</small></h1>
 <div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
  · <a href="/scanner" style="color:#1565c0;text-decoration:none">🔍 수급 스캐너</a></div>
 __REFRESH__
+<div class="card" id="semi" style="display:none">
+  <b>🔬 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
+  <div class="conf" id="semi-flow"></div>
+  <div class="semigrid" id="semi-us"></div>
+  <div class="semigrid" id="semi-kr" style="margin-top:6px"></div>
+  <div class="meta" style="margin-top:6px">미국: KIS 해외시세(계정에 따라 15분 지연) ·
+  국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
+</div>
 <div class="search">
   <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">
   <div id="results"></div>
@@ -167,6 +181,41 @@ q.oninput=()=>{
   if(!t){res.innerHTML='';return;}
   searchRender(D.universe.filter(u=>u.name.toLowerCase().includes(t)||u.code.indexOf(t)>=0));
 };
+// ── 반도체 동향(메모리 중심): /api/semi 60초 폴링 — 서버 서빙일 때만 뜨고,
+//    아티팩트(정적 파일)에서는 fetch 실패로 자동 숨김(자기완결 유지) ──
+function semiStale(){
+  // 실패 시 이전 값을 최신인 척 두지 않는다(리뷰 확정) — 라벨로 명시
+  const el=document.getElementById('semi');
+  if(el&&el.style.display!=='none')
+    document.getElementById('semi-fresh').textContent='· ⚠ 갱신 실패 — 마지막 값 표시 중(자동 재시도)';
+}
+async function loadSemi(){
+  try{
+    const r=await fetch('/api/semi'); if(!r.ok){semiStale();return;}
+    const d=await r.json();
+    document.getElementById('semi').style.display='';
+    const rt=q=>q.rate==null?'<div class="rt flat">'+(q.stale?'전일 종가':'–')+'</div>'
+      :'<div class="rt '+(q.rate>0?'up':(q.rate<0?'down':'flat'))+'">'
+      +(q.rate>0?'▲':(q.rate<0?'▼':''))+Math.abs(q.rate).toFixed(2)+'%</div>';
+    document.getElementById('semi-us').innerHTML=d.us.map(u=>'<div class="scard"><div class="nm">'
+      +esc(u.sym)+' · '+esc(u.name||'')+'</div><div class="px">'
+      +(u.ok?(u.sym==='SOX'?u.last.toFixed(1):'$'+u.last.toFixed(2)):'–')+'</div>'
+      +(u.ok?rt(u):'<div class="rt flat">–</div>')+'</div>').join('');
+    document.getElementById('semi-kr').innerHTML=d.kr.map(k=>'<div class="scard"><div class="nm">'
+      +esc(k.name)+'</div><div class="px">'+(k.ok?won(k.price):'–')+'</div>'
+      +(k.ok?rt(k):'<div class="rt flat">–</div>')+'</div>').join('');
+    const g=s=>{const x=d.us.find(u=>u.sym===s);return x&&x.ok?x:null;};
+    const hx=d.kr.find(k=>k.code==='000660');
+    const f=x=>x&&x.rate!=null?((x.rate>0?'+':'')+x.rate.toFixed(2)+'%'):'–';
+    // 미국 장중엔 '간밤→오늘' 인과가 성립하지 않는다(리뷰 확정) — 프레이밍 분기
+    document.getElementById('semi-flow').textContent=d.us_open
+      ?('미국 진행 중: SOX '+f(g('SOX'))+' · MU '+f(g('MU'))+' — 내일 국내 반응 주목 (오늘 하이닉스 마감 '+f(hx&&hx.ok?hx:null)+')')
+      :('간밤 SOX '+f(g('SOX'))+' · MU '+f(g('MU'))+' → 오늘 하이닉스 '+f(hx&&hx.ok?hx:null));
+    document.getElementById('semi-fresh').textContent='· 기준 '+esc(d.asof)+' (KST)'
+      +(d.us_open?' · 미국 장중(지연 가능)':' · 미국 장마감 — 전일 종가 기준');
+  }catch(e){semiStale();}
+}
+loadSemi(); setInterval(loadSemi,60000);
 </script>__NAV_LOADER__</body></html>"""
 
 

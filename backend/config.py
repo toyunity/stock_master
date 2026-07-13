@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     watch_lines: dict[str, list[dict]] = {
         "000660": [{"price": 1_853_000, "label": "절대선"},
                    {"price": 2_600_000, "label": "예약매도"}]}
+    # 반도체 동향 섹션(메인 대시보드 상단) 종목셋 — SOX는 지수(div=N), 나머지 NAS
+    semi_us: list[str] = ["SOX", "NVDA", "MU", "WDC", "SNDK",
+                          "AMAT", "LRCX", "KLAC", "SKHYV"]
+    semi_kr: list[str] = ["005930", "000660"]
+
     # ADR/DR 환산: 원주 1주 = DR N주. SK하이닉스는 2026-07-10 나스닥 상장 DR 'SKHYV'
     # (10 DR = 원주 1주 — DR 상장주식수 7.08B ≈ 원주 728M×10으로 실측 검증).
     # ※ 구 OTC ADR 'HXSCL'은 2014년 이후 거래 없음 — 쓰지 말 것.

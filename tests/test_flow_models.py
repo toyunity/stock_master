@@ -218,6 +218,54 @@ def test_credit_and_shortsale_snapshot_with_signal():
     json.dumps(snap, ensure_ascii=False)
 
 
+def test_size_distribution_buckets_by_session_and_side():
+    from backend.flow.models import size_signal
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.apply_tick(_tick(vol=5, side="buy", t="08:30:00"))     # 장전 1-10주
+    s.apply_tick(_tick(vol=200, side="sell", t="16:10:00"))  # 장후 100초과
+    s.apply_tick(_tick(vol=60, side="buy", t="13:00:00"))    # 정규 51-100주
+    z = s.snapshot()["sizes"]
+    assert z["pre"]["buy"]["s1"] == {"n": 1, "v": 5 * 2187000}
+    assert z["after"]["sell"]["s4"] == {"n": 1, "v": 200 * 2187000}
+    assert z["regular"]["buy"]["s3"]["n"] == 1
+    assert z["signals"]["after"] is None       # 표본 30건 미만 — 판정 보류
+    # 판정: 100주 초과 매도 대금 비중 40%↑ → 기관성 매도(추정)
+    for _ in range(40):
+        s.apply_tick(_tick(vol=500, side="sell", t="16:20:00"))
+        s.apply_tick(_tick(vol=2, side="buy", t="16:20:01"))
+    sig = s.snapshot()["sizes"]["signals"]["after"]
+    assert sig["text"] == "기관성 매도 우세(추정)" and sig["tone"] == "warn"
+    # 개인 소액 중심: 1-10주 건수 70%↑
+    ses = {"buy": {k: {"n": 0, "v": 0} for k in ("s1", "s2", "s3", "s4")},
+           "sell": {k: {"n": 0, "v": 0} for k in ("s1", "s2", "s3", "s4")}}
+    ses["buy"]["s1"] = {"n": 80, "v": 80 * 10}
+    ses["sell"]["s2"] = {"n": 20, "v": 20 * 300}
+    assert size_signal(ses)["text"] == "개인 소액 물량 중심(추정)"
+    # 양쪽 다 40% 초과 시 큰 쪽으로 판정 — 순매수인데 '매도 우세' 오판 방지(리뷰)
+    ses2 = {side: {k: {"n": 0, "v": 0} for k in ("s1", "s2", "s3", "s4")}
+            for side in ("buy", "sell")}
+    ses2["buy"]["s4"] = {"n": 30, "v": 55_0000_0000}
+    ses2["sell"]["s4"] = {"n": 25, "v": 42_0000_0000}
+    assert size_signal(ses2)["text"] == "기관성 매수 우세(추정)"
+    s.reset_intraday()
+    z = s.snapshot()["sizes"]
+    assert z["after"]["sell"]["s4"]["n"] == 0  # 당일 한정 → 리셋
+
+
+def test_reset_intraday_clears_exvol_and_member():
+    # 거래소별 거래량·거래원은 당일 누적 기반 — 전일 것이 남으면 오도(리뷰 확정)
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_exvol({"krx": {"price": 1, "vol": 1, "pbmn": 1},
+                 "nxt": {"price": 1, "vol": 1, "pbmn": 1},
+                 "nxt_share_pct": 50.0, "sessions": {}, "warn": None,
+                 "asof": "16:00:00"})
+    s.set_member({"sell": [], "buy": [], "basis": "UN", "glob": None,
+                  "asof": "16:00:00"})
+    s.reset_intraday()
+    snap = s.snapshot()
+    assert snap["exvol"] is None and snap["member"] is None
+
+
 def test_snapshot_has_kst_clock_fields():
     # 표시 시각의 단일 진실원 — 클라이언트는 로컬 시계 대신 이 값을 쓴다(P0-3)
     import re

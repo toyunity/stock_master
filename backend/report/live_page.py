@@ -51,6 +51,13 @@ details.panel[open] summary{margin-bottom:6px}
 .sig{font-size:13px;font-weight:600;margin-top:8px;min-height:16px}
 .sig-good{color:#2e7d32} .sig-warn{color:#ef6c00} .sig-info{color:#1565c0} .sig-flat{color:#888}
 .b-warn{background:#ef6c00} .b-info{background:#1565c0}
+.szrow{display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0}
+.szlbl{width:88px;color:#666;text-align:right;white-space:nowrap}
+.szbar{height:12px;border-radius:3px;min-width:2px}
+.szbuy{background:#c62828} .szsell{background:#1565c0}
+.szval{color:#888;white-space:nowrap}
+.fgn{color:#7b1fa2;font-weight:600}
+#mb-tbl th:nth-child(3),#mb-tbl td:nth-child(3){text-align:left}
 .chartwrap{position:relative}
 .stall{display:none;position:absolute;inset:0;background:rgba(247,248,251,.85);z-index:5;
   align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#ef6c00;
@@ -174,6 +181,43 @@ details.panel[open] summary{margin-bottom:6px}
   <table id="detail"></table>
 </details>
 
+<div class="panel">
+  <h2>🔀 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
+  <div class="grid3">
+    <div><div class="lbl">KRX(정규)</div><div class="val" id="xv-krx">–</div></div>
+    <div><div class="lbl">NXT 합계</div><div class="val" id="xv-nxt">–</div></div>
+    <div><div class="lbl">NXT 비중</div><div class="val" id="xv-share">–</div></div>
+  </div>
+  <table id="xv-ses" style="margin-top:8px"></table>
+  <div class="sig" id="xv-sig"></div>
+  <div class="meta" id="xv-note">세션별 NXT 거래량 — 장전(08:00~08:50) / 본장(09:00~15:20) /
+  장후(15:30~20:00). KRX 거래량은 전부 정규장. 진행 중이거나 경계 미통과 세션은 '–'.
+  시간외 가격 변동 대비 거래량이 극히 적으면 유동성 부족 왜곡 경고.</div>
+</div>
+
+<div class="panel">
+  <h2>🏦 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
+  <table id="mb-tbl"></table>
+  <div class="sig" id="mb-sig"></div>
+  <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
+  외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
+  창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
+</div>
+
+<div class="panel">
+  <h2>📏 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
+  <div class="tfrow" id="sz-tabs">
+    <button class="tf" data-ses="pre">장전</button>
+    <button class="tf" data-ses="regular">정규장</button>
+    <button class="tf" data-ses="after">장후(NXT)</button>
+  </div>
+  <div id="sz-bars"></div>
+  <div class="sig" id="sz-sig"></div>
+  <div class="meta">체결량 구간별 건수·거래대금 비중 — <b>추정치(정확한 주체 식별 불가)</b>.
+  100주 초과 대금 비중↑ = 기관성, 1-10주 건수 비중↑ = 개인 중심. 시장이 얇은
+  시간외 구간일수록 판별력이 높다. 투자자별 순매수 <b>확정치는 T+1 09:30 이후</b> 제공.</div>
+</div>
+
 <details class="panel">
   <summary><h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2></summary>
   <table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table>
@@ -247,8 +291,10 @@ async function loadCandles(){
       +lastT+(tf==='1d'?'':' (KST) · 60초 자동 갱신');
   }catch(e){console.error(e);}
 }
-document.querySelectorAll('.tf').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('.tf').forEach(x=>x.classList.remove('on'));
+// [data-tf]로 한정 — 세션 탭(#sz-tabs, data-ses)·알림 버튼도 .tf 클래스를 쓰므로
+// 전체 '.tf'를 잡으면 하이라이트를 서로 지운다(리뷰 확정)
+document.querySelectorAll('.tf[data-tf]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tf[data-tf]').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); TF=b.dataset.tf; loadCandles();
 });
 loadCandles();
@@ -298,8 +344,43 @@ function checkWatch(price){
     b.onclick=()=>{unlockAudio();Notification.requestPermission().finally(()=>{b.style.display='none';});};
   }})();
 
+// ── 체결 규모 분포(주체 추정): 세션 토글 + 방향×구간 막대 ──
+let SZ_SES=null, LAST_S=null; // SZ_SES null=자동(현재 세션 추종)
+const SES_KO={pre:'장전(8:00~9:00)',regular:'정규장',after:'장후 NXT(15:30~20:00)'};
+function curSession(){const t=KTIME||'12:00:00';
+  return t<'09:00:00'?'pre':(t<='15:30:00'?'regular':'after');}
+document.querySelectorAll('#sz-tabs .tf').forEach(b=>b.onclick=()=>{
+  SZ_SES=b.dataset.ses; if(LAST_S)renderSizes(LAST_S);});
+function renderSizes(S){
+  const ses=SZ_SES||curSession();
+  document.querySelectorAll('#sz-tabs .tf').forEach(x=>x.classList.toggle('on',x.dataset.ses===ses));
+  const Z=(S.sizes||{})[ses];
+  const el=document.getElementById('sz-bars'), sg=document.getElementById('sz-sig');
+  const fresh=document.getElementById('sz-fresh');
+  if(!Z){el.innerHTML='';sg.textContent='';fresh.textContent='· 데이터 없음';return;}
+  const KO={s1:'1-10주',s2:'11-50주',s3:'51-100주',s4:'100주 초과'};
+  let tot=0,n=0;
+  for(const side of ['buy','sell'])for(const k in Z[side]){tot+=Z[side][k].v;n+=Z[side][k].n;}
+  if(!tot){
+    el.innerHTML='<div class="meta">이 세션 체결 수신 없음 (서버 기동 이후 집계분만 포함)</div>';
+    sg.textContent=''; sg.className='sig';
+    fresh.textContent='· '+SES_KO[ses]+' · 표본 0건';return;
+  }
+  el.innerHTML=['sell','buy'].map(side=>
+    ['s4','s3','s2','s1'].map(k=>{const c=Z[side][k];const pct=c.v/tot*100;
+      return '<div class="szrow"><span class="szlbl">'+(side==='buy'?'매수':'매도')+' '+KO[k]
+        +'</span><div class="szbar '+(side==='buy'?'szbuy':'szsell')+'" style="width:'
+        +Math.max(2,pct*2.6)+'px"></div><span class="szval">'+c.n.toLocaleString('ko-KR')
+        +'건 · '+pct.toFixed(1)+'%</span></div>';}).join('')).join('');
+  const sig=(S.sizes.signals||{})[ses];
+  if(sig){sg.textContent='판정: '+sig.text; sg.className='sig sig-'+sig.tone;}
+  else{sg.textContent='판정 보류 — 표본 30건 미만(추정 불가)'; sg.className='sig sig-flat';}
+  fresh.textContent='· '+SES_KO[ses]+' · 표본 '+n.toLocaleString('ko-KR')+'건 · 추정치';
+}
+
 function render(S){
   KDATE=S.kst_date; KTIME=S.kst_time; // 모든 표시 시각의 기준(서버 KST)
+  LAST_S=S; renderSizes(S);
   const mode=document.getElementById('mode');
   mode.textContent=S.mode.toUpperCase();
   mode.className='badge '+(S.mode==='live'?'b-live':'b-demo');
@@ -520,6 +601,61 @@ function render(S){
     }
     document.getElementById('cr-sig').textContent=''; document.getElementById('cr-sig').className='sig';
     document.getElementById('cr-hist').innerHTML='';
+  }
+  // ── 거래소별 거래량 (KRX vs NXT) ──
+  const XV=S.exvol;
+  if(XV&&XV.krx&&XV.nxt){
+    document.getElementById('xv-fresh').textContent='· 기준 '+esc(XV.asof||'')+' (KST) · 출처 KIS';
+    document.getElementById('xv-krx').textContent=num(XV.krx.vol)+'주';
+    document.getElementById('xv-nxt').textContent=num(XV.nxt.vol)+'주';
+    document.getElementById('xv-share').textContent=XV.nxt_share_pct==null?'–':XV.nxt_share_pct.toFixed(1)+'%';
+    const XS=XV.sessions||{};
+    const fv=v=>v==null?'– (진행 중/미집계)':num(v)+'주';
+    document.getElementById('xv-ses').innerHTML='<tr><th>NXT 세션</th><th>거래량</th></tr>'
+      +'<tr><td>장전 (08:00~08:50)</td><td>'+fv(XS.pre)+'</td></tr>'
+      +'<tr><td>본장 (09:00~15:20)</td><td>'+fv(XS.main)+'</td></tr>'
+      +'<tr><td>장후 (15:30~20:00)</td><td>'+fv(XS.after)+'</td></tr>';
+    const W=XV.warn, xg=document.getElementById('xv-sig');
+    if(W){
+      xg.textContent='판정: '+W.text+' — 시간외 '+(W.move_pct>0?'+':'')+W.move_pct.toFixed(2)
+        +'% (NXT '+won(XV.nxt.price)+' vs 정규 종가 '+won(XV.krx.price)
+        +') · 장후 거래량 = 당일의 '+W.after_share_pct.toFixed(2)+'%';
+      xg.className='sig sig-'+W.tone;
+    }else{xg.textContent=''; xg.className='sig';}
+  }else{
+    document.getElementById('xv-fresh').textContent='· 데이터 없음 — 조회 실패, 자동 재시도 중';
+    for(const id of ['xv-krx','xv-nxt','xv-share']){
+      const el=document.getElementById(id); el.textContent='–'; el.className='val';
+    }
+    document.getElementById('xv-ses').innerHTML='';
+    document.getElementById('xv-sig').textContent='';
+  }
+  // ── 거래원(회원사) 창구 분석 ──
+  const MB=S.member;
+  if(MB&&((MB.sell&&MB.sell.length)||(MB.buy&&MB.buy.length))){
+    document.getElementById('mb-fresh').textContent='· 기준 '+esc(MB.asof||'')+' (KST) · '
+      +(MB.basis==='J'?'정규장(KRX) 기준':'KRX+NXT 통합')+' · 추정';
+    const nm=x=>x?('<span'+(x.foreign?' class="fgn"':'')+'>'+esc(x.name)+'</span> <span class="meta">'
+      +(x.rlim||0).toFixed(1)+'%</span>'):'';
+    let rows='<tr><th>매도 창구</th><th>수량</th><th>매수 창구</th><th>수량</th></tr>';
+    for(let i=0;i<5;i++){
+      const sr=(MB.sell||[])[i], br=(MB.buy||[])[i];
+      if(!sr&&!br)continue;
+      rows+='<tr><td>'+nm(sr)+'</td><td>'+(sr?num(sr.qty):'')+'</td><td>'+nm(br)
+        +'</td><td>'+(br?num(br.qty):'')+'</td></tr>';
+    }
+    document.getElementById('mb-tbl').innerHTML=rows;
+    const G=MB.glob, mg=document.getElementById('mb-sig');
+    if(G&&(G.seln||G.shnu)){
+      mg.textContent='외국계 창구(정규장 기준): 매도 '+num(G.seln)+'주 · 매수 '+num(G.shnu)
+        +'주 · 순매수 '+shares(G.ntby)
+        +(G.ntby<0?' → 외국계 순매도 우위(추정)':(G.ntby>0?' → 외국계 순매수 우위(추정)':' → 균형'));
+      mg.className='sig '+(G.ntby<0?'sig-warn':(G.ntby>0?'sig-good':'sig-flat'));
+    }else{mg.textContent='외국계 합계 미제공(장전이거나 집계 전)'; mg.className='sig sig-flat';}
+  }else{
+    document.getElementById('mb-fresh').textContent='· 데이터 없음 — 조회 실패, 자동 재시도 중';
+    document.getElementById('mb-tbl').innerHTML='';
+    document.getElementById('mb-sig').textContent='';
   }
   document.getElementById('tape').innerHTML='<tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr>'
     +S.tape.map(t=>'<tr><td>'+esc(t.t)+'</td><td>'+won(t.price)+'</td><td>'+num(t.vol)

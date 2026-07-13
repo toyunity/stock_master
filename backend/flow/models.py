@@ -22,6 +22,61 @@ _TAPE_MAX = 30     # 체결 테이프 표시 건수
 _POINTS_MAX = 780
 
 
+_SIZE_KEYS = ("s1", "s2", "s3", "s4")  # 1-10 / 11-50 / 51-100 / 100초과 (주)
+_SESSIONS = ("pre", "regular", "after")
+
+
+def tick_session(t: str) -> str:
+    """체결 시각(HH:MM:SS, KST) → 세션. 09:00 정각은 정규장.
+
+    15:30:00 정각은 KRX 마감 단일가 프린트(대량)와 NXT 애프터 첫 체결이 겹치는
+    초 — 물량이 압도적인 마감 단일가 쪽(정규장)으로 분류한다. NXT 애프터 첫 초
+    일부가 정규로 섞이는 오차는 반대 분류(마감 단일가가 장후로 오인)보다 작다."""
+    if t < "09:00:00":
+        return "pre"
+    if t <= "15:30:00":
+        return "regular"
+    return "after"
+
+
+def size_bucket(vol: int) -> str:
+    if vol <= 10:
+        return "s1"
+    if vol <= 50:
+        return "s2"
+    if vol <= 100:
+        return "s3"
+    return "s4"
+
+
+def empty_sizes() -> dict:
+    return {ses: {side: {b: {"n": 0, "v": 0} for b in _SIZE_KEYS}
+                  for side in ("buy", "sell")} for ses in _SESSIONS}
+
+
+def size_signal(ses: dict) -> Optional[dict]:
+    """한 세션의 체결 규모 분포 → 주체 추정 판정(항상 '추정' — 정확한 주체 식별 불가).
+
+    100주 초과 대금 비중 40%↑ = 기관성, 1-10주 건수 비중 70%↑ = 개인 중심.
+    표본 30건 미만은 판정 보류(None) — 얇은 표본의 과판정 방지."""
+    tot_v = sum(c["v"] for side in ses.values() for c in side.values())
+    tot_n = sum(c["n"] for side in ses.values() for c in side.values())
+    if tot_n < 30 or tot_v <= 0:
+        return None
+    # 양쪽 다 40%를 넘을 수 있다(리뷰 확정) — 순서가 아니라 큰 쪽으로 판정
+    sell_big = ses["sell"]["s4"]["v"] / tot_v
+    buy_big = ses["buy"]["s4"]["v"] / tot_v
+    if max(sell_big, buy_big) >= 0.4:
+        if sell_big > buy_big:
+            return {"text": "기관성 매도 우세(추정)", "tone": "warn"}
+        if buy_big > sell_big:
+            return {"text": "기관성 매수 우세(추정)", "tone": "good"}
+        return {"text": "기관성 매수·매도 팽팽(추정)", "tone": "info"}
+    if (ses["buy"]["s1"]["n"] + ses["sell"]["s1"]["n"]) / tot_n >= 0.7:
+        return {"text": "개인 소액 물량 중심(추정)", "tone": "info"}
+    return {"text": "혼재 — 뚜렷한 우세 없음", "tone": "flat"}
+
+
 def market_state(now_kst: dt.datetime, stalled: bool, has_data: bool) -> dict:
     """KST 시각 + 체결 공백 → 시장 상태 배지 추정 {state,label,tone}.
 
@@ -83,6 +138,11 @@ class FlowState:
         # 신용융자 잔고(실질 T+2)·공매도 일별(T+1): rows 오름차순
         self._credit: dict = {"rows": [], "asof": None}
         self._shortsale: dict = {"rows": [], "asof": None}
+        # 체결 규모 분포: 세션×방향×구간 {n(건수), v(대금)} — 주체 추정용(당일 한정)
+        self._sizes: dict = empty_sizes()
+        # 거래소별 거래량·거래원 창구(각 60s 갱신, 실패 시 이전 값 유지)
+        self._exvol: Optional[dict] = None
+        self._member: Optional[dict] = None
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -93,6 +153,10 @@ class FlowState:
                                "vol": d["vol"], "side": d["side"]})
         self._last_rx = time.time()
         self._last_rx_t = d["t"]
+        if d["side"] in ("buy", "sell") and d["vol"] > 0:
+            c = self._sizes[tick_session(d["t"])][d["side"]][size_bucket(d["vol"])]
+            c["n"] += 1
+            c["v"] += d["vol"] * d["price"]
 
     def set_market(self, d: dict) -> None:
         """REST 폴백용 시세 갱신 — 테이프는 건드리지 않고, 미제공 필드는 유지.
@@ -178,6 +242,12 @@ class FlowState:
     def set_adr(self, d: dict) -> None:
         self._adr = dict(d)
 
+    def set_exvol(self, d: dict) -> None:
+        self._exvol = dict(d)
+
+    def set_member(self, d: dict) -> None:
+        self._member = dict(d)
+
     def set_credit(self, d: dict) -> None:
         self._credit = {"rows": list(d.get("rows") or []), "asof": d.get("asof")}
 
@@ -199,6 +269,9 @@ class FlowState:
         self._pgm_day_max = None
         self._last_rx = None
         self._last_rx_t = None
+        self._sizes = empty_sizes()
+        self._exvol = None    # 당일 누적 기반 — 전일 것이 남으면 오도(리뷰 확정)
+        self._member = None
         self._estimate_rows = []
         self._est_detail = {"asof": None, "rows": [],
                             "etc_qty": None, "etc_value": None}
@@ -239,7 +312,13 @@ class FlowState:
             "detail": {"date": self._detail["date"],
                        "rows": list(self._detail["rows"])},
             "short": self._short_snapshot(),
+            "sizes": {**{ses: {side: dict(b) for side, b in sides.items()}
+                         for ses, sides in self._sizes.items()},
+                      "signals": {ses: size_signal(self._sizes[ses])
+                                  for ses in _SESSIONS}},
             "adr": self._adr_snapshot(),
+            "exvol": self._exvol,
+            "member": self._member,
             "credit": {"rows": list(self._credit["rows"]),
                        "asof": self._credit["asof"],
                        "signal": credit_signal(self._credit["rows"])},
