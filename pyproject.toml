@@ -15,6 +15,13 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "pillow>=10.0",
+    "httpx>=0.27",              # authlib 토큰 교환에 필요(구 dev→main 승격)
+    # 인증 게이트(공개 배포) — Google OAuth2 + TOTP 2차 + 세션 쿠키
+    "authlib>=1.6",
+    "pyotp>=2.9",
+    "itsdangerous>=2.2",        # Starlette SessionMiddleware
+    "qrcode>=8.0",             # TOTP 등록 QR(SVG)
+    "python-multipart>=0.0.9",  # 2FA 폼(POST) 파싱
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,195 @@
+"""인증 게이트(Google OAuth2 + TOTP) 테스트.
+
+최우선 불변식: 공개 노출 시 '모든 경로가 실제로 잠겼는가'. 신원 검증(allowlist)과
+TOTP는 순수 함수로 분리해 단위 테스트하고, 게이트는 전-경로 파라미터라이즈로 지킨다.
+"""
+
+
+# ── verify_userinfo: 이메일 검증 + allowlist (순수 함수) ──────────────
+def test_verify_userinfo_allows_verified_allowlisted_email():
+    from backend.api.auth import verify_userinfo
+    info = {"email": "master@gmail.com", "email_verified": True}
+    assert verify_userinfo(info, ["master@gmail.com"]) == "master@gmail.com"
+
+
+def test_verify_userinfo_rejects_unverified_email():
+    from backend.api.auth import verify_userinfo
+    info = {"email": "master@gmail.com", "email_verified": False}
+    assert verify_userinfo(info, ["master@gmail.com"]) is None
+
+
+def test_verify_userinfo_rejects_email_not_in_allowlist():
+    from backend.api.auth import verify_userinfo
+    info = {"email": "intruder@gmail.com", "email_verified": True}
+    assert verify_userinfo(info, ["master@gmail.com"]) is None
+
+
+def test_verify_userinfo_rejects_missing_email():
+    from backend.api.auth import verify_userinfo
+    assert verify_userinfo({"email_verified": True}, ["master@gmail.com"]) is None
+
+
+def test_verify_userinfo_is_case_insensitive():
+    from backend.api.auth import verify_userinfo
+    info = {"email": "Master@Gmail.com", "email_verified": True}
+    assert verify_userinfo(info, ["master@gmail.com"]) == "master@gmail.com"
+
+
+# ── TOTP: 검증 + 시크릿 영속 ──────────────────────────────────────────
+def test_verify_totp_accepts_current_code():
+    import pyotp
+    from backend.api.auth import verify_totp
+    secret = pyotp.random_base32()
+    assert verify_totp(secret, pyotp.TOTP(secret).now()) is True
+
+
+def test_verify_totp_rejects_garbage_and_wrong_length():
+    import pyotp
+    from backend.api.auth import verify_totp
+    secret = pyotp.random_base32()
+    for bad in ("12345", "abcdef", "", "1234567", None):
+        assert verify_totp(secret, bad) is False
+
+
+def test_get_totp_secret_prefers_env(tmp_path):
+    from backend.api.auth import get_totp_secret
+    assert get_totp_secret(str(tmp_path), env_secret="JBSWY3DPEHPK3PXP") == "JBSWY3DPEHPK3PXP"
+
+
+def test_get_totp_secret_generates_once_and_persists(tmp_path):
+    import os
+    from backend.api.auth import get_totp_secret
+    s1 = get_totp_secret(str(tmp_path))
+    s2 = get_totp_secret(str(tmp_path))     # 재호출 — 재생성 금지(등록된 Authenticator 보호)
+    assert s1 == s2 and len(s1) >= 16
+    assert os.path.exists(os.path.join(str(tmp_path), "totp_secret.txt"))
+
+
+def test_get_session_secret_prefers_env_then_persists(tmp_path):
+    import os
+    from backend.api.auth import get_session_secret
+    assert get_session_secret(str(tmp_path), env_secret="fixed-secret") == "fixed-secret"
+    a = get_session_secret(str(tmp_path))
+    b = get_session_secret(str(tmp_path))   # 영속 — 재시작해도 로그인 유지되도록 동일
+    assert a == b and len(a) >= 32
+    assert os.path.exists(os.path.join(str(tmp_path), "session_secret.txt"))
+
+
+# ── 게이트: 전 경로가 실제로 잠겼는가 (최우선 불변식) ──────────────────
+import pytest
+
+
+def _auth_settings(tmp_path, **over):
+    from backend.config import Settings
+    base = dict(auth_enabled=True, google_client_id="dummy-id",
+               google_client_secret="dummy-secret",
+               oauth_redirect_url="http://localhost:8000/auth/callback",
+               allowed_emails="master@gmail.com", cache_dir=str(tmp_path),
+               cookie_secure=False, flow_mode="demo")
+    base.update(over)
+    return Settings(**base)
+
+
+def _client(settings):
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    return TestClient(create_app(settings), follow_redirects=False)
+
+
+PROTECTED = ["/", "/live/000660", "/api/live/000660/stream",
+             "/api/candles/000660", "/scanner", "/api/scanner", "/api/semi",
+             "/api/watch/000660"]
+
+
+@pytest.mark.parametrize("path", PROTECTED)
+def test_protected_endpoints_gated_when_unauthenticated(tmp_path, path):
+    c = _client(_auth_settings(tmp_path))
+    r = c.get(path)
+    if path.startswith("/api/"):
+        assert r.status_code == 401, f"{path} API가 안 잠김: {r.status_code}"
+    else:
+        assert r.status_code in (302, 307), f"{path} HTML 리다이렉트 안 됨: {r.status_code}"
+        assert "/login" in r.headers.get("location", "")
+
+
+def test_public_page_endpoints_reachable(tmp_path):
+    c = _client(_auth_settings(tmp_path))
+    for path in ("/login", "/healthz", "/manifest.json"):
+        assert c.get(path).status_code == 200, f"{path} 공개인데 막힘"
+    # 아이콘 프리픽스는 공개 — 없는 아이콘도 게이트가 아니라 핸들러(404)에 도달해야
+    assert c.get("/icons/none.png").status_code == 404
+
+
+def test_auth_check_reports_401_when_unauthenticated(tmp_path):
+    c = _client(_auth_settings(tmp_path))
+    assert c.get("/api/auth/check").status_code == 401
+
+
+def test_create_app_fails_closed_when_enabled_without_credentials(tmp_path):
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path, google_client_id=None, allowed_emails="")
+    with pytest.raises(Exception):
+        create_app(s)   # 공개인데 무방비로 뜨는 것 방지(fail-closed)
+
+
+def test_auth_disabled_has_no_gate(tmp_path):
+    c = _client(_auth_settings(tmp_path, auth_enabled=False))
+    assert c.get("/healthz").status_code == 200
+    assert c.get("/manifest.json").status_code == 200
+    assert c.get("/login").status_code == 404   # 게이트 미장착 → 로그인 라우트 없음
+
+
+def test_full_login_flow_email_then_totp_grants_access(tmp_path):
+    # OAuth 콜백(목) → 1단계(email): 보호경로는 /2fa로 → TOTP 통과 → 2단계 완전 인증.
+    import pyotp
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    from backend.api.auth import get_totp_secret
+    s = _auth_settings(tmp_path)
+    app = create_app(s)
+
+    async def fake_token(request):   # 구글 미접속 — 토큰 교환만 목으로
+        return {"userinfo": {"email": "master@gmail.com", "email_verified": True}}
+    app.state.oauth_client.authorize_access_token = fake_token
+
+    c = TestClient(app, follow_redirects=False)
+    r = c.get("/auth/callback")                       # 콜백 → email 세션 → /2fa
+    assert r.status_code == 302 and r.headers["location"] == "/2fa"
+    # 1단계 상태: 보호경로는 로그인이 아니라 2FA로 유도
+    assert c.get("/").headers["location"] == "/2fa"
+    assert c.get("/api/candles/000660").status_code == 401
+    assert c.get("/api/auth/check").status_code == 401
+    # 2단계: 올바른 TOTP → 완전 인증
+    code = pyotp.TOTP(get_totp_secret(str(tmp_path), s.totp_secret)).now()
+    r = c.post("/2fa", data={"code": code})
+    assert r.status_code == 302 and r.headers["location"] == "/"
+    assert c.get("/api/auth/check").status_code == 200
+
+
+def test_full_login_flow_rejects_wrong_totp(tmp_path):
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    app = create_app(s)
+
+    async def fake_token(request):
+        return {"userinfo": {"email": "master@gmail.com", "email_verified": True}}
+    app.state.oauth_client.authorize_access_token = fake_token
+    c = TestClient(app, follow_redirects=False)
+    c.get("/auth/callback")
+    assert c.post("/2fa", data={"code": "000000"}).status_code == 401  # 틀린 코드
+    assert c.get("/api/auth/check").status_code == 401                 # 여전히 미완
+
+
+def test_callback_rejects_disallowed_email(tmp_path):
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    app = create_app(s)
+
+    async def fake_token(request):
+        return {"userinfo": {"email": "intruder@gmail.com", "email_verified": True}}
+    app.state.oauth_client.authorize_access_token = fake_token
+    c = TestClient(app, follow_redirects=False)
+    assert c.get("/auth/callback").status_code == 403     # allowlist 밖 → 거부
+    assert c.get("/api/auth/check").status_code == 401     # 세션 안 생김

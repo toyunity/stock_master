@@ -54,5 +54,16 @@ class Settings(BaseSettings):
     adr_map: dict[str, str] = {"000660": "SKHYV"}  # 원주 코드 → 나스닥 DR 심볼
     adr_ratio: float = 10.0
 
+    # S9 인증 게이트 (공개 배포 시 필수 — Tailscale Funnel). auth_enabled=True인데
+    # 크리덴셜이 없으면 앱이 기동을 거부한다(fail-closed — 공개인데 무방비 방지).
+    auth_enabled: bool = False               # SM_AUTH_ENABLED
+    google_client_id: Optional[str] = None     # SM_GOOGLE_CLIENT_ID
+    google_client_secret: Optional[str] = None  # SM_GOOGLE_CLIENT_SECRET
+    oauth_redirect_url: Optional[str] = None   # SM_OAUTH_REDIRECT_URL (공개 HTTPS 콜백)
+    allowed_emails: str = ""                   # SM_ALLOWED_EMAILS (콤마구분)
+    session_secret: Optional[str] = None       # SM_SESSION_SECRET (없으면 캐시에 생성·영속)
+    totp_secret: Optional[str] = None          # SM_TOTP_SECRET (없으면 캐시에 생성·영속)
+    cookie_secure: bool = True                 # SM_COOKIE_SECURE (로컬 http 테스트만 False)
+
 
 settings = Settings()

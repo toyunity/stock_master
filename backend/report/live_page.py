@@ -684,6 +684,13 @@ function scheduleReconnect(){
   reconnTimer=setTimeout(()=>{reconnTimer=null;connect();},wait);
   esBackoff=Math.min(esBackoff*2,MAX_BACKOFF);
 }
+function authGuardThen(action){
+  // 재접속 전 세션 확인 — 만료(401)면 무한 재접속(방금 고친 버그처럼) 대신 로그인으로.
+  // 인증 비활성(라우트 없음 404)·정상(200)·기타는 그대로 재접속 경로로.
+  fetch('/api/auth/check',{cache:'no-store'}).then(r=>{
+    if(r.status===401)location.href='/login'; else action();
+  }).catch(()=>action());
+}
 function connect(){
   if(reconnTimer){clearTimeout(reconnTimer);reconnTimer=null;}
   if(es){try{es.close();}catch(e){}}   // 기존 연결 정리 — 병렬 스트림 방지
@@ -694,14 +701,16 @@ function connect(){
   es.onmessage=e=>{lastMsg=Date.now();
     try{render(JSON.parse(e.data));}catch(err){console.error(err);}};
   es.onerror=()=>{
-    // CONNECTING이면 네이티브가 자체 재시도 중 → 맡긴다. CLOSED면 죽은 것 → 수동 재접속.
-    if(es.readyState===EventSource.CLOSED)scheduleReconnect();
+    // CONNECTING이면 네이티브가 자체 재시도 중 → 맡긴다. CLOSED면 죽은 것 → 세션
+    // 확인 후 수동 재접속(만료면 로그인으로).
+    if(es.readyState===EventSource.CLOSED)authGuardThen(scheduleReconnect);
     else setConn('재접속 중…');
   };
 }
 setInterval(()=>{   // 워치독: 오류 이벤트 없이 멈춘 half-open을 하트비트 공백으로 감지
   if(es&&es.readyState!==EventSource.CLOSED&&Date.now()-lastMsg>STALL_MS){
-    setConn('응답 없음 · 재접속'); esBackoff=1000; connect();
+    setConn('응답 없음 · 재접속');
+    authGuardThen(()=>{esBackoff=1000;connect();});
   }
 },5000);
 function resume(){   // 화면/네트워크 복귀 — 죽었거나 멈췄으면 즉시 되살린다(iOS PWA 잠금 복귀)

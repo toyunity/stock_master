@@ -358,37 +358,49 @@ global.LightweightCharts = { createChart: () => ({
   addCandlestickSeries: () => ({setData(){}, createPriceLine(){}}),
   timeScale: () => ({fitContent(){}}), applyOptions(){},
 })};
-global.fetch = async () => ({ok:false, json: async()=>({})});
+global.location = { href: '' };
+// 재접속 전 auth-check는 200(세션 유효) — 재접속이 정상 진행되어야. 그 외 fetch는 실패 응답.
+global.fetch = async (u) => (String(u).indexOf('/api/auth/check') >= 0)
+  ? {status: 200, ok: true, json: async () => ({})}
+  : {ok: false, status: 500, json: async () => ({})};
 
 eval(code);
 
 const last = () => esInstances[esInstances.length - 1];
 const open = es => { es.readyState = MockES.OPEN; if (es.onopen) es.onopen(); };
+const flush = () => new Promise(r => setImmediate(r));  // authGuard fetch 마이크로태스크 배수
 
-console.log('N_init=' + esInstances.length);            // 로드 직후 최초 연결
+(async () => {
+  console.log('N_init=' + esInstances.length);            // 로드 직후 최초 연결
 
-// (1) CLOSED 후 onerror(네이티브가 포기) → 백오프 타이머 → 새 연결
-open(esInstances[0]);
-const e0 = last(); e0.readyState = MockES.CLOSED; if (e0.onerror) e0.onerror();
-now += 60000; flushDue();
-console.log('N_after_closed=' + esInstances.length);
+  // (1) CLOSED 후 onerror(네이티브가 포기) → (auth 200) → 백오프 타이머 → 새 연결
+  open(esInstances[0]);
+  const e0 = last(); e0.readyState = MockES.CLOSED; if (e0.onerror) e0.onerror();
+  await flush(); await flush();
+  now += 60000; flushDue();
+  await flush();
+  console.log('N_after_closed=' + esInstances.length);
 
-// (2) 화면 복귀(visibilitychange) — 죽어 있으면 즉시 재연결(iOS PWA 잠금 복귀)
-const e1 = last(); open(e1); e1.readyState = MockES.CLOSED;
-document.hidden = false; fire('visibilitychange');
-console.log('N_after_visible=' + esInstances.length);
+  // (2) 화면 복귀(visibilitychange) — 죽어 있으면 즉시 재연결(iOS PWA 잠금 복귀)
+  const e1 = last(); open(e1); e1.readyState = MockES.CLOSED;
+  document.hidden = false; fire('visibilitychange');
+  await flush(); await flush();
+  console.log('N_after_visible=' + esInstances.length);
 
-// (3) half-open 정지(오류 이벤트 없음, readyState OPEN 유지) — 하트비트 공백을
-//     워치독이 감지해 강제 재연결
-const e2 = last(); open(e2); e2.readyState = MockES.OPEN;
-if (e2.onmessage) e2.onmessage({data: '{}'});   // 정상 수신 → lastMsg 갱신
-now += 60000; runWatchdog();
-console.log('N_after_stall=' + esInstances.length);
+  // (3) half-open 정지(오류 이벤트 없음, OPEN 유지) — 하트비트 공백을 워치독이 감지해
+  //     (auth 200 후) 강제 재연결
+  const e2 = last(); open(e2); e2.readyState = MockES.OPEN;
+  if (e2.onmessage) e2.onmessage({data: '{}'});   // 정상 수신 → lastMsg 갱신
+  now += 60000; runWatchdog();
+  await flush(); await flush();
+  console.log('N_after_stall=' + esInstances.length);
 
-// (4) CONNECTING 상태의 onerror(네이티브가 스스로 재시도 중)는 새 연결을 만들지 않는다
-const e3 = last(); open(e3); e3.readyState = MockES.CONNECTING; if (e3.onerror) e3.onerror();
-now += 60000; flushDue();
-console.log('N_after_connecting_err=' + esInstances.length);
+  // (4) CONNECTING 상태의 onerror(네이티브가 스스로 재시도 중)는 새 연결을 만들지 않는다
+  const e3 = last(); open(e3); e3.readyState = MockES.CONNECTING; if (e3.onerror) e3.onerror();
+  await flush(); await flush();
+  now += 60000; flushDue();
+  console.log('N_after_connecting_err=' + esInstances.length);
+})();
 """
 
 
@@ -420,3 +432,73 @@ def test_sse_reconnects_when_closed_stalled_or_resumed(tmp_path):
     assert c["N_after_visible"] == 3           # (2) 화면 복귀 → 즉시 재연결
     assert c["N_after_stall"] == 4             # (3) 하트비트 공백 → 워치독 재연결
     assert c["N_after_connecting_err"] == 4    # (4) CONNECTING 오류는 재연결 안 함(중복 방지)
+
+
+# ── 세션 만료 시 로그인 리다이렉트(인증 게이트 배포) ──────────────────────
+# 세션 만료 시 SSE가 401 → EventSource는 상태코드를 못 읽어 CLOSED → 무한 재접속
+# (방금 고친 버그처럼 보임). 재접속 직전 auth-check 프로브가 401이면 로그인으로 보낸다.
+_AUTH_EXPIRY_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts[1];
+
+let now = 1000000; Date.now = () => now;
+const els = {}, listeners = {};
+global.document = { hidden:false,
+  getElementById: id => els[id] || (els[id]={textContent:'',innerHTML:'',className:'',style:{}}),
+  querySelectorAll: () => [], addEventListener: (e,f)=>{(listeners[e]=listeners[e]||[]).push(f);} };
+global.window = { addEventListener:(e,f)=>{(listeners[e]=listeners[e]||[]).push(f);} };
+global.location = { href: '' };
+let timers=[];
+global.setTimeout=(fn,ms)=>{const t={fn,at:now+(ms||0)};timers.push(t);return t;};
+global.clearTimeout=t=>{timers=timers.filter(x=>x!==t);};
+const flushDue=()=>{const d=timers.filter(t=>t.at<=now);timers=timers.filter(t=>t.at>now);d.forEach(t=>t.fn());};
+global.setInterval=()=>{};
+let esI=[];
+function MockES(u){this.url=u;this.readyState=0;this.onopen=this.onmessage=this.onerror=null;esI.push(this);}
+MockES.CONNECTING=0;MockES.OPEN=1;MockES.CLOSED=2;
+MockES.prototype.close=function(){this.readyState=2;};
+global.EventSource=MockES;
+global.LightweightCharts={createChart:()=>({addBaselineSeries:()=>({setData(){}}),
+  addCandlestickSeries:()=>({setData(){},createPriceLine(){}}),timeScale:()=>({fitContent(){}}),applyOptions(){}})};
+// auth-check 401(세션 만료). 그 외 fetch는 실패 응답.
+global.fetch = async (u) => (String(u).indexOf('/api/auth/check')>=0)
+  ? {status:401, ok:false, json:async()=>({})}
+  : {ok:false, status:500, json:async()=>({})};
+
+eval(code);
+const flush=()=>new Promise(r=>setImmediate(r));
+(async()=>{
+  const e0=esI[0]; e0.readyState=MockES.OPEN; if(e0.onopen)e0.onopen();
+  e0.readyState=MockES.CLOSED; if(e0.onerror)e0.onerror();  // 세션 만료로 CLOSED
+  await flush(); await flush();
+  now+=60000; flushDue();
+  await flush();
+  console.log('LOC='+location.href);
+  console.log('N='+esI.length);
+})();
+"""
+
+
+def _auth_expiry(tmp_path):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "authexp.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_AUTH_EXPIRY_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+@needs_node
+def test_sse_redirects_to_login_when_session_expired(tmp_path):
+    out = _auth_expiry(tmp_path)
+    assert out["LOC"] == "/login"   # 무한 재접속 대신 로그인으로
+    assert out["N"] == "1"          # 재접속(새 EventSource) 안 함
