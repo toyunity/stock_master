@@ -502,3 +502,76 @@ def test_sse_redirects_to_login_when_session_expired(tmp_path):
     out = _auth_expiry(tmp_path)
     assert out["LOC"] == "/login"   # 무한 재접속 대신 로그인으로
     assert out["N"] == "1"          # 재접속(새 EventSource) 안 함
+
+
+# ── 가격 차트: 자동 갱신 시 뷰(확대/이동) 보존 ────────────────────────────
+# 실사고: loadCandles가 매 60초 갱신마다 fitContent()를 불러 사용자의 확대/이동이
+# 초기화됨. 자동 갱신은 뷰 보존, 타임프레임 전환/최초 로드에만 fit해야 한다.
+_TF_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts[1];
+
+let now = 1000000; Date.now = () => now;
+const els = {}, listeners = {};
+global.document = { hidden:false,
+  getElementById: id => els[id] || (els[id]={__id:id,textContent:'',innerHTML:'',className:'',style:{}}),
+  querySelectorAll: () => [], addEventListener: (e,f)=>{(listeners[e]=listeners[e]||[]).push(f);} };
+global.window = { addEventListener:()=>{} };
+global.location = { href:'' };
+global.setTimeout = ()=>0; global.clearTimeout = ()=>{};
+let intervals=[]; global.setInterval=(fn,ms)=>{intervals.push({fn,ms});return intervals.length;};
+function MockES(){this.readyState=0;this.onopen=this.onmessage=this.onerror=null;}
+MockES.CONNECTING=0;MockES.OPEN=1;MockES.CLOSED=2;MockES.prototype.close=function(){};
+global.EventSource = MockES;
+
+let fitCount = 0;   // pchart.timeScale().fitContent() 호출 수(가격 차트만)
+global.LightweightCharts = { createChart: (el) => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){}}),
+  timeScale: () => ({ fitContent(){ if (el && el.__id === 'pchart') fitCount++; } }),
+  applyOptions(){},
+})};
+// 봉 데이터를 정상 반환(loadCandles가 setData·fit까지 도달하도록)
+global.fetch = async (u) => (String(u).indexOf('/api/candles/') >= 0)
+  ? {ok:true, json: async () => ({candles:[{t:'09:00:00',open:1,high:2,low:0.5,close:1.5}], date:'2026-07-14'})}
+  : {ok:false, status:200, json: async () => ({})};
+
+eval(code);   // sloppy eval → loadCandles/TF 등이 이 스코프에 노출됨(기존 하니스와 동일)
+const flush = () => new Promise(r => setImmediate(r));
+(async () => {
+  await flush(); await flush();      // 최초 loadCandles(fit) 완료
+  console.log('FIT_after_init=' + fitCount);
+  await loadCandles(false);          // 자동 갱신(60초) — 뷰 보존이어야
+  await flush();
+  console.log('FIT_after_refresh=' + fitCount);
+  TF = '15m'; await loadCandles(true);   // 타임프레임 전환 — fit 해야
+  await flush();
+  console.log('FIT_after_switch=' + fitCount);
+})();
+"""
+
+
+def _tf_fit_counts(tmp_path):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "tf.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_TF_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = int(v)
+    return out
+
+
+@needs_node
+def test_candle_chart_preserves_view_on_autorefresh(tmp_path):
+    c = _tf_fit_counts(tmp_path)
+    assert c["FIT_after_init"] == 1       # 최초 로드는 fit(전체 보기)
+    assert c["FIT_after_refresh"] == 1     # 60초 자동 갱신은 뷰 보존(fit 안 함)
+    assert c["FIT_after_switch"] == 2      # 타임프레임 전환은 fit

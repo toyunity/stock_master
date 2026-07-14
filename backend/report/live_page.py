@@ -273,7 +273,9 @@ WATCH.forEach(w=>{try{pseries.createPriceLine({price:w.price,title:w.label,
   color:'#8e24aa',lineWidth:1,lineStyle:2,axisLabelVisible:true});}catch(e){}});
 let TF='5m', tfSeq=0;
 const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','1d':'일봉 120일'};
-async function loadCandles(){
+async function loadCandles(fit){
+  // fit=true일 때만 전체 보기로 맞춘다(최초 로드·타임프레임 전환). 60초 자동 갱신은
+  // fit=false로 사용자의 확대/이동 뷰를 보존(실사고: 갱신마다 초기화).
   const seq=++tfSeq, tf=TF; // 연타로 주기를 바꿔도 마지막 요청만 반영(경합 방지)
   try{
     const r=await fetch('/api/candles/'+CODE+'?tf='+tf);
@@ -285,7 +287,7 @@ async function loadCandles(){
     pseries.setData(d.candles.map(c=>({time:tf==='1d'?c.t:toTs(c.t,d.date),
       open:c.open,high:c.high,low:c.low,close:c.close})));
     pchart.applyOptions({timeScale:{timeVisible:tf!=='1d'}});
-    pchart.timeScale().fitContent();
+    if(fit)pchart.timeScale().fitContent();
     const lastT=d.candles[d.candles.length-1].t;
     document.getElementById('pc-fresh').textContent='· '+TF_KO[tf]+' · 기준 '
       +lastT+(tf==='1d'?'':' (KST) · 60초 자동 갱신');
@@ -295,10 +297,10 @@ async function loadCandles(){
 // 전체 '.tf'를 잡으면 하이라이트를 서로 지운다(리뷰 확정)
 document.querySelectorAll('.tf[data-tf]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tf[data-tf]').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); TF=b.dataset.tf; loadCandles();
+  b.classList.add('on'); TF=b.dataset.tf; loadCandles(true);
 });
-loadCandles();
-setInterval(()=>{if(TF!=='1d')loadCandles();},60000);
+loadCandles(true);
+setInterval(()=>{if(TF!=='1d')loadCandles(false);},60000);
 function nextSlot(){
   // 잠정치 발표 슬롯(±10분): 외국인 09:30~, 기관 10:00~ — 다음 예상 시점 안내.
   // 기준 시각은 서버 KST(KTIME) — 클라이언트 로컬 시계 금지(P0-3)

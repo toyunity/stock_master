@@ -236,7 +236,8 @@ h1{{font-size:20px}} .btn{{display:inline-block;margin-top:16px;padding:12px 22p
 color:#fff;border:none;border-radius:10px;font-size:16px;cursor:pointer;text-decoration:none}}
 input{{font-size:24px;letter-spacing:8px;text-align:center;padding:10px;width:190px;
 border:1px solid #ccd4e0;border-radius:10px;margin-top:8px}} .err{{color:#c62828;margin-top:10px}}
-.muted{{color:#888;font-size:13px;margin-top:22px}} svg{{width:220px;height:220px}}
+.muted{{color:#888;font-size:13px;margin-top:22px}}
+img.qr{{width:230px;height:230px;image-rendering:pixelated;background:#fff;padding:10px;border-radius:10px}}
 code{{background:#eef1f6;padding:2px 6px;border-radius:5px;word-break:break-all}}
 @media(prefers-color-scheme:dark){{body{{color:#e7ecf5;background:#0c1020}}code{{background:#1a2340}}}}
 </style></head><body>{body}</body></html>"""
@@ -261,22 +262,25 @@ def _twofa_html(error: str = "") -> str:
              '<form method="post" action="/2fa"><input name="code" inputmode="numeric" '
              'autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" autofocus>' + err
              + '<div><button class="btn" type="submit">확인</button></div></form>'
-             '<div class="muted"><a href="/2fa/setup">기기 처음 등록</a> · '
-             '<a href="/logout">로그아웃</a></div>')
+             '<div style="margin-top:18px"><a class="btn" href="/2fa/setup" '
+             'style="background:#455a64">📱 처음이면 여기서 기기 등록(QR)</a></div>'
+             '<div class="muted"><a href="/logout">로그아웃</a></div>')
 
 
 def _setup_html(uri: str, secret: str) -> str:
+    import base64
     import io
 
     import qrcode
-    import qrcode.image.svg
-    img = qrcode.make(uri, image_factory=qrcode.image.svg.SvgImage)
+    img = qrcode.make(uri)                 # 기본 PIL(PNG) — 브라우저 렌더 확실
     buf = io.BytesIO()
-    img.save(buf)
-    svg = buf.getvalue().decode()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
     return _PAGE.format(
         title="Authenticator 등록 — Stock Master",
-        body='<h1>🔐 Authenticator 등록</h1><p>Google Authenticator로 아래 QR을 스캔하거나 '
-             '키를 직접 입력하세요.</p>' + svg
-             + '<p class="muted">수동 키: <code>' + escape(secret) + '</code></p>'
-             '<a class="btn" href="/2fa">코드 입력하러</a>')
+        body='<h1>🔐 Authenticator 등록</h1>'
+             '<p>Google Authenticator 앱 → ➕ → “QR 코드 스캔”으로 아래 QR을 찍으세요.<br>'
+             '스캔이 안 되면 “설정 키 입력”에 아래 <b>수동 키</b>를 입력.</p>'
+             '<img class="qr" alt="TOTP QR" src="data:image/png;base64,' + b64 + '">'
+             '<p class="muted">수동 키: <code>' + escape(secret) + '</code></p>'
+             '<a class="btn" href="/2fa">등록했어요 — 코드 입력하러</a>')

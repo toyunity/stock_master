@@ -181,6 +181,21 @@ def test_full_login_flow_rejects_wrong_totp(tmp_path):
     assert c.get("/api/auth/check").status_code == 401                 # 여전히 미완
 
 
+def test_2fa_setup_page_has_scannable_png_qr(tmp_path):
+    # 실사고: SvgImage QR이 빈 SVG(모듈 미렌더)라 화면에 안 보임 → 렌더 확실한 PNG로.
+    import base64
+    import re
+    from backend.api.auth import _setup_html, totp_provisioning_uri
+    secret = "JBSWY3DPEHPK3PXP"
+    html = _setup_html(totp_provisioning_uri(secret, "m@example.com"), secret)
+    m = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", html)
+    assert m, "QR PNG data URI 없음"
+    png = base64.b64decode(m.group(1))
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"      # 유효 PNG 시그니처
+    assert len(png) > 200                        # 실제 QR 내용 있음(빈 이미지 아님)
+    assert secret in html                        # 스캔 실패 대비 수동 키 폴백
+
+
 def test_callback_rejects_disallowed_email(tmp_path):
     from fastapi.testclient import TestClient
     from backend.api.app import create_app
