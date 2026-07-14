@@ -663,9 +663,59 @@ function render(S){
     +(t.side==='buy'?'매수':(t.side==='sell'?'매도':'-'))+'</td></tr>').join('');
 }
 
-const es=new EventSource('/api/live/'+CODE+'/stream');
-es.onmessage=e=>{try{render(JSON.parse(e.data));}catch(err){console.error(err);}};
-es.onerror=()=>{const c=document.getElementById('conn');c.textContent='재연결 중…';c.className='badge b-off';};
+// ── SSE 연결 관리(P0): 네이티브 EventSource 자동 재접속은 readyState=CONNECTING
+//    에서만 동작 → iOS PWA 백그라운드 복귀·서버 재시작(비2xx 응답)·모바일 네트워크
+//    전환 시 CLOSED로 죽어 영구 미복구(실사고 "연결 끊어지고 복구 안됨"). 오류 없이
+//    조용히 멈춘 half-open도 네이티브는 못 잡는다. 세 경로로 직접 되살린다:
+//    (1) onerror가 CLOSED면 상한 백오프로 수동 재접속 — 상한 15s ≪ 서버 LINGER 300s
+//        이라 재접속이 웜 엔진을 재사용(KIS 1키1세션 EOF churn 회피).
+//    (2) 서버의 1초 스냅샷을 하트비트로 삼아, 공백이 STALL_MS를 넘으면 워치독이 강제 재접속.
+//    (3) 화면 복귀(visibilitychange)/온라인 복귀 시 즉시 재접속.
+//    모든 재접속은 단일 connect() 경로 + 단일 타이머로 — 병렬 EventSource 금지(중복 연결 방지).
+let es=null, esBackoff=1000, reconnTimer=null, lastMsg=0;
+const STALL_MS=15000;      // 하트비트(스냅샷 1초) 공백 한계 — 초과 시 정지로 판정
+const MAX_BACKOFF=15000;   // 서버 linger(300s)보다 훨씬 작게 — 재접속 시 웜 엔진 재사용 보장
+function setConn(txt){const c=document.getElementById('conn');
+  if(c){c.textContent=txt; c.className='badge b-off';}}
+function scheduleReconnect(){
+  if(reconnTimer)return;   // 재접속 타이머는 항상 하나만(중복 연결 원천 차단)
+  const wait=esBackoff+Math.floor(Math.random()*1000); // 지터
+  setConn('연결 끊김 · '+Math.round(wait/1000)+'초 후 재접속');
+  reconnTimer=setTimeout(()=>{reconnTimer=null;connect();},wait);
+  esBackoff=Math.min(esBackoff*2,MAX_BACKOFF);
+}
+function connect(){
+  if(reconnTimer){clearTimeout(reconnTimer);reconnTimer=null;}
+  if(es){try{es.close();}catch(e){}}   // 기존 연결 정리 — 병렬 스트림 방지
+  setConn('연결 중…');
+  lastMsg=Date.now();
+  es=new EventSource('/api/live/'+CODE+'/stream');
+  es.onopen=()=>{esBackoff=1000;};     // 접속 성공 → 백오프 리셋
+  es.onmessage=e=>{lastMsg=Date.now();
+    try{render(JSON.parse(e.data));}catch(err){console.error(err);}};
+  es.onerror=()=>{
+    // CONNECTING이면 네이티브가 자체 재시도 중 → 맡긴다. CLOSED면 죽은 것 → 수동 재접속.
+    if(es.readyState===EventSource.CLOSED)scheduleReconnect();
+    else setConn('재접속 중…');
+  };
+}
+setInterval(()=>{   // 워치독: 오류 이벤트 없이 멈춘 half-open을 하트비트 공백으로 감지
+  if(es&&es.readyState!==EventSource.CLOSED&&Date.now()-lastMsg>STALL_MS){
+    setConn('응답 없음 · 재접속'); esBackoff=1000; connect();
+  }
+},5000);
+function resume(){   // 화면/네트워크 복귀 — 죽었거나 멈췄으면 즉시 되살린다(iOS PWA 잠금 복귀)
+  if(!es||es.readyState===EventSource.CLOSED||Date.now()-lastMsg>STALL_MS){
+    esBackoff=1000; connect();
+  }
+}
+try{
+  if(typeof document.addEventListener==='function')
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume();});
+  if(typeof window!=='undefined'&&window.addEventListener)
+    window.addEventListener('online',resume);
+}catch(e){}
+connect();
 </script>__NAV_LOADER__</body></html>"""
 
 

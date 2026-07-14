@@ -308,3 +308,115 @@ def test_render_js_mixed_sources_labeled(tmp_path):
     assert "혼합" in texts["sb-fresh"]           # 헤더 경고
     assert "출처" in texts["sb-hist-html"]       # 출처 열
     assert "협회" in texts["sb-hist-html"] and "예탁원" in texts["sb-hist-html"]
+
+
+# ── SSE 재연결 복원력 하니스 ────────────────────────────────────────────
+# 네이티브 EventSource 자동 재접속에만 기대면 iOS PWA 백그라운드 복귀·서버 재시작·
+# half-open 정지에서 CLOSED로 죽어 복구가 안 된다(실사고: "연결 끊어지고 복구 안됨").
+# 제어 가능한 EventSource 목/타이머/이벤트 리스너를 주입해 세 가지 복구 모드가
+# 실제로 '새 연결'을 만드는지 계측한다. render()가 아니라 페이지 로드 경로만 구동.
+_RECONNECT_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
+
+let now = 1000000;
+Date.now = () => now;     // 제어 가능한 시계(백오프·하트비트 판정용)
+
+const els = {};
+const listeners = {};
+const addL = (ev, fn) => (listeners[ev] = listeners[ev] || []).push(fn);
+const fire = ev => (listeners[ev] || []).slice().forEach(fn => fn());
+global.document = {
+  hidden: false,
+  getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
+  querySelectorAll: () => [],
+  addEventListener: (ev, fn) => addL(ev, fn),
+};
+global.window = { addEventListener: (ev, fn) => addL(ev, fn) };
+
+let timers = [];
+global.setTimeout = (fn, ms) => { const t = {fn, at: now + (ms||0)}; timers.push(t); return t; };
+global.clearTimeout = t => { timers = timers.filter(x => x !== t); };
+const flushDue = () => { const due = timers.filter(t => t.at <= now);
+  timers = timers.filter(t => t.at > now); due.forEach(t => t.fn()); };
+
+let intervals = [];
+global.setInterval = (fn, ms) => { const iv = {fn, ms}; intervals.push(iv); return iv; };
+const runWatchdog = () => { const iv = intervals.find(i => i.ms < 10000); if (iv) iv.fn(); };
+
+let esInstances = [];
+function MockES(url){ this.url = url; this.readyState = 0;
+  this.onopen = null; this.onmessage = null; this.onerror = null; esInstances.push(this); }
+MockES.CONNECTING = 0; MockES.OPEN = 1; MockES.CLOSED = 2;
+MockES.prototype.close = function(){ this.readyState = 2; };
+global.EventSource = MockES;
+
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){}}),
+  timeScale: () => ({fitContent(){}}), applyOptions(){},
+})};
+global.fetch = async () => ({ok:false, json: async()=>({})});
+
+eval(code);
+
+const last = () => esInstances[esInstances.length - 1];
+const open = es => { es.readyState = MockES.OPEN; if (es.onopen) es.onopen(); };
+
+console.log('N_init=' + esInstances.length);            // 로드 직후 최초 연결
+
+// (1) CLOSED 후 onerror(네이티브가 포기) → 백오프 타이머 → 새 연결
+open(esInstances[0]);
+const e0 = last(); e0.readyState = MockES.CLOSED; if (e0.onerror) e0.onerror();
+now += 60000; flushDue();
+console.log('N_after_closed=' + esInstances.length);
+
+// (2) 화면 복귀(visibilitychange) — 죽어 있으면 즉시 재연결(iOS PWA 잠금 복귀)
+const e1 = last(); open(e1); e1.readyState = MockES.CLOSED;
+document.hidden = false; fire('visibilitychange');
+console.log('N_after_visible=' + esInstances.length);
+
+// (3) half-open 정지(오류 이벤트 없음, readyState OPEN 유지) — 하트비트 공백을
+//     워치독이 감지해 강제 재연결
+const e2 = last(); open(e2); e2.readyState = MockES.OPEN;
+if (e2.onmessage) e2.onmessage({data: '{}'});   // 정상 수신 → lastMsg 갱신
+now += 60000; runWatchdog();
+console.log('N_after_stall=' + esInstances.length);
+
+// (4) CONNECTING 상태의 onerror(네이티브가 스스로 재시도 중)는 새 연결을 만들지 않는다
+const e3 = last(); open(e3); e3.readyState = MockES.CONNECTING; if (e3.onerror) e3.onerror();
+now += 60000; flushDue();
+console.log('N_after_connecting_err=' + esInstances.length);
+"""
+
+
+def _reconnect_counts(tmp_path):
+    from backend.report.live_page import render_live_page
+    html_p = tmp_path / "live.html"
+    js_p = tmp_path / "reconnect.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    js_p.write_text(_RECONNECT_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"재연결 하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = int(v)
+    return out
+
+
+@needs_node
+def test_sse_reconnects_when_closed_stalled_or_resumed(tmp_path):
+    # 실사고: 실시간 SSE가 끊긴 뒤 복구되지 않는다. 네이티브 자동 재접속은
+    # CLOSED 상태에서 멈추고, 오류 없는 half-open 정지·백그라운드 복귀도 못 잡는다.
+    c = _reconnect_counts(tmp_path)
+    assert c["N_init"] == 1                    # 로드 직후 정확히 1개 연결
+    assert c["N_after_closed"] == 2            # (1) CLOSED → 수동 재연결
+    assert c["N_after_visible"] == 3           # (2) 화면 복귀 → 즉시 재연결
+    assert c["N_after_stall"] == 4             # (3) 하트비트 공백 → 워치독 재연결
+    assert c["N_after_connecting_err"] == 4    # (4) CONNECTING 오류는 재연결 안 함(중복 방지)
