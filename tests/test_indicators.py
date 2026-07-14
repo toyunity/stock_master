@@ -11,8 +11,15 @@ def _trending_frame(n=120):
 
 def test_adds_expected_columns():
     out = add_indicators(_trending_frame())
-    for col in ["ma20", "ma60", "rsi14", "macd", "macd_signal"]:
+    for col in ["ma20", "ma60", "ma120", "rsi14", "macd", "macd_signal"]:
         assert col in out.columns
+
+
+def test_ma120_is_120day_average():
+    out = add_indicators(_trending_frame(120))          # 정확히 120봉
+    last = out["ma120"].iloc[-1]
+    assert not np.isnan(last)                            # 120봉 → 마지막 값 산출
+    assert abs(last - out["Close"].mean()) < 1e-6        # 120봉 SMA = 전체 평균
 
 def test_uptrend_has_high_rsi():
     out = add_indicators(_trending_frame())

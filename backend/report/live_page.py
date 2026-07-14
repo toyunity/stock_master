@@ -87,6 +87,15 @@ details.panel[open] summary{margin-bottom:6px}
 </div>
 
 <div class="panel">
+  <h2>🧭 매매 타이밍 <span class="fresh" id="tm-fresh">· 참고용(추정)</span></h2>
+  <div class="sig" id="tm-headline"></div>
+  <div id="tm-comment" style="font-size:14px;margin:6px 0"></div>
+  <table id="tm-reasons"></table>
+  <div class="meta" id="tm-note">20·60·120일선 배열(추세)과 수급을 결합한 <b>참고용 추정</b> —
+  매매 조언이 아니며 투자 판단·책임은 본인에게 있습니다. 확정 수급은 T+1 반영.</div>
+</div>
+
+<div class="panel">
   <h2>🌐 ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
   <div class="grid3">
     <div><div class="lbl" id="adr-usd-lbl">DR 가격($)</div><div class="val" id="adr-usd">–</div></div>
@@ -663,6 +672,22 @@ function render(S){
     +S.tape.map(t=>'<tr><td>'+esc(t.t)+'</td><td>'+won(t.price)+'</td><td>'+num(t.vol)
     +'</td><td class="'+(t.side==='buy'?'up':(t.side==='sell'?'down':'flat'))+'">'
     +(t.side==='buy'?'매수':(t.side==='sell'?'매도':'-'))+'</td></tr>').join('');
+  // ── 매매 타이밍(이평 20/60/120 × 수급) — 참고용 추정 ──
+  const TM=S.timing, tmh=document.getElementById('tm-headline');
+  if(TM&&TM.stance){
+    tmh.textContent=TM.headline+(TM.confidence!=null?' · 확신도 '+TM.confidence+'/3':'');
+    tmh.className='sig sig-'+(TM.tone||'flat');
+    document.getElementById('tm-comment').textContent=TM.comment||'';
+    document.getElementById('tm-reasons').innerHTML=(TM.reasons||[]).map(r=>'<tr><td>· '+esc(r)+'</td></tr>').join('')
+      +(TM.entry_hint?'<tr><td>🎯 진입: '+esc(TM.entry_hint)+'</td></tr>':'');
+    document.getElementById('tm-fresh').textContent='· 참고용(추정) · '+esc(TM.asof||'')+' 기준';
+  }else{
+    tmh.textContent=(TM&&TM.headline)||'판정 보류 — 데이터 대기';
+    tmh.className='sig sig-flat';
+    document.getElementById('tm-comment').textContent=(TM&&TM.comment)||'일봉(120)·수급 확보 후 표시';
+    document.getElementById('tm-reasons').innerHTML='';
+    document.getElementById('tm-fresh').textContent='· 참고용(추정)';
+  }
 }
 
 // ── SSE 연결 관리(P0): 네이티브 EventSource 자동 재접속은 readyState=CONNECTING

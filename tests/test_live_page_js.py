@@ -36,11 +36,12 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl','tm-reasons'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
+                  'tm-headline','tm-comment','tm-fresh'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:pstall-class=' + String((els['pstall']||{}).className));
@@ -123,6 +124,11 @@ def _full_snapshot():
         "glob": {"seln": 831835, "shnu": 739909, "ntby": -91926,
                  "seln_rlim": 10.46, "shnu_rlim": 9.31},
         "asof": "16:31:13"})
+    s.set_timing({"stance": "buy", "tone": "good", "headline": "🟢 매수 우호",
+                  "comment": "상승추세+수급 유입 — 매수 우호, 20일선 눌림목 분할 접근",
+                  "reasons": ["정배열(현재가>20일>60일>120일)", "외인·기관 3일 연속 순매수"],
+                  "entry_hint": "20일선 2,180,000원 눌림목 지지 확인 시 분할",
+                  "overheated": False, "confidence": 2, "asof": "13:20"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
@@ -179,6 +185,11 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert texts["cr-sig"].startswith("판정:")
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     assert texts["watch-lines"] == "절대선,예약매도"
+    # 매매 타이밍 패널: 판정 헤드라인·코멘트·근거가 채워짐(참고용 라벨)
+    assert "매수" in texts["tm-headline"] and "확신도" in texts["tm-headline"]
+    assert "수급 유입" in texts["tm-comment"]
+    assert int(filled["tm-reasons"]) > 0            # 근거 목록 렌더
+    assert "참고용" in texts["tm-fresh"]
 
 
 def _parse_harness(stdout: str):

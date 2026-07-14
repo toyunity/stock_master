@@ -12,8 +12,10 @@ import asyncio
 import datetime as dt
 import logging
 
+from backend.analysis import timing
 from backend.config import settings
 from backend.flow import adr
+from backend.flow import candles
 from backend.flow import credit
 from backend.flow import exvol
 from backend.flow import kis
@@ -237,6 +239,18 @@ class FlowEngine:
                     self.state.set_member(mb)
             except Exception:
                 log.warning("거래원 조회 실패 — 다음 주기 재시도", exc_info=True)
+            # 매매 타이밍: 일봉(이평 20/60/120) × 수급 → 판정 코멘트(당일 한정).
+            # 부가 패널 — 실패해도 ok/노트는 건드리지 않는다.
+            try:
+                cd = await candles.get_candles(self.code, "1d")
+                snap = self.state.snapshot()
+                tv = timing.compute_timing(
+                    cd.get("candles") or [], snap["daily"],
+                    snap["estimate"]["rows"], snap["program"]["net_value"],
+                    snap["market"]["price"])
+                self.state.set_timing(dict(tv, asof=kst.now().strftime("%H:%M")))
+            except Exception:
+                log.warning("매매 타이밍 계산 실패 — 다음 주기 재시도", exc_info=True)
             if not ok:
                 self.state.set_status(note="KIS 조회 일시 실패 — 재시도 중")
             elif self.state.snapshot()["status"]["note"].startswith("KIS 조회"):

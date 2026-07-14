@@ -11,6 +11,7 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     close = out["Close"]
     out["ma20"] = SMAIndicator(close=close, window=20).sma_indicator()
     out["ma60"] = SMAIndicator(close=close, window=60).sma_indicator()
+    out["ma120"] = SMAIndicator(close=close, window=120).sma_indicator()
     out["rsi14"] = RSIIndicator(close=close, window=14).rsi()
     macd = MACD(close=close)
     out["macd"] = macd.macd()
