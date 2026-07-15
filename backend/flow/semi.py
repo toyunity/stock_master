@@ -42,7 +42,7 @@ def _get_lock() -> asyncio.Lock:
 
 US_NAMES = {"SOX": "필라델피아 반도체지수", "NVDA": "엔비디아", "MU": "마이크론",
             "WDC": "웨스턴디지털", "SNDK": "샌디스크", "AMAT": "어플라이드 머티리얼즈",
-            "LRCX": "램리서치", "KLAC": "KLA", "SKHYV": "SK하이닉스 DR",
+            "LRCX": "램리서치", "KLAC": "KLA", "SKHY": "SK하이닉스 DR",
             "SOXX": "SOXX ETF"}
 
 

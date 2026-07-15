@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""ADR/DR 환산가·괴리율 — SK하이닉스 나스닥 DR(SKHYV, 2026-07-10 상장) 대응.
+"""ADR/DR 환산가·괴리율 — SK하이닉스 나스닥 DR(SKHY, 실거래 티커) 대응.
 
 소스(실측 프로브 2026-07-13):
 - 1차 KIS 해외주식 현재가상세 HHDFS76200200(EXCD=NAS) — 기존 국내 키로 동작.
@@ -13,7 +13,7 @@ from __future__ import annotations
 - 환율 1차 KIS FHKST03030100(시장구분 X, FX@KRW) output1.ovrs_nmix_prpr — 장중 실시간.
   폴백 네이버 marketIndex(하나은행 고시가; cashBuy/cashSell은 현찰 환율이라 쓰지 않는다).
 ※ 야후 파이낸스는 이 환경에서 IP 단위 429 확인 — 사용 금지. 구 OTC 'HXSCL'은
-  2014년 이후 거래 없음 — SKHYV만 사용.
+  2014년 이후 거래 없음 — SKHY만 사용(SKHYV는 상장일 값에 얼어붙은 스테일 — 금지).
 """
 
 import datetime as dt

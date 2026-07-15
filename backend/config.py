@@ -45,7 +45,7 @@ class Settings(BaseSettings):
                    {"price": 2_600_000, "label": "예약매도"}]}
     # 반도체 동향 섹션(메인 대시보드 상단) 종목셋 — SOX는 지수(div=N), 나머지 NAS
     semi_us: list[str] = ["SOX", "NVDA", "MU", "WDC", "SNDK",
-                          "AMAT", "LRCX", "KLAC", "SKHYV"]
+                          "AMAT", "LRCX", "KLAC", "SKHY"]
     semi_kr: list[str] = ["005930", "000660"]
 
     # ADR/DR 환산: 원주 1주 = DR N주. SK하이닉스 나스닥 상장 DR 티커는 'SKHY'.

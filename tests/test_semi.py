@@ -34,3 +34,10 @@ def test_us_names_cover_default_set():
     from backend.config import settings
     for sym in settings.semi_us:
         assert sym in US_NAMES
+
+
+def test_semi_us_uses_live_skhy_not_stale_skhyv():
+    # 반도체 동향의 하이닉스 ADR도 /live처럼 실거래 SKHY를 써야 함.
+    # SKHYV는 KIS가 상장일 값($168·거래량 0)에 얼려둔 스테일 → 갱신 안 됨(2026-07-15 실사고).
+    from backend.config import settings
+    assert "SKHY" in settings.semi_us and "SKHYV" not in settings.semi_us
