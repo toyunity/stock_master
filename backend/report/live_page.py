@@ -53,9 +53,14 @@ __BASE_CSS__
   background:var(--surface);color:var(--text-3);font-size:12.5px;font-weight:800;cursor:pointer;
   -webkit-tap-highlight-color:transparent;font-variant-numeric:tabular-nums}
 .ma-btn:active{opacity:.7}
+.ma-btn::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;
+  background:var(--dot,transparent);margin-right:5px;vertical-align:middle}
+.ma-btn[data-ma="5"].on{background:#9aa0a6;border-color:#9aa0a6;color:#fff}
+.ma-btn[data-ma="10"].on{background:#ec4899;border-color:#ec4899;color:#fff}
 .ma-btn[data-ma="20"].on{background:#f59e0b;border-color:#f59e0b;color:#fff}
 .ma-btn[data-ma="60"].on{background:#22c55e;border-color:#22c55e;color:#fff}
-.ma-btn[data-ma="120"].on{background:#ec4899;border-color:#ec4899;color:#fff}
+.ma-btn[data-ma="120"].on{background:#3b82f6;border-color:#3b82f6;color:#fff}
+.ma-btn.on::before{background:#fff}
 .ma-btn:disabled,.ma-btn.na{opacity:.32;cursor:not-allowed;background:var(--surface);
   border-color:var(--border);color:var(--text-3);box-shadow:none}
 /* 공매도 거래량 오버레이 토글(일봉 전용) */
@@ -168,9 +173,11 @@ __BASE_CSS__
   </div>
   <div class="marow">
     <span class="ma-lb">이평선</span>
+    <button class="ma-btn on" data-ma="5">5</button>
+    <button class="ma-btn on" data-ma="10">10</button>
     <button class="ma-btn on" data-ma="20">20</button>
     <button class="ma-btn on" data-ma="60">60</button>
-    <button class="ma-btn" data-ma="120">120</button>
+    <button class="ma-btn on" data-ma="120">120</button>
     <span class="ma-hint">봉 이동평균 · 켜고 끄기</span>
     <button class="ss-btn" data-ss="1" type="button" disabled>🩳 공매도</button>
     <button class="fit-btn" type="button" title="전체 기간 보기">⤢ 전체</button>
@@ -431,13 +438,16 @@ registerChart(pchart);
 const pseries=pchart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
   borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0'});
 // 이동평균선(20/60/120봉) — 켜고 끄기. addLineSeries 없는 node 하니스에선 가드로 생략.
-const MA_COLORS={20:'#f59e0b',60:'#22c55e',120:'#ec4899'};
-let maOn={20:true,60:true,120:false};
+const MA_COLORS={5:'#9aa0a6',10:'#ec4899',20:'#f59e0b',60:'#22c55e',120:'#3b82f6'};
+let maOn={5:true,10:true,20:true,60:true,120:true};
 let maSeries={};
-if(pchart.addLineSeries){[20,60,120].forEach(function(n){
+if(pchart.addLineSeries){[5,10,20,60,120].forEach(function(n){
   maSeries[n]=pchart.addLineSeries({color:MA_COLORS[n],lineWidth:1.5,
     priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,visible:maOn[n]});
 });}
+// 범례 칩 색점(토스식 ■색 번호) — MA_COLORS를 버튼에 주입
+document.querySelectorAll('.ma-btn[data-ma]').forEach(function(b){
+  b.style.setProperty('--dot', MA_COLORS[+b.getAttribute('data-ma')]||'transparent');});
 // ── 실시간 차트 고도화: 거래량·현재가 라인·실시간 봉·크로스헤어(전부 하니스 가드) ──
 let volSeries=null;
 if(pchart.addHistogramSeries){
@@ -519,7 +529,7 @@ async function loadCandles(fit){
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
     var _na=[];
-    [20,60,120].forEach(function(n){
+    [5,10,20,60,120].forEach(function(n){
       var key='ma'+n, has=d.candles.some(function(c){return c[key]!=null;});
       if(pchart.addLineSeries&&maSeries[n]){
         maSeries[n].setData(has?d.candles.filter(function(c){return c[key]!=null;})

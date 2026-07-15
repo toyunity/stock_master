@@ -673,3 +673,11 @@ def test_watch_editor_save_builds_payload_and_applies_response(tmp_path):
     # 상태 문구의 개수(WATCH.length)는 응답 lines(손절 포함 3줄)로 갱신됨을 증명
     # → WATCH=res.d.lines 적용 + renderWatchLines/rearm 경로가 돎
     assert "3개" in out["STATUS"]
+
+
+# ── 토스 차트 이식 Phase 1 ──
+def test_template_has_5ma_buttons():
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'data-ma="5"' in html and 'data-ma="10"' in html
+    assert 'data-ma="20"' in html and 'data-ma="120"' in html
