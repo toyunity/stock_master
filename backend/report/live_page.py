@@ -41,13 +41,15 @@ __BASE_CSS__
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
 #pchart{height:230px}
+#vchart{height:72px}
+.volwrap{position:relative;margin-top:1px}
 .chartwrap{position:relative}
 .ext-lbl{position:absolute;font-size:11px;font-weight:800;white-space:nowrap;pointer-events:none;z-index:3;
   font-variant-numeric:tabular-nums;transform:translateX(-50%);
   text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 1px 3px var(--bg)}
 .ext-lbl.hi{color:var(--up)}
 .ext-lbl.lo{color:var(--down)}
-.vol-lb{position:absolute;left:8px;bottom:6px;font-size:10px;font-weight:700;color:var(--text-3);
+.vol-lb{position:absolute;left:8px;top:1px;font-size:10px;font-weight:700;color:var(--text-3);
   pointer-events:none;z-index:3;text-shadow:0 0 3px var(--bg),0 0 3px var(--bg)}
 .stall{display:none;position:absolute;inset:0;
   background:color-mix(in srgb,var(--surface) 88%,transparent);z-index:5;
@@ -196,8 +198,8 @@ __BASE_CSS__
   <div class="ohlc" id="ohlc"></div>
   <div class="chartwrap"><div id="pchart"></div>
     <div class="ext-lbl hi" id="hi-lbl"></div><div class="ext-lbl lo" id="lo-lbl"></div>
-    <div class="vol-lb" id="vol-lb"></div>
     <div class="stall" id="pstall"></div></div>
+  <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
 </div>
@@ -450,7 +452,8 @@ const pchart=LightweightCharts.createChart(document.getElementById('pchart'),{au
   timeScale:{borderColor:_pt2.timeScale.borderColor,timeVisible:true,secondsVisible:false}});
 registerChart(pchart);
 const pseries=pchart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
-  borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0'});
+  borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0',
+  priceFormat:{type:'price',precision:0,minMove:1}});   // KRW는 정수 — 축 '.00' 제거(폭도 축소)
 // 이동평균선(20/60/120봉) — 켜고 끄기. addLineSeries 없는 node 하니스에선 가드로 생략.
 const MA_COLORS={5:'#9aa0a6',10:'#ec4899',20:'#f59e0b',60:'#22c55e',120:'#3b82f6'};
 let maOn={5:true,10:true,20:true,60:true,120:true};
@@ -462,20 +465,28 @@ if(pchart.addLineSeries){[5,10,20,60,120].forEach(function(n){
 // 범례 칩 색점(토스식 ■색 번호) — MA_COLORS를 버튼에 주입
 document.querySelectorAll('.ma-btn[data-ma]').forEach(function(b){
   b.style.setProperty('--dot', MA_COLORS[+b.getAttribute('data-ma')]||'transparent');});
-// ── 실시간 차트 고도화: 거래량·현재가 라인·실시간 봉·크로스헤어(전부 하니스 가드) ──
-let volSeries=null;
-if(pchart.addHistogramSeries){
-  volSeries=pchart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},
+// 캔들이 메인 pane 전체를 쓰도록(거래량은 아래 별도 차트로 분리) — 캔들이 작아 보이던 문제 해결.
+try{pchart.priceScale('right').applyOptions({scaleMargins:{top:0.08,bottom:0.08},minimumWidth:76});}catch(e){}
+// ── 거래량 별도 차트(vchart) — 캔들 차트 바로 아래. 시간축은 pchart와 논리범위 동기화(전부 하니스 가드) ──
+let vchart=null, volSeries=null;
+try{
+  vchart=LightweightCharts.createChart(document.getElementById('vchart'),{autoSize:true,height:72,
+    layout:_pt2.layout,grid:_pt2.grid,
+    rightPriceScale:{borderColor:_pt2.rightPriceScale.borderColor},
+    leftPriceScale:{visible:false}, timeScale:{visible:false},
+    handleScroll:false, handleScale:false,
+    crosshair:{horzLine:{visible:false}}});
+  registerChart(vchart);
+  try{vchart.priceScale('right').applyOptions({minimumWidth:76,scaleMargins:{top:0.14,bottom:0}});}catch(e){}
+}catch(e){}
+if(vchart&&vchart.addHistogramSeries){
+  volSeries=vchart.addHistogramSeries({priceFormat:{type:'volume'},
     lastValueVisible:false,priceLineVisible:false});
-  // 하단 지표 띠는 작게(12%), 캔들에 상단 88% 확보 — 공매도/거래량이 캔들을 가리지 않게.
-  try{pchart.priceScale('vol').applyOptions({scaleMargins:{top:0.88,bottom:0}});}catch(e){}
-  try{pchart.priceScale('right').applyOptions({scaleMargins:{top:0.05,bottom:0.16}});}catch(e){}
 }
-// 공매도 거래량 오버레이(일봉 전용 — 일별 T+1 데이터라 날짜축이 분봉과 안 맞음).
-// 하단 거래량 스케일 공유: 일봉은 총거래량이 비어 있어(0) 그 자리에 공매도량을 그린다.
+// 공매도 거래량(일봉 전용) — 거래량 차트에 함께.
 let ssSeries=null, ssOn=false, SS_ROWS=[];
-if(pchart.addHistogramSeries){
-  ssSeries=pchart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},
+if(vchart&&vchart.addHistogramSeries){
+  ssSeries=vchart.addHistogramSeries({priceFormat:{type:'volume'},
     lastValueVisible:false,priceLineVisible:false,color:'rgba(168,85,247,.7)'});
 }
 function renderSS(){
@@ -484,6 +495,17 @@ function renderSS(){
     ssSeries.setData(SS_ROWS.map(function(r){return {time:r.date, value:r.qty||0};}));
   }else{ssSeries.setData([]);}
 }
+// 시간축 동기화: 캔들을 pan/zoom하면 거래량도 같이 이동(양방향, 재진입 가드).
+let _vsync=false;
+function _bindSync(a,b){ if(!a||!b)return; var ts=a.timeScale&&a.timeScale();
+  if(!ts||!ts.subscribeVisibleLogicalRangeChange)return;
+  ts.subscribeVisibleLogicalRangeChange(function(r){ if(_vsync||!r)return; _vsync=true;
+    try{b.timeScale().setVisibleLogicalRange(r);}catch(e){} _vsync=false; }); }
+_bindSync(pchart,vchart); _bindSync(vchart,pchart);
+function syncVol(){ if(!vchart)return; var ts=pchart.timeScale();
+  if(!ts.getVisibleLogicalRange)return;
+  try{var r=ts.getVisibleLogicalRange(); if(r){_vsync=true;
+    vchart.timeScale().setVisibleLogicalRange(r); _vsync=false;}}catch(e){} }
 // 현재가 이동 라인(매 틱 위치·색 갱신). 하니스 createPriceLine은 undefined 반환 → 가드.
 let nowLine=null;
 try{nowLine=pseries.createPriceLine({price:0,color:'#8a94a6',lineWidth:1,lineStyle:1,
@@ -526,7 +548,7 @@ function placeExt(){
   var hi=document.getElementById('hi-lbl'), lo=document.getElementById('lo-lbl');
   if(!EXT||!pseries.priceToCoordinate){if(hi)hi.style.display='none';if(lo)lo.style.display='none';return;}
   var pc=document.getElementById('pchart')||{}, cw=pc.clientWidth||0, ph=pc.clientHeight||0;
-  var band=ph*0.16, ts=pchart.timeScale();
+  var band=ph*0.08, ts=pchart.timeScale();
   [[hi,EXT.hiTime,EXT.hi,EXT.hiText,true],[lo,EXT.loTime,EXT.lo,EXT.loText,false]].forEach(function(a){
     var el=a[0]; if(!el)return;
     var y=pseries.priceToCoordinate(a[2]);
@@ -608,6 +630,7 @@ async function loadCandles(fit){
     renderSS();
     pchart.applyOptions({timeScale:{timeVisible:tf!=='1d'}});
     if(fit)pchart.timeScale().fitContent();
+    syncVol();   // 거래량 차트 시간축을 캔들과 정렬
     const lastT=d.candles[d.candles.length-1].t;
     document.getElementById('pc-fresh').textContent='· '+TF_KO[tf]+' · 기준 '
       +lastT+(tf==='1d'?'':' (KST) · 60초 자동 갱신');
@@ -629,10 +652,10 @@ document.querySelectorAll('.ma-btn').forEach(function(b){b.onclick=function(){
 document.querySelectorAll('.ss-btn').forEach(function(b){b.onclick=function(){
   if(b.disabled)return; ssOn=!ssOn; b.classList.toggle('on',ssOn); renderSS();
   // 켤 때 전체 봉(120일)이 보이게 맞춤 — 확대 상태에서 공매도만 채워 보이던 문제 방지
-  if(ssOn){try{pchart.timeScale().fitContent();}catch(e){}}};});
+  if(ssOn){try{pchart.timeScale().fitContent();}catch(e){}} syncVol();};});
 // 전체 보기 — 확대/이동으로 갇혔을 때 전체 기간 캔들로 복귀
 document.querySelectorAll('.fit-btn').forEach(function(b){b.onclick=function(){
-  try{pchart.timeScale().fitContent();}catch(e){}};});
+  try{pchart.timeScale().fitContent();}catch(e){} syncVol();};});
 loadCandles(true);
 setInterval(()=>{if(TF!=='1d')loadCandles(false);},60000);
 function nextSlot(){
