@@ -58,6 +58,23 @@ __BASE_CSS__
 .ma-btn[data-ma="120"].on{background:#ec4899;border-color:#ec4899;color:#fff}
 .ma-btn:disabled,.ma-btn.na{opacity:.32;cursor:not-allowed;background:var(--surface);
   border-color:var(--border);color:var(--text-3);box-shadow:none}
+/* 공매도 거래량 오버레이 토글(일봉 전용) */
+.ss-btn{min-height:36px;padding:0 13px;border-radius:var(--r-pill);border:1px solid var(--border);
+  background:var(--surface);color:var(--text-3);font-size:12px;font-weight:800;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;margin-left:4px}
+.ss-btn.on{background:#a855f7;border-color:#a855f7;color:#fff}
+.ss-btn:disabled,.ss-btn.na{opacity:.32;cursor:not-allowed}
+.fit-btn{min-height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--border);
+  background:var(--surface);color:var(--text-2);font-size:12px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;margin-left:4px}
+.fit-btn:active{opacity:.6}
+/* 크로스헤어 OHLC 정보줄(터치 시 표시) + 다음 봉 카운트다운 */
+.ohlc{font-size:12.5px;font-weight:700;min-height:18px;margin:0 2px 4px;line-height:1.4}
+.ohlc:not(.on){visibility:hidden}
+.ohlc .meta{font-weight:500;font-variant-numeric:tabular-nums}
+.pc-count{font-size:11px;font-weight:700;color:var(--text-3);margin:6px 2px 0;
+  font-variant-numeric:tabular-nums;min-height:14px}
+.pc-count:empty{display:none}
 .szrow{display:flex;align-items:center;gap:8px;font-size:11px;margin:3px 0}
 .szlbl{width:92px;flex:0 0 auto;color:var(--text-2);text-align:right;white-space:nowrap}
 .szbar{height:14px;border-radius:4px;min-width:2px;flex:0 0 auto}
@@ -155,8 +172,12 @@ __BASE_CSS__
     <button class="ma-btn on" data-ma="60">60</button>
     <button class="ma-btn" data-ma="120">120</button>
     <span class="ma-hint">봉 이동평균 · 켜고 끄기</span>
+    <button class="ss-btn" data-ss="1" type="button" disabled>🩳 공매도</button>
+    <button class="fit-btn" type="button" title="전체 기간 보기">⤢ 전체</button>
   </div>
+  <div class="ohlc" id="ohlc"></div>
   <div class="chartwrap"><div id="pchart"></div><div class="stall" id="pstall"></div></div>
+  <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
 </div>
 
@@ -417,6 +438,62 @@ if(pchart.addLineSeries){[20,60,120].forEach(function(n){
   maSeries[n]=pchart.addLineSeries({color:MA_COLORS[n],lineWidth:1.5,
     priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,visible:maOn[n]});
 });}
+// ── 실시간 차트 고도화: 거래량·현재가 라인·실시간 봉·크로스헤어(전부 하니스 가드) ──
+let volSeries=null;
+if(pchart.addHistogramSeries){
+  volSeries=pchart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},
+    lastValueVisible:false,priceLineVisible:false});
+  // 하단 지표 띠는 작게(12%), 캔들에 상단 88% 확보 — 공매도/거래량이 캔들을 가리지 않게.
+  try{pchart.priceScale('vol').applyOptions({scaleMargins:{top:0.88,bottom:0}});}catch(e){}
+  try{pchart.priceScale('right').applyOptions({scaleMargins:{top:0.05,bottom:0.16}});}catch(e){}
+}
+// 공매도 거래량 오버레이(일봉 전용 — 일별 T+1 데이터라 날짜축이 분봉과 안 맞음).
+// 하단 거래량 스케일 공유: 일봉은 총거래량이 비어 있어(0) 그 자리에 공매도량을 그린다.
+let ssSeries=null, ssOn=false, SS_ROWS=[];
+if(pchart.addHistogramSeries){
+  ssSeries=pchart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},
+    lastValueVisible:false,priceLineVisible:false,color:'rgba(168,85,247,.7)'});
+}
+function renderSS(){
+  if(!ssSeries)return;
+  if(ssOn&&TF==='1d'&&SS_ROWS.length){
+    ssSeries.setData(SS_ROWS.map(function(r){return {time:r.date, value:r.qty||0};}));
+  }else{ssSeries.setData([]);}
+}
+// 현재가 이동 라인(매 틱 위치·색 갱신). 하니스 createPriceLine은 undefined 반환 → 가드.
+let nowLine=null;
+try{nowLine=pseries.createPriceLine({price:0,color:'#8a94a6',lineWidth:1,lineStyle:1,
+  axisLabelVisible:false,title:''});}catch(e){}
+let lastCandle=null, lastCandleTf=null;
+function bucketMin(m,n){return m>=540?m-((m-540)%n):m-(m%n);} // 백엔드 aggregate와 동일(09:00 정렬)
+function updateLiveCandle(M){
+  if(M.price==null||!pseries.update)return;   // 하니스(update 없음)·미체결 가드
+  var price=M.price;
+  if(nowLine){try{nowLine.applyOptions({price:price,
+    color:(M.sign==='up'?'#e0322c':(M.sign==='down'?'#1565c0':'#8a94a6'))});}catch(e){}}
+  var ce=document.getElementById('pc-count');
+  if(TF==='1d'||!lastCandle||lastCandleTf!==TF){if(ce)ce.textContent='';return;} // 일봉·미로드 제외
+  var n={'1m':1,'5m':5,'15m':15,'60m':60}[TF]; if(!n){if(ce)ce.textContent='';return;}
+  var p=(KTIME||'00:00:00').split(':'), mm=(+p[0])*60+(+p[1]);
+  var bmin=bucketMin(mm,n), bh=Math.floor(bmin/60), bm=bmin%60;
+  var bt=(bh<10?'0':'')+bh+':'+(bm<10?'0':'')+bm+':00', ts=toTs(bt,KDATE);
+  if(ts<lastCandle.time)return;                 // 과거로 되돌아가지 않음
+  if(ts>lastCandle.time){lastCandle={time:ts,open:price,high:price,low:price,close:price};} // 새 봉
+  else{lastCandle.close=price; if(price>lastCandle.high)lastCandle.high=price; // 형성 중 봉 갱신
+       if(price<lastCandle.low)lastCandle.low=price;}
+  try{pseries.update(lastCandle);}catch(e){}
+  if(ce){var sec=(+p[0])*3600+(+p[1])*60+(+(p[2]||0)), rem=n*60-(sec-bmin*60);
+    if(rem<0)rem=0; ce.textContent='⏱ 다음 봉 '+Math.floor(rem/60)+':'+((rem%60)<10?'0':'')+(rem%60);}
+}
+function ohlcHtml(dd){var chg=dd.close-dd.open, c=chg>0?'up':(chg<0?'down':'flat');
+  return '<b class="'+c+'">'+won(dd.close)+'</b> <span class="meta">시 '+num(dd.open)
+    +' · 고 '+num(dd.high)+' · 저 '+num(dd.low)+'</span>';}
+if(pchart.subscribeCrosshairMove){pchart.subscribeCrosshairMove(function(param){
+  var el=document.getElementById('ohlc'); if(!el)return;
+  var dd=(param&&param.seriesData)?param.seriesData.get(pseries):null;
+  if(dd&&dd.open!=null){el.innerHTML=ohlcHtml(dd); el.classList.add('on');}
+  else{el.classList.remove('on');}
+});}
 let TF='5m', tfSeq=0;
 const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','60m':'당일 60분봉','1d':'일봉 120일'};
 async function loadCandles(fit){
@@ -430,8 +507,15 @@ async function loadCandles(fit){
     const d=await r.json();
     if(seq!==tfSeq)return;
     if(!d.candles.length){document.getElementById('pc-fresh').textContent='· 데이터 없음(장전이거나 조회 실패)';return;}
-    pseries.setData(d.candles.map(c=>({time:tf==='1d'?c.t:toTs(c.t,d.date),
-      open:c.open,high:c.high,low:c.low,close:c.close})));
+    var _mapped=d.candles.map(c=>({time:tf==='1d'?c.t:toTs(c.t,d.date),
+      open:c.open,high:c.high,low:c.low,close:c.close}));
+    pseries.setData(_mapped);
+    // 실시간 봉 갱신 기준: 마지막 로드 봉(틱마다 이 봉의 고저종을 pseries.update로 갱신)
+    lastCandle=_mapped.length?Object.assign({},_mapped[_mapped.length-1]):null; lastCandleTf=tf;
+    // 거래량 히스토그램(상승=적/하락=청 반투명). 일봉은 vol 0이라 비어 보임(분봉에서 의미).
+    if(volSeries){volSeries.setData(d.candles.map(function(c){return {
+      time:tf==='1d'?c.t:toTs(c.t,d.date), value:c.vol||0,
+      color:(c.close>=c.open?'rgba(224,50,44,.45)':'rgba(21,101,192,.45)')};}));}
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
     var _na=[];
@@ -451,6 +535,12 @@ async function loadCandles(fit){
       h.textContent=_na.length?('이평 · '+_na.join('/')+'봉은 표본 부족(일봉에서 전부 표시)')
         :'봉 이동평균 · 켜고 끄기';
     });
+    // 공매도 오버레이: 일봉에서만(일별 T+1 데이터) — 버튼 활성화 + 재정렬
+    var _ssOk=(tf==='1d');
+    document.querySelectorAll('.ss-btn').forEach(function(b){b.disabled=!_ssOk;
+      b.classList.toggle('na',!_ssOk); if(!_ssOk)b.classList.remove('on');});
+    if(!_ssOk)ssOn=false;
+    renderSS();
     pchart.applyOptions({timeScale:{timeVisible:tf!=='1d'}});
     if(fit)pchart.timeScale().fitContent();
     const lastT=d.candles[d.candles.length-1].t;
@@ -470,6 +560,14 @@ document.querySelectorAll('.ma-btn').forEach(function(b){b.onclick=function(){
   maOn[n]=!maOn[n]; b.classList.toggle('on',maOn[n]);
   if(maSeries[n])maSeries[n].applyOptions({visible:maOn[n]});
 };});
+// 공매도 거래량 오버레이 토글(일봉 전용 — 비활성 시 무시)
+document.querySelectorAll('.ss-btn').forEach(function(b){b.onclick=function(){
+  if(b.disabled)return; ssOn=!ssOn; b.classList.toggle('on',ssOn); renderSS();
+  // 켤 때 전체 봉(120일)이 보이게 맞춤 — 확대 상태에서 공매도만 채워 보이던 문제 방지
+  if(ssOn){try{pchart.timeScale().fitContent();}catch(e){}}};});
+// 전체 보기 — 확대/이동으로 갇혔을 때 전체 기간 캔들로 복귀
+document.querySelectorAll('.fit-btn').forEach(function(b){b.onclick=function(){
+  try{pchart.timeScale().fitContent();}catch(e){}};});
 loadCandles(true);
 setInterval(()=>{if(TF!=='1d')loadCandles(false);},60000);
 function nextSlot(){
@@ -647,6 +745,7 @@ function render(S){
     document.getElementById('pmeta').innerHTML='거래량 '+num(M.vol)+'주 · 거래대금 '+eok(M.value).replace('+','')
       +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · 기준 '+esc(M.time||'')+' (KST) <span class="fresh">· 실시간 · __MKT__</span>';
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
+    updateLiveCandle(M); // 실시간 봉 갱신 + 현재가 라인 + 다음 봉 카운트다운
   }
   const ED=S.estimate_detail;
   const E=S.estimate;
@@ -797,6 +896,7 @@ function render(S){
   }
   // ── 공매도 일별 체결(P1-6): 대차(빌린 물량) vs 체결(쏜 물량) 비교 ──
   const SS=S.shortsale||{rows:[]};
+  SS_ROWS=SS.rows; renderSS();   // 공매도 거래량 차트 오버레이(일봉·토글 시)
   if(SS.rows.length){
     const sl=SS.rows[SS.rows.length-1];
     document.getElementById('ss-fresh').textContent='확정 · 기준일: '+sl.date+' · T+1 공시 · 출처 KIS';

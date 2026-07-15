@@ -12,6 +12,14 @@ import pytest
 needs_node = pytest.mark.skipif(shutil.which("node") is None,
                                 reason="node 미설치 — JS 실행 스모크 생략")
 
+
+@pytest.fixture(autouse=True)
+def _isolate_watch_cache(tmp_path, monkeypatch):
+    # render_live_page가 data/cache/watch_lines.json(사용자 편집분)을 읽어 WATCH를 주입하므로,
+    # 실제 캐시 상태에 의존하지 않도록 격리한다(파일 없음 → config 기본값 절대선+예약매도).
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+
 _HARNESS = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
@@ -184,7 +192,8 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert "기준일: 2026-07-10" in texts["cr-fresh"] and "T+2" in texts["cr-fresh"]
     assert texts["cr-sig"].startswith("판정:")
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
-    assert texts["watch-lines"] == "절대선,예약매도"
+    # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
+    assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
     # 매매 타이밍 패널: 판정 헤드라인·코멘트·근거가 채워짐(참고용 라벨)
     assert "매수" in texts["tm-headline"] and "확신도" in texts["tm-headline"]
     assert "수급 유입" in texts["tm-comment"]
