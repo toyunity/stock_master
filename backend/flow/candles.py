@@ -158,7 +158,7 @@ def _daily_candles(code: str) -> list:
             code, start.isoformat(), end.isoformat())
         # 260봉으로 이동평균을 계산한 뒤 최근 120봉만 노출(선행 구간이 ma120을 채움)
         full = [{"t": c["time"], "open": c["open"], "high": c["high"],
-                 "low": c["low"], "close": c["close"], "vol": 0}
+                 "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
                 for c in to_candles(df, 260)]
         candles = _attach_ma(full)[-120:]
     except Exception:

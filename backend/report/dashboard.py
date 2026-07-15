@@ -199,10 +199,14 @@ def to_candles(df, days: int = 120) -> list:
     날짜 오름차순·중복 제거(라이브러리가 strictly ascending unique를 요구)."""
     d = df[~df.index.duplicated(keep="last")].sort_index().tail(days)
     out = []
+    has_vol = "Volume" in d.columns
     for idx, r in d.iterrows():
-        out.append({"time": idx.strftime("%Y-%m-%d"),
-                    "open": round(float(r["Open"]), 2), "high": round(float(r["High"]), 2),
-                    "low": round(float(r["Low"]), 2), "close": round(float(r["Close"]), 2)})
+        row = {"time": idx.strftime("%Y-%m-%d"),
+               "open": round(float(r["Open"]), 2), "high": round(float(r["High"]), 2),
+               "low": round(float(r["Low"]), 2), "close": round(float(r["Close"]), 2)}
+        if has_vol:
+            row["vol"] = int(r["Volume"])
+        out.append(row)
     return out
 
 

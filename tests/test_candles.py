@@ -116,6 +116,18 @@ def test_live_page_has_chart_and_collapsed_panels():
     assert "<summary" in html
 
 
+def test_to_candles_includes_volume():
+    import pandas as pd
+    from backend.report.dashboard import to_candles
+    df = pd.DataFrame({"Open": [1, 2], "High": [2, 3], "Low": [0, 1],
+                       "Close": [1.5, 2.5], "Volume": [100, 200]},
+                      index=pd.to_datetime(["2026-07-14", "2026-07-15"]))
+    out = to_candles(df, 10)
+    assert out[0]["vol"] == 100 and out[-1]["vol"] == 200   # 일봉 거래량 실림
+    # Volume 컬럼 없으면 vol 키 미포함(하위호환)
+    assert "vol" not in to_candles(df.drop(columns=["Volume"]), 10)[0]
+
+
 def test_attach_ma_includes_5_and_10():
     bars = [{"close": float(i)} for i in range(1, 13)]  # 1..12
     out = _attach_ma(bars)

@@ -602,7 +602,7 @@ async function loadCandles(fit){
       color:(c.close>=c.open?'rgba(224,50,44,.45)':'rgba(21,101,192,.45)')};}));}
     var _lv=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 거래량 라벨(최근 봉)
     var _vlb=document.getElementById('vol-lb');
-    if(_vlb)_vlb.textContent='거래량 '+(tf==='1d'?'—':num(_lv)+'주');
+    if(_vlb)_vlb.textContent='거래량 '+num(_lv)+'주';
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
     var _na=[];
