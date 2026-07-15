@@ -57,6 +57,47 @@ def build_daily_html(codes, cache_dir, source=None, history_days=400,
     return build_daily_report_html(signals, end.isoformat(), issues_by_code, pwa=pwa)
 
 
+def _kr_market_open(now=None) -> bool:
+    """KRX 정규장(평일 09:00~15:30 KST) 여부."""
+    from zoneinfo import ZoneInfo
+    n = now or dt.datetime.now(ZoneInfo("Asia/Seoul"))
+    if n.weekday() >= 5:
+        return False
+    hm = n.strftime("%H:%M")
+    return "09:00" <= hm < "15:30"
+
+
+def _live_prices(codes) -> dict:
+    """관심종목 현재가(KIS FHKST01010100 주식현재가) — 장중 실시간. StockListing은 EOD·12h 캐시라
+    장중에도 전일 종가를 주므로 관심종목만 실시간으로 덮어쓴다. 키 없음/실패 코드는 생략(→ 폴백)."""
+    import asyncio
+    try:
+        from backend.flow.candles import _get_client
+        client = _get_client()
+    except Exception:
+        return {}
+
+    async def _fetch():
+        async def one(c):
+            try:
+                p = await client.price(c)
+                if p and p.get("price"):
+                    return c, {"close": p["price"], "change": p.get("rate")}
+            except Exception:
+                pass
+            return c, None
+        res = await asyncio.gather(*[one(c) for c in codes])
+        return {c: v for c, v in res if v}
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_fetch())
+    except Exception:
+        return {}
+    finally:
+        loop.close()
+
+
 def build_dashboard(codes, cache_dir, source=None, history_days=400,
                     force: bool = False, with_news: bool = True, pwa: bool = False,
                     chart_days: int = 120) -> str:
@@ -72,6 +113,8 @@ def build_dashboard(codes, cache_dir, source=None, history_days=400,
     issues = _collect_issues(codes) if with_news else {}
     universe = get_universe(cache_dir)
     pm = price_map(universe)
+    if _kr_market_open():   # 장중엔 관심종목을 KIS 실시간 현재가로 덮어씀(StockListing=전일 종가)
+        pm.update(_live_prices(codes))
     stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code))
               for s in signals]
     return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa)

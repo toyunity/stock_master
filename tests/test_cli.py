@@ -54,3 +54,17 @@ def test_generate_report_collection_failure_is_graceful(tmp_path, monkeypatch):
                     source=_fake_source, with_news=True)
     assert out.exists()
     assert "005930" in out.read_text(encoding="utf-8")
+
+
+def test_kr_market_open_boundaries():
+    # 대시보드는 장중에만 KIS 실시간 현재가로 덮어씀 — 경계 판정(평일 09:00~15:30 KST).
+    from zoneinfo import ZoneInfo
+    KST = ZoneInfo("Asia/Seoul")
+
+    def kst(h, m, day=16):  # 2026-07-16 목요일
+        return dt.datetime(2026, 7, day, h, m, tzinfo=KST)
+    assert cli._kr_market_open(kst(9, 0)) is True
+    assert cli._kr_market_open(kst(15, 29)) is True
+    assert cli._kr_market_open(kst(8, 59)) is False
+    assert cli._kr_market_open(kst(15, 30)) is False
+    assert cli._kr_market_open(kst(11, 0, day=18)) is False   # 토요일
