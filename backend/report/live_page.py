@@ -27,7 +27,7 @@ __PWA_HEAD__
 <style>
 __BASE_CSS__
 /* ── /live 고유 스타일 ── */
-.hero{position:sticky;top:0;z-index:20;background:var(--bg);margin:0 -16px 4px;
+.hero{background:var(--bg);margin:0 -16px 4px;
   padding:6px 16px 10px;
   padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
   border-bottom:1px solid var(--border)}

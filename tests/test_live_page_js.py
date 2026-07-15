@@ -25,7 +25,7 @@ const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const snap = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const code = scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
 const els = {};
 global.document = {
   getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
@@ -339,7 +339,7 @@ _RECONNECT_HARNESS = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const code = scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
 
 let now = 1000000;
 Date.now = () => now;     // 제어 가능한 시계(백오프·하트비트 판정용)
@@ -461,7 +461,7 @@ _AUTH_EXPIRY_HARNESS = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const code = scripts[1];
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
 
 let now = 1000000; Date.now = () => now;
 const els = {}, listeners = {};
@@ -531,7 +531,7 @@ _TF_HARNESS = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const code = scripts[1];
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
 
 let now = 1000000; Date.now = () => now;
 const els = {}, listeners = {};
@@ -604,7 +604,7 @@ _SAVE_HARNESS = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const code = scripts[1];
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
 const els = {};
 global.document = {
   getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
@@ -690,7 +690,8 @@ def test_page_logic_has_extreme_labels():
     from backend.report.live_page import render_live_page
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'id="hi-lbl"' in html and 'id="lo-lbl"' in html   # 최고/최저 오버레이 라벨
-    page = re.findall(r"<script>([\s\S]*?)</script>", html)[1]
+    page = next(s for s in re.findall(r"<script>([\s\S]*?)</script>", html)
+                if "loadCandles" in s)
     assert "priceToCoordinate" in page and "placeExt" in page
     assert "최고/최저" in page                                # 내 구현 주석 토큰
 
