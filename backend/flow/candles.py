@@ -33,13 +33,13 @@ TIMEFRAMES = ("1m", "5m", "15m", "60m", "1d")
 
 
 def _attach_ma(bars: list) -> list:
-    """각 봉에 20/60/120봉 단순이동평균(ma20/ma60/ma120)을 부착.
+    """각 봉에 5/10/20/60/120봉 단순이동평균(ma5..ma120)을 부착.
     앞 구간이 부족하면 None(프런트가 그 지점부터 선을 그림). 종가 기준."""
     closes = [b["close"] for b in bars]
     csum = [0.0]
     for c in closes:
         csum.append(csum[-1] + c)          # 누적합으로 O(n) 이동평균
-    for n in (20, 60, 120):
+    for n in (5, 10, 20, 60, 120):
         key = "ma" + str(n)
         for i, b in enumerate(bars):
             b[key] = round((csum[i + 1] - csum[i + 1 - n]) / n, 2) if i + 1 >= n else None

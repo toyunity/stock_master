@@ -1,7 +1,7 @@
 """봉 차트 데이터(분봉 파싱·집계·데모 합성·라우트) 테스트."""
 import asyncio
 
-from backend.flow.candles import aggregate, get_candles
+from backend.flow.candles import _attach_ma, aggregate, get_candles
 from backend.flow.kis import parse_minute_candles
 
 
@@ -114,3 +114,17 @@ def test_live_page_has_chart_and_collapsed_panels():
     assert "pchart" in html and "일봉" in html and "5분" in html  # 봉 주기 선택
     assert html.count("<details") >= 3  # 일별/기관세부/체결 기본 접힘
     assert "<summary" in html
+
+
+def test_attach_ma_includes_5_and_10():
+    bars = [{"close": float(i)} for i in range(1, 13)]  # 1..12
+    out = _attach_ma(bars)
+    # ma5: 앞 4개 None, 5번째(idx4)부터 값. 종가 1~5 평균 = 3.0, 6~10(idx9) 평균 = 8.0
+    assert out[0]["ma5"] is None and out[3]["ma5"] is None
+    assert out[4]["ma5"] == 3.0
+    assert out[9]["ma5"] == 8.0
+    # ma10: 10번째(idx9)부터. 종가 1~10 평균 = 5.5
+    assert out[8]["ma10"] is None
+    assert out[9]["ma10"] == 5.5
+    # 기존 키 유지
+    assert "ma20" in out[0] and "ma60" in out[0] and "ma120" in out[0]
