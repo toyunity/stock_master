@@ -67,3 +67,64 @@ def test_us_market_open_boundaries():
     assert us_market_open(et(9, 29)) is False
     assert us_market_open(et(16, 0)) is False
     assert us_market_open(et(12, 0, day=11)) is False  # 토요일
+
+
+# ── 애프터장(시간외) 반영 — 2026-07-15 프로브(overMarketPriceInfo) 기반 ──
+def test_parse_naver_world_after_hours_overmarket():
+    js = {"datas": [{
+        "closePrice": "193.92", "compareToPreviousClosePrice": "41.57",
+        "marketStatus": "CLOSE",
+        "overMarketPriceInfo": {"tradingSessionType": "AFTER_MARKET",
+                                "overMarketStatus": "CLOSE", "overPrice": "185.99",
+                                "fluctuationsRatio": "-4.09"}}]}
+    d = parse_naver_world(js)
+    assert d["last"] == 193.92          # 정규장 종가(변함없음)
+    assert d["over_price"] == 185.99    # 애프터장 체결가
+    assert d["over_session"] == "AFTER_MARKET" and d["over_status"] == "CLOSE"
+    # 시간외 필드가 없으면 over_price 키 미포함(기존 픽스처 하위호환)
+    d2 = parse_naver_world({"datas": [{"closePrice": "100",
+                                       "compareToPreviousClosePrice": "1",
+                                       "marketStatus": "OPEN"}]})
+    assert "over_price" not in d2
+
+
+class _FakeKis:
+    async def _get(self, path, tr, params):
+        if tr == "HHDFS76200200":      # KIS 정규장 last(시간외 미포함)
+            return {"rt_cd": "0", "output": {"last": "193.92", "base": "152.35"}}
+        return {"rt_cd": "0", "output1": {"ovrs_nmix_prpr": "1487.80"}}   # 환율
+
+
+def test_get_quote_prefers_after_hours_when_regular_closed(monkeypatch):
+    import asyncio
+    from backend.flow import adr as A
+    A._cache.clear()
+    monkeypatch.setattr(A, "us_market_open", lambda *a, **k: False)   # 정규장 마감
+
+    async def fake_naver(url):
+        return {"datas": [{"closePrice": "193.92",
+                           "compareToPreviousClosePrice": "41.57", "marketStatus": "CLOSE",
+                           "overMarketPriceInfo": {"tradingSessionType": "AFTER_MARKET",
+                                                   "overMarketStatus": "OPEN",
+                                                   "overPrice": "185.99"}}]}
+    monkeypatch.setattr(A, "_naver_json", fake_naver)
+    r = asyncio.get_event_loop().run_until_complete(A.get_quote(_FakeKis(), "000660"))
+    assert r["usd"] == 185.99          # 애프터장 체결가가 반영됨(정규장 종가 193.92 아님)
+    assert r["base_usd"] == 193.92     # base = 정규장 종가
+    assert r["session"] == "after" and r["src"] == "naver-ext" and r["us_open"] is False
+
+
+def test_get_quote_uses_kis_during_regular_hours(monkeypatch):
+    import asyncio
+    from backend.flow import adr as A
+    A._cache.clear()
+    monkeypatch.setattr(A, "us_market_open", lambda *a, **k: True)    # 정규장 중
+    naver_calls = {"n": 0}
+
+    async def fake_naver(url):
+        naver_calls["n"] += 1
+        return {"datas": []}
+    monkeypatch.setattr(A, "_naver_json", fake_naver)
+    r = asyncio.get_event_loop().run_until_complete(A.get_quote(_FakeKis(), "000660"))
+    assert r["usd"] == 193.92 and r["session"] == "regular" and r["src"] == "kis"
+    assert naver_calls["n"] == 0       # 정규장 중엔 네이버 호출 생략(KIS 실시간)

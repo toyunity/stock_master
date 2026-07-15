@@ -155,6 +155,7 @@ __BASE_CSS__
 .wl-actions{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
 .wl-status{font-size:12px;color:var(--text-3);font-weight:600}
 </style></head><body>
+<div id="app"><div id="app-scroll">
 <div class="hero">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
     <span class="hname">__NAME__</span> <span class="code">__CODE__</span>
@@ -950,9 +951,10 @@ function render(S){
       asg.className='sig '+cls(A.premium_pct);
     }else{asg.textContent='괴리율 대기 — 원주 체결 확보 후 표시'; asg.className='sig sig-flat';}
     document.getElementById('adr-fresh').textContent='· '
-      +(A.us_open?'미국 장중':'미국 장마감 — 전일 종가 기준')
+      +({regular:'미국 장중',after:'미국 애프터장(시간외)',pre:'미국 프리마켓(시간외)'}[A.session]
+        ||(A.us_open?'미국 장중':'미국 장마감 — 전일 종가 기준'))
       +' · 환율 '+A.fx.toLocaleString('ko-KR')+'원 · 조회 '+esc(A.fetched||'')+' (KST) · 출처 '
-      +(A.src==='kis'?'KIS':(A.src==='naver'?'네이버(폴백)':'데모'));
+      +(A.src==='naver-ext'?'네이버(시간외)':(A.src==='kis'?'KIS':(A.src==='naver'?'네이버(폴백)':'데모')));
     document.getElementById('adr-note').textContent='환산가 = '+esc(A.sym)+' × '
       +A.ratio+' (DR '+A.ratio+'주 = 원주 1주) × USD/KRW. 원주보다 비싸면(+, 적색) 미국 프리미엄.';
   }else{
@@ -1171,7 +1173,7 @@ try{
     window.addEventListener('online',resume);
 }catch(e){}
 connect();
-</script>__TABBAR__ __NAV_LOADER__</body></html>"""
+</script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 
 _MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}

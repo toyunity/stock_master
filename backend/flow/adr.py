@@ -66,15 +66,26 @@ def parse_fx_chart(js: dict) -> Optional[float]:
 
 
 def parse_naver_world(js: dict) -> Optional[dict]:
-    """polling.finance.naver.com 월드스톡 → {last, base, market_status}."""
+    """polling.finance.naver.com 월드스톡 → {last, base, market_status,
+    (정규장 마감 후 시간외가 있으면) over_price, over_status, over_session}.
+
+    KIS HHDFS76200200에는 애프터장 필드가 없어(last=정규장 종가), 시간외 체결가는
+    네이버 overMarketPriceInfo.overPrice로만 확보된다(2026-07-15 프로브 실측)."""
     rows = js.get("datas") if isinstance(js.get("datas"), list) else [js]
     for r in rows or []:
         last = _f(str(r.get("closePrice", "")).replace(",", ""))
         if last <= 0:
             continue
         chg = _f(str(r.get("compareToPreviousClosePrice", "")).replace(",", ""))
-        return {"last": last, "base": (last - chg) if chg else None,
-                "market_status": r.get("marketStatus")}
+        out = {"last": last, "base": (last - chg) if chg else None,
+               "market_status": r.get("marketStatus")}
+        om = r.get("overMarketPriceInfo") or {}
+        over = _f(str(om.get("overPrice", "")).replace(",", ""))
+        if over > 0:  # 애프터/프리마켓 체결가(정규장 종가와 별개)
+            out["over_price"] = over
+            out["over_status"] = om.get("overMarketStatus")      # OPEN(진행)/CLOSE(마감)
+            out["over_session"] = om.get("tradingSessionType")   # AFTER_MARKET/PRE_MARKET
+        return out
     return None
 
 
@@ -114,20 +125,33 @@ async def get_quote(client, code: str) -> Optional[dict]:
     if hit and now - hit[0] < _TTL:
         return hit[1]
 
-    quote, status, src = None, None, "kis"
+    reg_open = us_market_open()
+    quote, src = None, "kis"
     try:
         js = await client._get(_DETAIL_PATH, "HHDFS76200200",
                                {"AUTH": "", "EXCD": "NAS", "SYMB": sym})
-        quote = parse_overseas_detail(js)
+        quote = parse_overseas_detail(js)   # 정규장 last/base(시간외 미포함)
     except Exception:
         log.warning("KIS 해외시세(%s) 실패 — 네이버 폴백", sym, exc_info=True)
-    if quote is None:
+
+    # KIS 실패거나 미국 정규장 마감이면 네이버 조회 — 시간외(애프터/프리마켓) 가격 확보.
+    # 정규장 중엔 KIS last가 실시간이라 네이버를 건너뛴다(호출 절약).
+    naver = None
+    if quote is None or not reg_open:
         try:
-            d = parse_naver_world(await _naver_json(_NAVER_WORLD.format(sym=sym)))
-            if d:
-                quote, status, src = d, d.get("market_status"), "naver"
+            naver = parse_naver_world(await _naver_json(_NAVER_WORLD.format(sym=sym)))
         except Exception:
             log.warning("네이버 월드스톡(%s) 실패", sym, exc_info=True)
+    if quote is None and naver:               # KIS 실패 → 네이버 정규장 종가로 폴백
+        quote, src = {"last": naver["last"], "base": naver.get("base")}, "naver"
+
+    session = "regular" if reg_open else "closed"
+    # 정규장 마감 후 네이버 시간외 체결가가 있으면 그걸 우선 반영(사용자 요청: 애프터장 가격).
+    # base는 정규장 종가로 둬서 괴리율/환산은 시간외가 기준으로 계산된다.
+    if not reg_open and naver and naver.get("over_price"):
+        quote = {"last": naver["over_price"], "base": naver.get("last")}
+        session = "pre" if naver.get("over_session") == "PRE_MARKET" else "after"
+        src = "naver-ext"
 
     fx = None
     try:
@@ -150,8 +174,7 @@ async def get_quote(client, code: str) -> Optional[dict]:
     if quote and fx:
         result = {"sym": sym, "usd": quote["last"], "base_usd": quote.get("base"),
                   "fx": fx, "ratio": settings.adr_ratio,
-                  "us_open": (status == "OPEN") if status else us_market_open(),
-                  "src": src,
+                  "us_open": reg_open, "session": session, "src": src,
                   "fetched": kst.now().strftime("%H:%M:%S")}
     _cache[code] = (now, result)
     return result

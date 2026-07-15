@@ -28,6 +28,7 @@ td a{font-weight:700;color:var(--text)}
   padding:8px 0;min-height:40px;display:flex;align-items:center;list-style:none}
 #body details summary::-webkit-details-marker{display:none}
 </style></head><body>
+<div id="app"><div id="app-scroll">
 <div><a class="back" href="/">← 대시보드</a></div>
 <div class="hdr">
   <h1>🔍 수급 스캐너 <span class="badge b-warn">잠정</span></h1>
@@ -103,7 +104,7 @@ async function load(){
 }
 load();
 setInterval(load, 60000);
-</script>__TABBAR__ __NAV_LOADER__</body></html>"""
+</script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 
 def render_scanner_page() -> str:

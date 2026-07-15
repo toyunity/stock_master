@@ -75,6 +75,7 @@ ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(
 .rt.up{color:var(--up)}.rt.down{color:var(--down)}.rt.flat{color:var(--flat)}
 #semi>b{font-size:14px}
 </style></head><body>
+<div id="app"><div id="app-scroll">
 <h1>📊 Stock Master <small>__DATE__</small></h1>
 <div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
  · <a href="/scanner">🔍 수급 스캐너</a></div>
@@ -189,7 +190,7 @@ async function loadSemi(){
   }catch(e){semiStale();}
 }
 loadSemi(); setInterval(loadSemi,60000);
-</script>__TABBAR__ __NAV_LOADER__</body></html>"""
+</script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 
 def to_candles(df, days: int = 120) -> list:

@@ -52,16 +52,23 @@ BASE_CSS = """
   }
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;height:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",
   "Segoe UI",sans-serif;
-  max-width:760px;margin:0 auto;background:var(--bg);color:var(--text);
-  line-height:1.5;overflow-x:clip;
+  background:var(--bg);color:var(--text);line-height:1.5;
+  margin:0;height:100%;overflow:hidden;}
+/* ── 앱 셸: 화면을 채우는 flex 프레임 + 내부 스크롤. body는 스크롤하지 않아
+      사파리 브라우저 하단 툴바가 접혔다 펴지지 않음 → 하단 탭바가 흔들리지 않는다. ── */
+#app{position:fixed;top:0;left:0;right:0;
+  height:100vh;height:-webkit-fill-available;height:100dvh;  /* dvh 미지원 엔진 폴백(탭바가 화면 밖으로 나가는 것 방지) */
+  display:flex;flex-direction:column;background:var(--bg)}
+#app-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:none;width:100%;max-width:760px;margin:0 auto;overflow-x:clip;
   padding:16px;
   padding-top:max(16px, env(safe-area-inset-top));
   padding-left:max(16px, env(safe-area-inset-left));
   padding-right:max(16px, env(safe-area-inset-right));
-  padding-bottom:max(24px, env(safe-area-inset-bottom));}
+  padding-bottom:24px;}
 a{color:var(--primary);text-decoration:none}
 a:active{opacity:.6}
 h1{font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
@@ -225,8 +232,7 @@ window.addEventListener('pageshow',hide);
 # ── 하단 고정 탭바(앱 골격) — 전 페이지 공용. 활성 탭은 pathname으로, '종목' 탭은
 #    마지막 조회 종목(localStorage)로. 자기완결 <style>+<nav>+<script> 한 덩어리. ──
 TABBAR = """<style>
-body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
-#tabbar{position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;
+#tabbar{flex:0 0 auto;z-index:9998;display:flex;
   background:var(--surface);border-top:1px solid var(--border);
   padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -2px 14px rgba(17,24,39,.06)}
 #tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
