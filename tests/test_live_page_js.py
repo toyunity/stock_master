@@ -681,3 +681,15 @@ def test_template_has_5ma_buttons():
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'data-ma="5"' in html and 'data-ma="10"' in html
     assert 'data-ma="20"' in html and 'data-ma="120"' in html
+
+
+def test_page_logic_has_extreme_labels():
+    # 마커는 플롯 가장자리에서 잘려(극값=가격 극단) 토스식 떠있는 라벨로 대체.
+    # 오버레이 요소 + 좌표변환(placeExt) + 구현 주석 토큰을 페이지 로직에서 검증.
+    import re
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'id="hi-lbl"' in html and 'id="lo-lbl"' in html   # 최고/최저 오버레이 라벨
+    page = re.findall(r"<script>([\s\S]*?)</script>", html)[1]
+    assert "priceToCoordinate" in page and "placeExt" in page
+    assert "최고/최저" in page                                # 내 구현 주석 토큰

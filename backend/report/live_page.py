@@ -40,6 +40,11 @@ __BASE_CSS__
 #chart{height:180px}
 #pchart{height:230px}
 .chartwrap{position:relative}
+.ext-lbl{position:absolute;font-size:11px;font-weight:800;white-space:nowrap;pointer-events:none;z-index:3;
+  font-variant-numeric:tabular-nums;transform:translateX(-50%);
+  text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 1px 3px var(--bg)}
+.ext-lbl.hi{color:var(--up)}
+.ext-lbl.lo{color:var(--down)}
 .stall{display:none;position:absolute;inset:0;
   background:color-mix(in srgb,var(--surface) 88%,transparent);z-index:5;
   align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--warn);
@@ -183,7 +188,9 @@ __BASE_CSS__
     <button class="fit-btn" type="button" title="전체 기간 보기">⤢ 전체</button>
   </div>
   <div class="ohlc" id="ohlc"></div>
-  <div class="chartwrap"><div id="pchart"></div><div class="stall" id="pstall"></div></div>
+  <div class="chartwrap"><div id="pchart"></div>
+    <div class="ext-lbl hi" id="hi-lbl"></div><div class="ext-lbl lo" id="lo-lbl"></div>
+    <div class="stall" id="pstall"></div></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
 </div>
@@ -504,6 +511,30 @@ if(pchart.subscribeCrosshairMove){pchart.subscribeCrosshairMove(function(param){
   if(dd&&dd.open!=null){el.innerHTML=ohlcHtml(dd); el.classList.add('on');}
   else{el.classList.remove('on');}
 });}
+// 최고/최저 오버레이 라벨 배치 — 좌표 변환(가드). 극값이 화면 밖이면 가장자리 고정,
+// 라벨을 플롯 안(상단/볼륨밴드 위)으로 클램프해 잘리지 않게.
+let EXT=null;
+function placeExt(){
+  var hi=document.getElementById('hi-lbl'), lo=document.getElementById('lo-lbl');
+  if(!EXT||!pseries.priceToCoordinate){if(hi)hi.style.display='none';if(lo)lo.style.display='none';return;}
+  var pc=document.getElementById('pchart')||{}, cw=pc.clientWidth||0, ph=pc.clientHeight||0;
+  var band=ph*0.16, ts=pchart.timeScale();
+  [[hi,EXT.hiTime,EXT.hi,EXT.hiText,true],[lo,EXT.loTime,EXT.lo,EXT.loText,false]].forEach(function(a){
+    var el=a[0]; if(!el)return;
+    var y=pseries.priceToCoordinate(a[2]);
+    if(y==null){el.style.display='none';return;}
+    var x=ts.timeToCoordinate(a[1]);
+    if(x==null){var r=ts.getVisibleRange?ts.getVisibleRange():null; x=(r&&a[1]<r.from)?8:cw-8;}
+    var top=a[4]?(y-16):(y+6);                         // 최고=봉 위, 최저=봉 아래
+    top=Math.max(2,Math.min(ph-band-14,top));          // 플롯 안(볼륨밴드 위)로 클램프
+    var ax=Math.max(4,Math.min(cw-4,x));               // 가장자리에선 좌/우 정렬(중앙 정렬 밀림 방지)
+    el.style.transform=ax<56?'translateX(0)':(ax>cw-56?'translateX(-100%)':'translateX(-50%)');
+    el.textContent=a[3]; el.style.display='';
+    el.style.left=ax+'px'; el.style.top=top+'px';
+  });
+}
+(function(){var _ts=pchart.timeScale();
+  if(_ts.subscribeVisibleTimeRangeChange)_ts.subscribeVisibleTimeRangeChange(placeExt);})();
 let TF='5m', tfSeq=0;
 const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','60m':'당일 60분봉','1d':'일봉 120일'};
 async function loadCandles(fit){
@@ -520,6 +551,19 @@ async function loadCandles(fit){
     var _mapped=d.candles.map(c=>({time:tf==='1d'?c.t:toTs(c.t,d.date),
       open:c.open,high:c.high,low:c.low,close:c.close}));
     pseries.setData(_mapped);
+    // 최고/최저 자동 주석: 전체 로드 기간 고정 · 현재가(마지막 종가) 대비 % · 오버레이 라벨(placeExt).
+    var _hi=-Infinity,_lo=Infinity,_hiI=0,_loI=0;
+    for(var _i=0;_i<_mapped.length;_i++){
+      if(_mapped[_i].high>_hi){_hi=_mapped[_i].high;_hiI=_i;}
+      if(_mapped[_i].low<_lo){_lo=_mapped[_i].low;_loI=_i;}
+    }
+    var _cur=_mapped.length?_mapped[_mapped.length-1].close:0;
+    var _pct=function(v){var p=_cur?((v-_cur)/_cur*100):0;return (p>=0?'+':'')+p.toFixed(1)+'%';};
+    var _dt=function(idx){var t=(d.candles[idx]||{}).t||'';return t.length>=10?t.slice(5).replace('-','.'):t;};
+    EXT=_mapped.length?{hi:_hi,lo:_lo,hiTime:_mapped[_hiI].time,loTime:_mapped[_loI].time,
+      hiText:won(_hi)+' ('+_dt(_hiI)+') '+_pct(_hi),
+      loText:won(_lo)+' ('+_dt(_loI)+') '+_pct(_lo)}:null;
+    placeExt();
     // 실시간 봉 갱신 기준: 마지막 로드 봉(틱마다 이 봉의 고저종을 pseries.update로 갱신)
     lastCandle=_mapped.length?Object.assign({},_mapped[_mapped.length-1]):null; lastCandleTf=tf;
     // 거래량 히스토그램(상승=적/하락=청 반투명). 일봉은 vol 0이라 비어 보임(분봉에서 의미).
