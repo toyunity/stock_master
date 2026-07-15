@@ -137,6 +137,15 @@ def create_app(settings=None) -> FastAPI:
         """반도체 동향(메모리 중심) — 미국(SOX·나스닥)+국내 시세 요약, 60초 캐시."""
         return JSONResponse(await semi.get_overview())
 
+    @app.get("/api/prices")
+    async def prices_api():
+        """관심종목 실시간 현재가 — 대시보드 카드가 폴링. 장중에만 KIS 조회(장외/주말은 open:false)."""
+        from backend.cli import _kr_market_open, fetch_live_prices
+        if not _kr_market_open():
+            return JSONResponse({"open": False, "prices": {}})
+        return JSONResponse({"open": True,
+                             "prices": await fetch_live_prices(settings.watchlist)})
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}

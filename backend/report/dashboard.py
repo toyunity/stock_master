@@ -123,7 +123,7 @@ function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
-  if(s.close!=null) h+=' · <b>'+won(s.close)+'</b> '+chg(s.change);
+  if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -190,6 +190,20 @@ async function loadSemi(){
   }catch(e){semiStale();}
 }
 loadSemi(); setInterval(loadSemi,60000);
+// 관심종목 카드 현재가 실시간 갱신 — /api/prices 12초 폴링(장중만 서버가 값 반환).
+async function loadPrices(){
+  try{
+    const r=await fetch('/api/prices'); if(!r.ok)return;
+    const d=await r.json(); if(!d||!d.open||!d.prices)return;
+    for(const code in d.prices){
+      const p=d.prices[code]; if(!p||p.close==null)continue;
+      document.querySelectorAll('.cpx[data-code="'+code+'"]').forEach(function(el){
+        el.innerHTML='<b>'+won(p.close)+'</b> '+chg(p.change);
+      });
+    }
+  }catch(e){}
+}
+loadPrices(); setInterval(loadPrices, 12000);
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 

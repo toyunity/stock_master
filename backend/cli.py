@@ -67,9 +67,9 @@ def _kr_market_open(now=None) -> bool:
     return "09:00" <= hm < "15:30"
 
 
-def _live_prices(codes) -> dict:
-    """관심종목 현재가(KIS FHKST01010100 주식현재가) — 장중 실시간. StockListing은 EOD·12h 캐시라
-    장중에도 전일 종가를 주므로 관심종목만 실시간으로 덮어쓴다. 키 없음/실패 코드는 생략(→ 폴백)."""
+async def fetch_live_prices(codes) -> dict:
+    """관심종목 현재가(KIS FHKST01010100 주식현재가) → {code:{close,change}}. StockListing은
+    EOD·12h 캐시라 장중에도 전일 종가 → 관심종목만 실시간으로. 키 없음/실패 코드는 생략(→ 폴백)."""
     import asyncio
     try:
         from backend.flow.candles import _get_client
@@ -77,21 +77,24 @@ def _live_prices(codes) -> dict:
     except Exception:
         return {}
 
-    async def _fetch():
-        async def one(c):
-            try:
-                p = await client.price(c)
-                if p and p.get("price"):
-                    return c, {"close": p["price"], "change": p.get("rate")}
-            except Exception:
-                pass
-            return c, None
-        res = await asyncio.gather(*[one(c) for c in codes])
-        return {c: v for c, v in res if v}
+    async def one(c):
+        try:
+            p = await client.price(c)
+            if p and p.get("price"):
+                return c, {"close": p["price"], "change": p.get("rate")}
+        except Exception:
+            pass
+        return c, None
+    res = await asyncio.gather(*[one(c) for c in codes])
+    return {c: v for c, v in res if v}
 
+
+def _live_prices(codes) -> dict:
+    """build_dashboard(sync)용 래퍼 — 새 이벤트루프로 fetch_live_prices 실행(요청마다 새 AsyncClient라 안전)."""
+    import asyncio
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_fetch())
+        return loop.run_until_complete(fetch_live_prices(codes))
     except Exception:
         return {}
     finally:
