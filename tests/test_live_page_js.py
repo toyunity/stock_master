@@ -699,3 +699,9 @@ def test_hero_has_change_element():
     from backend.report.live_page import render_live_page
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'id="chg"' in html
+
+
+def test_chart_has_volume_label():
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'id="vol-lb"' in html

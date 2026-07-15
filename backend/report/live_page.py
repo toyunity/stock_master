@@ -47,6 +47,8 @@ __BASE_CSS__
   text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 1px 3px var(--bg)}
 .ext-lbl.hi{color:var(--up)}
 .ext-lbl.lo{color:var(--down)}
+.vol-lb{position:absolute;left:8px;bottom:6px;font-size:10px;font-weight:700;color:var(--text-3);
+  pointer-events:none;z-index:3;text-shadow:0 0 3px var(--bg),0 0 3px var(--bg)}
 .stall{display:none;position:absolute;inset:0;
   background:color-mix(in srgb,var(--surface) 88%,transparent);z-index:5;
   align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--warn);
@@ -193,6 +195,7 @@ __BASE_CSS__
   <div class="ohlc" id="ohlc"></div>
   <div class="chartwrap"><div id="pchart"></div>
     <div class="ext-lbl hi" id="hi-lbl"></div><div class="ext-lbl lo" id="lo-lbl"></div>
+    <div class="vol-lb" id="vol-lb"></div>
     <div class="stall" id="pstall"></div></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
@@ -574,6 +577,9 @@ async function loadCandles(fit){
     if(volSeries){volSeries.setData(d.candles.map(function(c){return {
       time:tf==='1d'?c.t:toTs(c.t,d.date), value:c.vol||0,
       color:(c.close>=c.open?'rgba(224,50,44,.45)':'rgba(21,101,192,.45)')};}));}
+    var _lv=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 거래량 라벨(최근 봉)
+    var _vlb=document.getElementById('vol-lb');
+    if(_vlb)_vlb.textContent='거래량 '+(tf==='1d'?'—':num(_lv)+'주');
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
     var _na=[];
