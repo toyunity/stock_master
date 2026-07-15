@@ -484,16 +484,23 @@ if(vchart&&vchart.addHistogramSeries){
     lastValueVisible:false,priceLineVisible:false});
 }
 // 공매도 거래량(일봉 전용) — 거래량 차트에 함께.
-let ssSeries=null, ssOn=false, SS_ROWS=[];
+let ssSeries=null, ssOn=false, SS_ROWS=[], lastVol=0;
 if(vchart&&vchart.addHistogramSeries){
   ssSeries=vchart.addHistogramSeries({priceFormat:{type:'volume'},
     lastValueVisible:false,priceLineVisible:false,color:'rgba(168,85,247,.7)'});
 }
 function renderSS(){
-  if(!ssSeries)return;
-  if(ssOn&&TF==='1d'&&SS_ROWS.length){
-    ssSeries.setData(SS_ROWS.map(function(r){return {time:r.date, value:r.qty||0};}));
-  }else{ssSeries.setData([]);}
+  var showSS = ssOn && TF==='1d' && SS_ROWS.length;
+  if(ssSeries){
+    ssSeries.setData(showSS?SS_ROWS.map(function(r){return {time:r.date, value:r.qty||0};}):[]);
+  }
+  // 공매도 볼 땐 거래량을 숨긴다 — 같은 스케일에 눌리지 않게, 공매도가 자체 스케일로 크게 보이도록.
+  if(volSeries){try{volSeries.applyOptions({visible:!showSS});}catch(e){}}
+  var _vlb=document.getElementById('vol-lb');
+  if(_vlb){
+    if(showSS){var _sq=SS_ROWS[SS_ROWS.length-1].qty||0; _vlb.textContent='공매도 '+num(_sq)+'주';}
+    else _vlb.textContent='거래량 '+num(lastVol)+'주';
+  }
 }
 // 시간축 동기화: 캔들을 pan/zoom하면 거래량도 같이 이동(양방향, 재진입 가드).
 let _vsync=false;
@@ -600,9 +607,7 @@ async function loadCandles(fit){
     if(volSeries){volSeries.setData(d.candles.map(function(c){return {
       time:tf==='1d'?c.t:toTs(c.t,d.date), value:c.vol||0,
       color:(c.close>=c.open?'rgba(224,50,44,.45)':'rgba(21,101,192,.45)')};}));}
-    var _lv=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 거래량 라벨(최근 봉)
-    var _vlb=document.getElementById('vol-lb');
-    if(_vlb)_vlb.textContent='거래량 '+num(_lv)+'주';
+    lastVol=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 최근 봉 거래량(라벨은 renderSS)
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
     var _na=[];
