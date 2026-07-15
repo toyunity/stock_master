@@ -693,3 +693,9 @@ def test_page_logic_has_extreme_labels():
     page = re.findall(r"<script>([\s\S]*?)</script>", html)[1]
     assert "priceToCoordinate" in page and "placeExt" in page
     assert "최고/최저" in page                                # 내 구현 주석 토큰
+
+
+def test_hero_has_change_element():
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'id="chg"' in html

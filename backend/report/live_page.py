@@ -33,7 +33,9 @@ __BASE_CSS__
   border-bottom:1px solid var(--border)}
 .hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
 .hero .hname{font-size:18px;font-weight:800;letter-spacing:-.01em}
-.hero .price{font-size:30px;margin:4px 0 0}
+.hero .price{font-size:30px;margin:4px 0 0;font-weight:800;letter-spacing:-.5px}
+.hero .chg{font-size:14px;font-weight:700;margin:2px 0 0}
+.hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
@@ -158,6 +160,7 @@ __BASE_CSS__
     <span id="conn" class="badge b-off">연결 중…</span>
     <span id="mstate" class="badge b-off">상태 확인 중</span></div>
   <div class="price" id="price">–</div>
+  <div class="chg flat" id="chg"></div>
   <div class="sig sig-flat" id="tm-headline"></div>
   <div class="note" id="walert"></div>
 </div>
@@ -486,8 +489,9 @@ function bucketMin(m,n){return m>=540?m-((m-540)%n):m-(m%n);} // 백엔드 aggre
 function updateLiveCandle(M){
   if(M.price==null||!pseries.update)return;   // 하니스(update 없음)·미체결 가드
   var price=M.price;
-  if(nowLine){try{nowLine.applyOptions({price:price,
-    color:(M.sign==='up'?'#e0322c':(M.sign==='down'?'#1565c0':'#8a94a6'))});}catch(e){}}
+  var _col=(M.sign==='up'?'#e0322c':(M.sign==='down'?'#1565c0':'#8a94a6'));
+  if(nowLine){try{nowLine.applyOptions({price:price,color:_col});}catch(e){}}
+  try{pseries.applyOptions({priceLineColor:_col,priceLineWidth:2});}catch(e){}   // 현재가 축 태그 방향색
   var ce=document.getElementById('pc-count');
   if(TF==='1d'||!lastCandle||lastCandleTf!==TF){if(ce)ce.textContent='';return;} // 일봉·미로드 제외
   var n={'1m':1,'5m':5,'15m':15,'60m':60}[TF]; if(!n){if(ce)ce.textContent='';return;}
@@ -794,8 +798,12 @@ function render(S){
   const M=S.market;
   if(M.price!=null){
     const p=document.getElementById('price');
-    p.textContent=won(M.price)+' '+sgn[M.sign]+' '+(M.rate!=null?Math.abs(M.rate).toFixed(2)+'%':'');
+    p.textContent=won(M.price);
     p.className='price '+M.sign;
+    var cg=document.getElementById('chg');
+    cg.textContent=(M.change!=null?sgn[M.sign]+won(Math.abs(M.change)):'')
+      +(M.rate!=null?'  '+(M.rate>0?'+':(M.rate<0?'-':''))+Math.abs(M.rate).toFixed(2)+'%':'');
+    cg.className='chg '+M.sign;
     document.getElementById('pmeta').innerHTML='거래량 '+num(M.vol)+'주 · 거래대금 '+eok(M.value).replace('+','')
       +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · 기준 '+esc(M.time||'')+' (KST) <span class="fresh">· 실시간 · __MKT__</span>';
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
