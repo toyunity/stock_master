@@ -229,18 +229,42 @@ def _register_routes(app, google, settings, emails) -> None:
 
 # ── 최소 로그인/2FA 페이지 ────────────────────────────────────────────
 _PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
-<style>body{{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-max-width:420px;margin:0 auto;padding:56px 20px;color:#1a1a2e;background:#f7f8fb;text-align:center}}
-h1{{font-size:20px}} .btn{{display:inline-block;margin-top:16px;padding:12px 22px;background:#1565c0;
-color:#fff;border:none;border-radius:10px;font-size:16px;cursor:pointer;text-decoration:none}}
-input{{font-size:24px;letter-spacing:8px;text-align:center;padding:10px;width:190px;
-border:1px solid #ccd4e0;border-radius:10px;margin-top:8px}} .err{{color:#c62828;margin-top:10px}}
-.muted{{color:#888;font-size:13px;margin-top:22px}}
-img.qr{{width:230px;height:230px;image-rendering:pixelated;background:#fff;padding:10px;border-radius:10px}}
-code{{background:#eef1f6;padding:2px 6px;border-radius:5px;word-break:break-all}}
-@media(prefers-color-scheme:dark){{body{{color:#e7ecf5;background:#0c1020}}code{{background:#1a2340}}}}
-</style></head><body>{body}</body></html>"""
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{title}</title>
+<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="Stock Master">
+<style>
+:root{{--bg:#eef1f7;--surface:#fff;--surface-2:#f3f5fa;--text:#131722;--text-2:#556072;
+--text-3:#8a94a6;--border:#e3e8f0;--primary:#1565c0;--up:#e0322c;--r:14px}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#0d1117;--surface:#161b22;--surface-2:#1b222c;
+--text:#e7edf5;--text-2:#9aa6b6;--text-3:#6b7789;--border:#2a323d;--primary:#4c9aff;--up:#ff5b52}}}}
+*{{box-sizing:border-box}}
+body{{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+min-height:100vh;margin:0;background:var(--bg);color:var(--text);line-height:1.6;
+display:flex;align-items:center;justify-content:center;
+padding:32px max(20px,env(safe-area-inset-left)) max(32px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-right))}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:20px;
+box-shadow:0 8px 30px rgba(17,24,39,.10);padding:32px 26px;width:100%;max-width:380px;text-align:center}}
+h1{{font-size:22px;font-weight:800;margin:0 0 6px;letter-spacing:-.01em}}
+p{{color:var(--text-2);font-size:14px;margin:8px 0}}
+.btn{{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:50px;max-width:100%;
+margin-top:18px;padding:0 26px;background:var(--primary);color:#fff;border:none;border-radius:var(--r);
+font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;
+box-shadow:0 4px 14px rgba(21,101,192,.30);-webkit-tap-highlight-color:transparent}}
+.btn:active{{opacity:.85}}
+.btn.alt{{background:var(--surface-2);color:var(--text);box-shadow:none;border:1px solid var(--border);font-weight:500}}
+input{{font-size:28px;letter-spacing:10px;text-align:center;padding:14px 10px;width:220px;max-width:100%;
+border:1px solid var(--border);border-radius:var(--r);margin-top:12px;background:var(--surface-2);
+color:var(--text);font-variant-numeric:tabular-nums}}
+.err{{color:var(--up);margin-top:12px;font-weight:600;font-size:14px}}
+.muted{{color:var(--text-3);font-size:13px;margin-top:24px}} .muted a{{color:var(--text-2)}}
+img.qr{{width:230px;height:230px;max-width:100%;image-rendering:pixelated;background:#fff;
+padding:12px;border-radius:var(--r);margin:6px auto 0}}
+code{{background:var(--surface-2);color:var(--text);padding:3px 8px;border-radius:6px;
+word-break:break-all;font-size:14px}}
+a{{color:var(--primary);text-decoration:none}}
+</style></head><body><div class="card">{body}</div></body></html>"""
 
 _LOGIN_HTML = _PAGE.format(
     title="로그인 — Stock Master",
@@ -262,8 +286,8 @@ def _twofa_html(error: str = "") -> str:
              '<form method="post" action="/2fa"><input name="code" inputmode="numeric" '
              'autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" autofocus>' + err
              + '<div><button class="btn" type="submit">확인</button></div></form>'
-             '<div style="margin-top:18px"><a class="btn" href="/2fa/setup" '
-             'style="background:#455a64">📱 처음이면 여기서 기기 등록(QR)</a></div>'
+             '<div style="margin-top:14px"><a class="btn alt" href="/2fa/setup">'
+             '📱 처음이면 여기서 기기 등록(QR)</a></div>'
              '<div class="muted"><a href="/logout">로그아웃</a></div>')
 
 

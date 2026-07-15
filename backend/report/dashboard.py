@@ -19,95 +19,65 @@ from backend.news.names import display_name
 
 _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-charts.js"
 
-_PWA_HEAD = (
-    '<meta name="theme-color" content="#1565c0">'
-    '<link rel="manifest" href="/manifest.json">'
-    '<link rel="apple-touch-icon" href="/icons/icon-180.png">'
-    '<meta name="apple-mobile-web-app-capable" content="yes">'
-    '<meta name="mobile-web-app-capable" content="yes">'
-    '<meta name="apple-mobile-web-app-status-bar-style" content="default">'
-    '<meta name="apple-mobile-web-app-title" content="Stock Master">'
-)
-
-# 페이지 전환 로딩 바 — 내부 링크 클릭/이탈 시 상단 진행 바(전 페이지 공용).
-# 자기완결 HTML이 커서(차트 라이브러리 inline) 전환 공백이 체감됨 → 즉각 피드백.
-# bfcache 복귀(pageshow)에서 제거해 뒤로가기 잔상을 막는다.
-_NAV_LOADER = """<style>#navload{position:fixed;top:0;left:0;height:3px;width:0;
-background:linear-gradient(90deg,#1565c0,#42a5f5);z-index:9999;pointer-events:none;
-transition:width .5s ease;border-radius:0 2px 2px 0}
-#navload.on{width:85%}
-#navload.done{width:100%;opacity:0;transition:width .15s,opacity .3s .15s}</style>
-<script>(function(){
-var bar=null,tmo=null;
-function el(){if(!bar){bar=document.createElement('div');bar.id='navload';document.body.appendChild(bar);}return bar;}
-function hide(){if(bar){bar.classList.remove('on');bar.classList.add('done');
-  setTimeout(function(){if(bar){bar.remove();bar=null;}},500);}
-  if(tmo){clearTimeout(tmo);tmo=null;}}
-function show(){var b=el();b.classList.remove('done');void b.offsetWidth;b.classList.add('on');
-  if(tmo)clearTimeout(tmo);
-  tmo=setTimeout(hide,12000);} // 취소된 내비게이션에서 85% 고착 방지
-document.addEventListener('click',function(e){
-  // 새 탭/보조버튼/취소된 클릭은 현재 페이지가 안 떠나므로 바를 켜지 않는다
-  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
-  var t=e.target; while(t&&t.tagName!=='A')t=t.parentElement;
-  if(!t||!t.getAttribute)return;
-  var href=t.getAttribute('href')||'';
-  if(!href||href[0]==='#'||t.target==='_blank'||t.hasAttribute('download'))return;
-  if(/^(javascript:|mailto:|tel:)/i.test(href))return;
-  if(t.origin&&t.origin!==location.origin)return;
-  show();
-},true);
-// beforeunload 리스너는 bfcache를 무력화(Firefox 전면, Safari 일부)하므로 쓰지 않는다
-window.addEventListener('pageshow',hide);
-})();</script>"""
-
-_DISCLAIMER = (
-    "⚠️ 투자 유의 안내 — 본 애플리케이션이 제공하는 모든 정보·분석·신호는 참고용이며, "
-    "특정 종목의 매수·매도를 권유하지 않습니다. 모든 투자 판단과 그 결과에 대한 책임은 "
-    "이용자 본인에게 있습니다. 과거 성과(백테스트)는 미래 수익을 보장하지 않습니다. "
-    "데이터는 FDR·DART·KRX·언론사 등에서 수집되며 오류·지연이 있을 수 있습니다."
+# 공유 디자인 시스템(theme.py)에서 재노출 — live_page/scanner_page가 이 이름들을 import.
+from backend.report.theme import (  # noqa: E402
+    BASE_CSS as _BASE_CSS,
+    CHART_THEME_JS as _CHART_THEME_JS,
+    DISCLAIMER as _DISCLAIMER,
+    NAV_LOADER as _NAV_LOADER,
+    PWA_HEAD as _PWA_HEAD,
+    TABBAR as _TABBAR,
 )
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stock Master 대시보드 __DATE__</title>
 __PWA_HEAD__
 <style>
-body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-  max-width:760px;margin:0 auto;padding:16px;color:#1a1a2e;background:#f7f8fb}
-h1{font-size:20px;margin:0 0 4px} .sub{color:#888;font-size:12px;margin-bottom:10px}
-.refresh{font-size:14px;padding:8px 14px;border:1px solid #1565c0;background:#1565c0;
-  color:#fff;border-radius:8px;cursor:pointer;margin-bottom:8px}
-.search{background:#fff;border:1px solid #e0e3eb;border-radius:12px;padding:12px;margin:10px 0}
-.search input{width:100%;font-size:16px;padding:10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
-.srow{padding:8px 4px;border-bottom:1px solid #f0f0f0;font-size:14px;display:flex;justify-content:space-between}
-.spx{font-size:12px;color:#666}
-.card{border:1px solid #e0e3eb;border-radius:12px;padding:14px;margin:12px 0;background:#fff}
-.buy{border-left:5px solid #1565c0} .sell{border-left:5px solid #c62828} .hold{border-left:5px solid #9e9e9e}
-.badge{font-size:12px;padding:2px 8px;border-radius:10px;color:#fff}
-.b-buy{background:#1565c0} .b-sell{background:#c62828} .b-hold{background:#9e9e9e}
-.name{font-size:17px;font-weight:700;color:inherit;text-decoration:none}
-a.name:active{opacity:.6} .code{font-size:12px;color:#999;font-weight:400}
-.conf{font-size:13px;color:#555;margin-top:4px}
-.chg{font-weight:600} .chg.up{color:#c62828} .chg.down{color:#1565c0}
-.chart{height:180px;margin:8px 0}
-ul{margin:6px 0 0 0;padding-left:18px} li{font-size:14px}
-.bt{font-size:12px;color:#1565c0;margin-top:6px;background:#eef4fc;padding:6px 8px;border-radius:6px}
-.issues{margin-top:8px;border-top:1px dashed #e0e3eb;padding-top:8px}
-.issues-label{font-size:12px;color:#888} .issues h4{font-size:13px;margin:8px 0 2px;color:#444}
-.issues ul{margin:2px 0 0 0} .issues li{font-size:13px;margin:2px 0} .issues a{color:#1565c0;text-decoration:none}
-.meta{font-size:11px;color:#999}
-.disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:16px}
-.semigrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
-.scard{background:#f7f8fb;border-radius:8px;padding:8px 6px;text-align:center}
-.scard .nm{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scard .px{font-size:14px;font-weight:700}
-.scard .rt{font-size:12px;font-weight:600}
-.rt.up{color:#c62828}.rt.down{color:#1565c0}.rt.flat{color:#888}
+__BASE_CSS__
+/* ── 대시보드 고유 ── */
+h1{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+h1 small{font-size:13px;color:var(--text-3);font-weight:600}
+.sub{color:var(--text-2);font-size:12.5px;margin:2px 0 14px;line-height:1.6}
+.refresh{margin-bottom:10px}
+.search{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:14px;margin:12px 0;box-shadow:var(--shadow)}
+.search input{width:100%;font-size:16px;padding:12px 14px;border:1px solid var(--border);
+  border-radius:var(--r);box-sizing:border-box;background:var(--surface-2);color:var(--text)}
+.search input::placeholder{color:var(--text-3)}
+.srow{padding:11px 4px;border-bottom:1px solid var(--border-2);font-size:14px;
+  display:flex;justify-content:space-between;gap:8px;align-items:center}
+.srow:last-child{border-bottom:0}
+.spx{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.card{position:relative;overflow:hidden}
+.card.buy{border-left:4px solid var(--primary)}
+.card.sell{border-left:4px solid var(--up)}
+.card.hold{border-left:4px solid var(--flat)}
+.name{font-size:17px;font-weight:800;color:var(--text);text-decoration:none;letter-spacing:-.01em}
+a.name:active{opacity:.6}
+.conf{font-size:13px;color:var(--text-2);margin-top:6px}
+.chg{font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
+.chart{height:180px;margin:10px 0}
+ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(--text)}
+.bt{font-size:12px;color:var(--primary-ink);margin-top:8px;background:var(--info-bg);
+  padding:8px 10px;border-radius:var(--r-sm);font-weight:500}
+.issues{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.issues-label{font-size:12px;color:var(--text-3)} .issues h4{font-size:13px;margin:10px 0 2px;color:var(--text-2)}
+.issues ul{margin:2px 0 0 0} .issues li{font-size:13px;margin:3px 0} .issues a{color:var(--primary)}
+.issues .meta{font-size:11px}
+.semigrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.scard{background:var(--surface-2);border:1px solid var(--border-2);border-radius:var(--r);
+  padding:10px 6px;text-align:center;min-width:0}
+.scard .nm{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin-bottom:3px}
+.scard .px{font-size:14px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+.scard .rt{font-size:12px;font-weight:700}
+.rt.up{color:var(--up)}.rt.down{color:var(--down)}.rt.flat{color:var(--flat)}
+#semi>b{font-size:14px}
 </style></head><body>
-<h1>📊 Stock Master <small style="font-size:13px;color:#888">__DATE__</small></h1>
+<h1>📊 Stock Master <small>__DATE__</small></h1>
 <div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
- · <a href="/scanner" style="color:#1565c0;text-decoration:none">🔍 수급 스캐너</a></div>
+ · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
 <div class="card" id="semi" style="display:none">
   <b>🔬 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
@@ -125,6 +95,7 @@ __REFRESH__
 <div class="disc">__DISCLAIMER__</div>
 <script>__LIB__</script>
 <script>
+__CHART_THEME_JS__
 const D = __DATA__;
 const won = n => n==null ? '–' : Math.round(n).toLocaleString('ko-KR')+'원';
 const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
@@ -163,10 +134,12 @@ document.getElementById('cards').innerHTML = D.stocks.map(cardHtml).join('');
 D.stocks.forEach(s=>{
   if(!s.candles||!s.candles.length) return;
   const el=document.getElementById('chart-'+s.code); if(!el) return;
+  const _t=chartTheme();
   const chart=LightweightCharts.createChart(el,{autoSize:true,height:180,
-    layout:{background:{color:'#fff'},textColor:'#999',fontSize:10},
-    grid:{vertLines:{color:'#f4f4f4'},horzLines:{color:'#f4f4f4'}},
-    rightPriceScale:{borderColor:'#eee'},timeScale:{borderColor:'#eee'}});
+    layout:_t.layout,grid:_t.grid,
+    rightPriceScale:{borderColor:_t.rightPriceScale.borderColor},
+    timeScale:{borderColor:_t.timeScale.borderColor}});
+  registerChart(chart);
   const series=chart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
     borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0'});
   series.setData(s.candles); chart.timeScale().fitContent();
@@ -216,7 +189,7 @@ async function loadSemi(){
   }catch(e){semiStale();}
 }
 loadSemi(); setInterval(loadSemi,60000);
-</script>__NAV_LOADER__</body></html>"""
+</script>__TABBAR__ __NAV_LOADER__</body></html>"""
 
 
 def to_candles(df, days: int = 120) -> list:
@@ -253,7 +226,10 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     refresh = '<button class="refresh" onclick="location.reload()">🔄 새로고침</button>' if pwa else ""
     return (_TEMPLATE
+            .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
             .replace("__DATE__", escape(date))
+            .replace("__TABBAR__", _TABBAR if pwa else "")
             .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD if pwa else "")
             .replace("__REFRESH__", refresh)

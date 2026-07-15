@@ -82,3 +82,34 @@ def test_dashboard_cards_link_to_live():
              "news": [], "disclosures": [], "candles": []}
     html = render_dashboard([stock], [], "2026-07-10", pwa=True)
     assert "/live/" in html  # 카드 종목명 → 실시간 수급 화면 딥링크
+
+
+# ── 감시선 편집 API (/api/watch) ──
+def test_watch_get_default(monkeypatch, tmp_path):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    r = client.get("/api/watch/000660")
+    assert r.status_code == 200
+    labels = [l["label"] for l in r.json()["lines"]]
+    assert "절대선" in labels           # config 기본값 폴백
+
+
+def test_watch_post_roundtrip(monkeypatch, tmp_path):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    r = client.post("/api/watch/000660", json={"lines": [{"price": 12345, "label": "내선"}]})
+    assert r.status_code == 200
+    assert r.json()["lines"] == [{"price": 12345, "label": "내선"}]
+    assert client.get("/api/watch/000660").json()["lines"] == [{"price": 12345, "label": "내선"}]
+
+
+def test_watch_post_invalid_400(monkeypatch, tmp_path):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    r = client.post("/api/watch/000660", json={"lines": [{"price": -5, "label": "x"}]})
+    assert r.status_code == 400 and "error" in r.json()
+
+
+def test_watch_bad_code_404():
+    assert client.get("/api/watch/12ab").status_code == 404
+    assert client.post("/api/watch/12ab", json={"lines": []}).status_code == 404

@@ -29,7 +29,21 @@ _min_cache: dict = {}   # code -> (ts, bars)
 _daily_cache: dict = {}  # code -> (ts, candles)
 _client = None
 
-TIMEFRAMES = ("1m", "5m", "15m", "1d")
+TIMEFRAMES = ("1m", "5m", "15m", "60m", "1d")
+
+
+def _attach_ma(bars: list) -> list:
+    """각 봉에 20/60/120봉 단순이동평균(ma20/ma60/ma120)을 부착.
+    앞 구간이 부족하면 None(프런트가 그 지점부터 선을 그림). 종가 기준."""
+    closes = [b["close"] for b in bars]
+    csum = [0.0]
+    for c in closes:
+        csum.append(csum[-1] + c)          # 누적합으로 O(n) 이동평균
+    for n in (20, 60, 120):
+        key = "ma" + str(n)
+        for i, b in enumerate(bars):
+            b[key] = round((csum[i + 1] - csum[i + 1 - n]) / n, 2) if i + 1 >= n else None
+    return bars
 
 
 def _get_client() -> KisClient:
@@ -139,12 +153,14 @@ def _daily_candles(code: str) -> list:
         from backend.adapters.prices import PriceAdapter
         from backend.report.dashboard import to_candles
         end = dt.date.today()
-        start = end - dt.timedelta(days=240)
+        start = end - dt.timedelta(days=400)   # 120봉 이동평균이 채워지도록 넉넉히
         df = PriceAdapter(OHLCVCache(settings.cache_dir)).get_ohlcv(
             code, start.isoformat(), end.isoformat())
-        candles = [{"t": c["time"], "open": c["open"], "high": c["high"],
-                    "low": c["low"], "close": c["close"], "vol": 0}
-                   for c in to_candles(df, 120)]
+        # 260봉으로 이동평균을 계산한 뒤 최근 120봉만 노출(선행 구간이 ma120을 채움)
+        full = [{"t": c["time"], "open": c["open"], "high": c["high"],
+                 "low": c["low"], "close": c["close"], "vol": 0}
+                for c in to_candles(df, 260)]
+        candles = _attach_ma(full)[-120:]
     except Exception:
         log.warning("일봉 조회 실패(%s)", code, exc_info=True)
         candles = []
@@ -173,4 +189,6 @@ async def get_candles(code: str, tf: str) -> dict:
         bars = aggregate(bars, 5)
     elif tf == "15m":
         bars = aggregate(bars, 15)
-    return {"tf": tf, "date": kdate, "candles": bars}
+    elif tf == "60m":
+        bars = aggregate(bars, 60)
+    return {"tf": tf, "date": kdate, "candles": _attach_ma(bars)}

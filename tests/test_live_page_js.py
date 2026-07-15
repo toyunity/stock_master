@@ -586,3 +586,81 @@ def test_candle_chart_preserves_view_on_autorefresh(tmp_path):
     assert c["FIT_after_init"] == 1       # 최초 로드는 fit(전체 보기)
     assert c["FIT_after_refresh"] == 1     # 60초 자동 갱신은 뷰 보존(fit 안 함)
     assert c["FIT_after_switch"] == 2      # 타임프레임 전환은 fit
+
+
+# ── 감시선 편집기: 저장 경로(POST payload 구성·무효 줄 필터·응답 반영) ──────
+# render() 스모크는 이 경로를 안 건드린다 — saveLines가 wlDraft에서 유효 줄만 모아
+# 올바른 POST 본문을 만들고, 응답 lines로 WATCH를 갱신하는지 계측한다.
+_SAVE_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts[1];
+const els = {};
+global.document = {
+  getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
+  querySelectorAll: () => [],
+};
+global.window = {}; global.location = { href:'' };
+global.setTimeout = () => 0; global.setInterval = () => {};
+function MockES(){ this.readyState = 0; this.close = function(){}; }
+MockES.CONNECTING=0; MockES.OPEN=1; MockES.CLOSED=2; global.EventSource = MockES;
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){return {};}, removePriceLine(){}}),
+  timeScale: () => ({fitContent(){}}), applyOptions(){}, subscribeClick(){},
+})};
+let captured = null;
+global.fetch = async (u, opt) => {
+  if (String(u).indexOf('/api/watch/') >= 0) {
+    captured = {url:String(u), method:opt&&opt.method, body:opt&&opt.body};
+    return {ok:true, json: async () => ({lines:[
+      {price:1853000,label:'절대선'},{price:2600000,label:'예약매도'},{price:1700000,label:'손절'}]})};
+  }
+  return {ok:false, status:200, json: async () => ({})};
+};
+eval(code);   // sloppy eval → saveLines/wlAddRow/WATCH가 이 스코프에 노출
+const flush = () => new Promise(r => setImmediate(r));
+(async () => {
+  wlAddRow('빈줄');     // 가격 없는 줄 — 저장에서 제외되어야(클라 사전검증)
+  saveLines();
+  await flush(); await flush(); await flush();
+  console.log('URL=' + (captured && captured.url));
+  console.log('METHOD=' + (captured && captured.method));
+  console.log('BODY=' + (captured && captured.body));
+  console.log('STATUS=' + (els['wl-status'] ? els['wl-status'].textContent : ''));
+})();
+"""
+
+
+def _save_harness(tmp_path):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "save.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_SAVE_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+@needs_node
+def test_watch_editor_save_builds_payload_and_applies_response(tmp_path):
+    out = _save_harness(tmp_path)
+    assert out["URL"].endswith("/api/watch/000660")   # 종목별 저장 엔드포인트
+    assert out["METHOD"] == "POST"
+    body = json.loads(out["BODY"])
+    labels = [x["label"] for x in body["lines"]]
+    # config 기본 2줄은 유효 → 전송, 가격 없는 '빈줄'은 클라 검증에서 제외
+    assert "절대선" in labels and "예약매도" in labels
+    assert "빈줄" not in labels
+    assert all(isinstance(x["price"], int) and x["price"] > 0 for x in body["lines"])
+    assert "저장됨" in out["STATUS"]                   # 성공 상태 표시
+    # 상태 문구의 개수(WATCH.length)는 응답 lines(손절 포함 3줄)로 갱신됨을 증명
+    # → WATCH=res.d.lines 적용 + renderWatchLines/rearm 경로가 돎
+    assert "3개" in out["STATUS"]

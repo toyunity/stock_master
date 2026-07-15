@@ -48,10 +48,11 @@ class Settings(BaseSettings):
                           "AMAT", "LRCX", "KLAC", "SKHYV"]
     semi_kr: list[str] = ["005930", "000660"]
 
-    # ADR/DR 환산: 원주 1주 = DR N주. SK하이닉스는 2026-07-10 나스닥 상장 DR 'SKHYV'
-    # (10 DR = 원주 1주 — DR 상장주식수 7.08B ≈ 원주 728M×10으로 실측 검증).
-    # ※ 구 OTC ADR 'HXSCL'은 2014년 이후 거래 없음 — 쓰지 말 것.
-    adr_map: dict[str, str] = {"000660": "SKHYV"}  # 원주 코드 → 나스닥 DR 심볼
+    # ADR/DR 환산: 원주 1주 = DR N주. SK하이닉스 나스닥 상장 DR 티커는 'SKHY'.
+    # (10 DR = 원주 1주 — DR 상장주식수 7.24B ÷ 원주 712.7M = 10.16 ≈ 10, 실측 2026-07-15).
+    # ⚠ 'SKHYV'는 KIS가 상장일($168.01) 값에 얼려둔 스테일/오종목(거래량 0) — 쓰지 말 것.
+    #    실거래 티커 SKHY는 KIS EXCD=NAS에서 라이브(거래량 수천만). 구 OTC 'HXSCL'도 금지.
+    adr_map: dict[str, str] = {"000660": "SKHY"}  # 원주 코드 → 나스닥 DR 심볼(실거래)
     adr_ratio: float = 10.0
 
     # S9 인증 게이트 (공개 배포 시 필수 — Tailscale Funnel). auth_enabled=True인데

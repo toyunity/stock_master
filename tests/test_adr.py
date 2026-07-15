@@ -26,6 +26,15 @@ def test_parse_overseas_detail_uncovered_symbol_is_silent_empty():
     assert parse_overseas_detail({}) is None
 
 
+def test_adr_map_uses_live_ticker_not_stale_skhyv():
+    # 2026-07-15 실사고: KIS가 'SKHYV'를 상장일 값($168.01·거래량 0·OHLC 0)에 얼려둔
+    # 스테일/오종목으로 제공 → 실거래 티커는 'SKHY'(EXCD=NAS·거래량 수천만, base=전일종가
+    # $152.35로 stockanalysis와 일치). 잘못된 티커로의 회귀를 막는다.
+    from backend.config import settings
+    assert settings.adr_map.get("000660") == "SKHY"
+    assert "SKHYV" not in settings.adr_map.values()
+
+
 def test_parse_fx_chart_real_fixture():
     js = {"rt_cd": "0", "output1": {"hts_kor_isnm": "원/달러(KMB)",
                                     "ovrs_nmix_prpr": "1504.8000"}}

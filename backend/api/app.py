@@ -16,7 +16,7 @@ GET / 은 관심종목 일일 리포트를 매 요청마다 새로 렌더해 서
 import json
 import re
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from backend.config import settings as _settings
@@ -26,6 +26,7 @@ from backend.api import auth as _auth
 from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow import semi
+from backend.flow import watch as _watch
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
@@ -93,6 +94,30 @@ def create_app(settings=None) -> FastAPI:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
                                 status_code=400)
         return JSONResponse(await candles.get_candles(code, tf))
+
+    @app.get("/api/watch/{code}")
+    def watch_get(code: str):
+        """감시선(참조선) 조회 — 파일 저장값 우선, 없으면 config 기본값."""
+        if not _CODE_RE.match(code):
+            return Response(status_code=404)
+        return JSONResponse({"lines": _watch.get_lines(code)})
+
+    @app.post("/api/watch/{code}")
+    async def watch_set(code: str, request: Request):
+        """감시선 저장 — body {"lines":[{"price":num,"label":str}, ...]}.
+        검증 실패 400(사용자 메시지), 성공 시 정규화된 {"lines": [...]}."""
+        if not _CODE_RE.match(code):
+            return Response(status_code=404)
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "본문(JSON)을 읽을 수 없어요"}, status_code=400)
+        lines = body.get("lines") if isinstance(body, dict) else None
+        try:
+            saved = _watch.set_lines(code, lines)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"lines": saved})
 
     @app.get("/scanner", response_class=HTMLResponse)
     def scanner_page():

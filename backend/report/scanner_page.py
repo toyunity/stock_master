@@ -7,40 +7,33 @@ from __future__ import annotations
 
 from html import escape
 
-from backend.report.dashboard import _DISCLAIMER, _NAV_LOADER, _PWA_HEAD
+from backend.report.dashboard import (_BASE_CSS, _DISCLAIMER, _NAV_LOADER,
+                                      _PWA_HEAD, _TABBAR)
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>수급 스캐너 — Stock Master</title>
 __PWA_HEAD__
 <style>
-body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-  max-width:760px;margin:0 auto;padding:16px;color:#1a1a2e;background:#f7f8fb}
-a{color:#1565c0;text-decoration:none}
-h1{font-size:18px;margin:0}
-.badge{font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;vertical-align:middle}
-.b-warn{background:#ef6c00} .b-ok{background:#2e7d32}
-.up{color:#c62828} .down{color:#1565c0} .flat{color:#555}
-.meta{font-size:12px;color:#888;margin:4px 0 10px}
-.panel{border:1px solid #e0e3eb;border-radius:12px;padding:12px;margin:12px 0;background:#fff}
-.panel h2{font-size:14px;margin:0 0 2px} .fresh{font-size:11px;color:#888;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{font-size:11px;color:#888;font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid #eee}
-td{text-align:right;padding:5px 6px;border-bottom:1px solid #f5f5f5;font-variant-numeric:tabular-nums}
-th:first-child,td:first-child{text-align:left}
-td a{font-weight:600;color:inherit}
-.chip{display:inline-block;font-size:10px;background:#eef4fc;color:#1565c0;
-  border-radius:8px;padding:1px 6px;margin-left:3px}
-.refresh{font-size:13px;padding:6px 12px;border:1px solid #1565c0;background:#1565c0;
-  color:#fff;border-radius:8px;cursor:pointer}
-.disc{font-size:12px;color:#666;background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-top:16px}
-#err{color:#c62828;font-size:13px;margin:8px 0}
-details summary{font-size:12px;color:#1565c0;cursor:pointer;padding:6px 0}
+__BASE_CSS__
+/* ── 스캐너 고유 ── */
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.hdr h1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:18px}
+.topmeta{font-size:12px;color:var(--text-2);margin:8px 0 12px;line-height:1.6}
+td a{font-weight:700;color:var(--text)}
+.chip{display:inline-block;font-size:10px;font-weight:600;background:var(--info-bg);
+  color:var(--primary-ink);border-radius:var(--r-pill);padding:2px 8px;margin-left:4px;vertical-align:middle}
+#err{color:var(--up);font-size:13px;margin:8px 0;font-weight:500}
+#body details summary{font-size:12px;color:var(--primary);cursor:pointer;
+  padding:8px 0;min-height:40px;display:flex;align-items:center;list-style:none}
+#body details summary::-webkit-details-marker{display:none}
 </style></head><body>
-<div><a href="/">← 대시보드</a></div>
-<h1>🔍 수급 스캐너 <span class="badge b-warn">잠정</span>
-  <button class="refresh" style="float:right" onclick="load()">🔄 새로고침</button></h1>
-<div class="meta">외국인/기관 가집계는 증권사 수기 잠정치(하루 4~5회 갱신 · 1,000주 단위 반올림).
+<div><a class="back" href="/">← 대시보드</a></div>
+<div class="hdr">
+  <h1>🔍 수급 스캐너 <span class="badge b-warn">잠정</span></h1>
+  <button class="refresh" onclick="load()">🔄 새로고침</button>
+</div>
+<div class="topmeta">외국인/기관 가집계는 증권사 수기 잠정치(하루 4~5회 갱신 · 1,000주 단위 반올림).
 확정치는 다음 영업일 제공. <span id="asof"></span></div>
 <div id="err"></div>
 <div id="body">불러오는 중…</div>
@@ -57,10 +50,10 @@ function tbl(rows,cols,limit){
   if(!rows||!rows.length) return '<div class="meta">데이터 없음 (장전/장후이거나 조회 실패)</div>';
   const head='<tr>'+cols.map(c=>'<th>'+c[0]+'</th>').join('')+'</tr>';
   const tr=r=>'<tr>'+cols.map(c=>c[1](r)).join('')+'</tr>';
-  let h='<table>'+head+rows.slice(0,limit).map(tr).join('')+'</table>';
+  let h='<div class="tbl-wrap"><table>'+head+rows.slice(0,limit).map(tr).join('')+'</table></div>';
   if(rows.length>limit)
-    h+='<details><summary>+'+(rows.length-limit)+'개 더 보기</summary><table>'
-      +rows.slice(limit).map(tr).join('')+'</table></details>';
+    h+='<details><summary>+'+(rows.length-limit)+'개 더 보기</summary>'
+      +'<div class="tbl-wrap"><table>'+rows.slice(limit).map(tr).join('')+'</table></div></details>';
   return h;
 }
 
@@ -110,11 +103,13 @@ async function load(){
 }
 load();
 setInterval(load, 60000);
-</script>__NAV_LOADER__</body></html>"""
+</script>__TABBAR__ __NAV_LOADER__</body></html>"""
 
 
 def render_scanner_page() -> str:
     return (_TEMPLATE
+            .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER)))
