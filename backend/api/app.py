@@ -130,6 +130,19 @@ def create_app(settings=None) -> FastAPI:
         """수급 스캐너 — 오늘 수급 특이 종목(외인/기관 가집계 × 거래대금/급등 교차)."""
         return HTMLResponse(render_scanner_page())
 
+    @app.get("/widget-setup", response_class=HTMLResponse)
+    def widget_setup_page(request: Request):
+        """위젯 설치 페이지 — 게이트 뒤(공개 아님). 토큰·스크립트를 사파리에서 복사.
+        base_url은 프록시 헤더 우선(Funnel이 X-Forwarded-Proto: https를 붙임)."""
+        if not settings.widget_token:
+            return HTMLResponse("SM_WIDGET_TOKEN이 설정되지 않았어요 — .env에 추가 후 재시작",
+                                status_code=503)
+        from backend.report.widget_setup import render_widget_setup
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("host", request.url.netloc)
+        return HTMLResponse(render_widget_setup(settings.widget_token,
+                                                "%s://%s" % (scheme, host)))
+
     @app.get("/api/scanner")
     async def scanner_api():
         if not (settings.kis_app_key and settings.kis_app_secret):
