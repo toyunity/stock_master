@@ -232,6 +232,20 @@ def parse_price(js: dict) -> Optional[dict]:
             "acml_value": _i(o.get("acml_tr_pbmn"))}
 
 
+def parse_latest_trade_date(js: dict):
+    """FHKST01010400(일자별 시세) output 첫 행 stck_bsop_date → 'YYYY-MM-DD'.
+
+    위젯의 open/asof 판정용 — 최신 행이 곧 최신 거래일이다(공휴일이면 전 거래일).
+    형식 불량/실패는 None(호출부가 벽시계로 폴백)."""
+    if js.get("rt_cd") != "0":
+        return None
+    rows = js.get("output") or []
+    d = str((rows[0] if rows else {}).get("stck_bsop_date") or "")
+    if len(d) != 8 or not d.isdigit():
+        return None
+    return "%s-%s-%s" % (d[:4], d[4:6], d[6:])
+
+
 def parse_minute_candles(js: dict, date: Optional[str] = None) -> list:
     """FHKST03010200(주식당일분봉) output2 → [{t,open,high,low,close,vol}] 오름차순.
 
@@ -352,6 +366,16 @@ class KisClient:
                              "FHKST01010100",
                              {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_price(js)
+
+    async def latest_trade_date(self, code: str = "005930"):
+        """최신 거래일(YYYY-MM-DD) — 일자별 시세 첫 행. 위젯 장상태 판정용.
+
+        div는 J 고정: 거래일은 거래소 공통이고 이 TR의 UN 지원이 불확실(실측 전 안전값)."""
+        js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-daily-price",
+                             "FHKST01010400",
+                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+                              "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"})
+        return parse_latest_trade_date(js)
 
     async def investor_detail(self, code: str) -> Optional[dict]:
         """최신 확정일 기관 세부 분해. 장중엔 오늘 날짜가 rt_cd=2로 거부되므로 전일 폴백."""

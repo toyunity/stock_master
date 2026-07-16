@@ -29,3 +29,77 @@ def test_valid_or_absent_widget_token_boots(tmp_path):
     from backend.api.app import create_app
     create_app(_settings(tmp_path))                       # 32자 → OK
     create_app(_settings(tmp_path, widget_token=None))    # 미설정 → OK(위젯만 꺼짐)
+
+
+# ── 거래일/장 상태 판정 ────────────────────────────────────────────
+import asyncio
+import datetime as dt
+
+from backend.flow.kst import KST
+
+
+def _kst(y, m, d, hh, mm):
+    return dt.datetime(y, m, d, hh, mm, tzinfo=KST)
+
+
+def test_parse_latest_trade_date():
+    from backend.flow.kis import parse_latest_trade_date
+    js = {"rt_cd": "0", "output": [{"stck_bsop_date": "20260716"},
+                                   {"stck_bsop_date": "20260715"}]}
+    assert parse_latest_trade_date(js) == "2026-07-16"
+    assert parse_latest_trade_date({"rt_cd": "1"}) is None
+    assert parse_latest_trade_date({"rt_cd": "0", "output": []}) is None
+    assert parse_latest_trade_date({"rt_cd": "0", "output": [{"stck_bsop_date": "bad"}]}) is None
+
+
+def test_wallclock_open_hours_and_weekend():
+    from backend.flow import market_status as ms
+    assert ms.wallclock_open(_kst(2026, 7, 16, 10, 30)) is True    # 목 장중
+    assert ms.wallclock_open(_kst(2026, 7, 16, 8, 59)) is False    # 장전
+    assert ms.wallclock_open(_kst(2026, 7, 16, 15, 31)) is False   # 장후
+    assert ms.wallclock_open(_kst(2026, 7, 18, 10, 0)) is False    # 토
+
+
+def test_refresh_after_sec_open_vs_closed():
+    from backend.flow import market_status as ms
+    assert ms.refresh_after_sec(True, _kst(2026, 7, 16, 10, 0)) == 900
+    # 목 16:00 → 금 09:00 = 17시간 = 61200초 → 6h 캡
+    assert ms.refresh_after_sec(False, _kst(2026, 7, 16, 16, 0)) == 21600
+    # 금 08:00 → 당일 09:00 = 3600초(캡 미달)
+    assert ms.refresh_after_sec(False, _kst(2026, 7, 17, 8, 0)) == 3600
+
+
+class _FakeClient:
+    def __init__(self, td):
+        self._td = td
+
+    async def latest_trade_date(self, code="005930"):
+        return self._td
+
+
+def test_get_status_holiday_demotes_open(monkeypatch):
+    """평일 공휴일: 벽시계는 장중이지만 KIS 최신 거래일 ≠ 오늘 → open:false 강등."""
+    from backend.flow import market_status as ms
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None})
+    now = _kst(2026, 7, 16, 10, 0)                       # 목요일 장중(공휴일 가정)
+    st = asyncio.run(
+        ms.get_status(_FakeClient("2026-07-15"), now=now))
+    assert st["open"] is False and st["trade_date"] == "2026-07-15"
+
+
+def test_get_status_trading_day_open(monkeypatch):
+    from backend.flow import market_status as ms
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None})
+    now = _kst(2026, 7, 16, 10, 0)
+    st = asyncio.run(
+        ms.get_status(_FakeClient("2026-07-16"), now=now))
+    assert st["open"] is True and st["refresh_after_sec"] == 900
+
+
+def test_get_status_without_client_falls_back_to_wallclock(monkeypatch):
+    """TR 불가(키 없음) 폴백 — 주말엔 직전 금요일을 거래일로 추정."""
+    from backend.flow import market_status as ms
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None})
+    st = asyncio.run(
+        ms.get_status(None, now=_kst(2026, 7, 18, 10, 0)))          # 토요일
+    assert st["open"] is False and st["trade_date"] == "2026-07-17"  # 금요일
