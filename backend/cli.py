@@ -85,14 +85,18 @@ async def fetch_live_prices(codes) -> dict:
     except Exception:
         return {}
 
+    sem = asyncio.Semaphore(5)   # 동시 호출 제한 — 편집 후 최대 10종목 × 12초 폴링
+                                 # × 위젯이 겹쳐도 KIS 간헐 500(EGW00201) 방어(설계)
+
     async def one(c):
-        try:
-            p = await client.price(c)
-            if p and p.get("price"):
-                return c, {"close": p["price"], "change": p.get("rate")}
-        except Exception:
-            pass
-        return c, None
+        async with sem:
+            try:
+                p = await client.price(c)
+                if p and p.get("price"):
+                    return c, {"close": p["price"], "change": p.get("rate")}
+            except Exception:
+                pass
+            return c, None
     res = await asyncio.gather(*[one(c) for c in codes])
     return {c: v for c, v in res if v}
 
