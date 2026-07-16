@@ -154,8 +154,11 @@ class AuthGate:
             if k == b"authorization":
                 auth = v
                 break
-        token = auth.decode("latin-1")[7:] if auth[:7].lower() == b"bearer " else ""
-        if token and _secrets_mod.compare_digest(token, self.widget_token):
+        # 바이트끼리 상수시간 비교 — str+compare_digest는 비ASCII 토큰에 TypeError를
+        # 던져 공개 표면에 미처리 500을 낸다(리뷰 2026-07-16). 빈/대소문자/공백/비ASCII
+        # 모두 그대로 401(fail-closed).
+        token = auth[7:] if auth[:7].lower() == b"bearer " else b""
+        if token and _secrets_mod.compare_digest(token, self.widget_token.encode("utf-8")):
             return None
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 

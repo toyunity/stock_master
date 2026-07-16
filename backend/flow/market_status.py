@@ -14,7 +14,7 @@ from backend.flow import kst
 
 _TTL_OPEN, _TTL_CLOSED = 600.0, 3600.0      # TR 캐시: 장중 10분 / 장외 60분
 _REFRESH_OPEN, _REFRESH_CAP = 900, 21600    # 위젯 갱신 힌트: 장중 15분 / 장외 6h 캡
-_cache = {"ts": 0.0, "trade_date": None}
+_cache = {"ts": 0.0, "trade_date": None, "wall": None}
 
 
 def wallclock_open(now=None) -> bool:
@@ -63,14 +63,16 @@ async def get_status(client=None, now=None) -> dict:
     now = now or kst.now()
     wall = wallclock_open(now)
     ttl = _TTL_OPEN if wall else _TTL_CLOSED
-    if time.time() - _cache["ts"] > ttl:
+    # TTL 만료 OR 개장/마감 경계 전환 시 재조회 — 08:55(장전)에 데운 캐시가 TTL 때문에
+    # 09:00 개장 직후까지 '마감'으로 오표시되던 문제 방지(리뷰 2026-07-16).
+    if time.time() - _cache["ts"] > ttl or _cache.get("wall") != wall:
         td = None
         if client is not None:
             try:
                 td = await client.latest_trade_date()
             except Exception:
                 td = None
-        _cache["ts"], _cache["trade_date"] = time.time(), td
+        _cache["ts"], _cache["trade_date"], _cache["wall"] = time.time(), td, wall
     td = _cache["trade_date"]
     open_ = wall and (td is None or td == now.date().isoformat())
     return {"open": open_,

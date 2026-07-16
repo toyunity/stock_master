@@ -15,7 +15,6 @@ from html import escape
 from pathlib import Path
 
 from backend.report.render import _ACTION_KO, _bt_view, _issues_view
-from backend.news.names import display_name
 
 _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-charts.js"
 

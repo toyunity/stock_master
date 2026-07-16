@@ -218,7 +218,21 @@ if (config.runsInWidget) {
   a.addCancelAction("닫기");
   const i = await a.presentAlert();
   if (i === 0) await showLive(Keychain.get(KEY));
-  else if (i === 1) { Keychain.remove(KEY); await getToken(true); }
+  else if (i === 1) await reenterToken();
+}
+
+async function reenterToken() {
+  // 토큰 회전 — 새 값을 먼저 받고 비어있지 않을 때만 덮어쓴다. 취소/빈 입력이면
+  // 기존 토큰을 그대로 둔다(먼저 지우면 취소 한 번에 정상 위젯이 깨진다 — 리뷰 2026-07-16).
+  const a = new Alert();
+  a.title = "토큰 다시 입력";
+  a.message = BASE + "/widget-setup 에서 새 토큰을 복사해 붙여넣으세요.";
+  a.addSecureTextField("토큰");
+  a.addAction("저장");
+  a.addCancelAction("취소");
+  if (await a.presentAlert() === -1) return;
+  const t = a.textFieldValue(0).trim();
+  if (t) Keychain.set(KEY, t);
 }
 Script.complete();
 """

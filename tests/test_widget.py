@@ -96,6 +96,23 @@ def test_get_status_trading_day_open(monkeypatch):
     assert st["open"] is True and st["refresh_after_sec"] == 900
 
 
+def test_get_status_refetches_on_open_boundary(monkeypatch):
+    """마감→장중 경계 전환 시 TTL 안 지나도 재조회 — 개장 직후 '마감' 오표시 방지(리뷰 2026-07-16)."""
+    from backend.flow import market_status as ms
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None, "wall": None})
+    seq = iter(["2026-07-15", "2026-07-16"])   # 장전 조회는 전 거래일, 개장 후엔 당일
+
+    class _Seq:
+        async def latest_trade_date(self, code="005930"):
+            return next(seq)
+
+    c = _Seq()
+    s1 = asyncio.run(ms.get_status(c, now=_kst(2026, 7, 16, 8, 55)))   # 장전(wall False)
+    assert s1["open"] is False
+    s2 = asyncio.run(ms.get_status(c, now=_kst(2026, 7, 16, 9, 0)))    # 개장 전환 → 재조회
+    assert s2["open"] is True and s2["trade_date"] == "2026-07-16"
+
+
 def test_get_status_without_client_falls_back_to_wallclock(monkeypatch):
     """TR 불가(키 없음) 폴백 — 주말엔 직전 금요일을 거래일로 추정."""
     from backend.flow import market_status as ms

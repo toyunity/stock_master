@@ -234,3 +234,17 @@ def test_widget_token_unset_503_fail_closed(tmp_path):
     """SM_WIDGET_TOKEN 미설정 → 게이트가 503(기능 꺼짐) — 401과 구분, 핸들러 미도달."""
     c = _client(_auth_settings(tmp_path, widget_token=None))
     assert c.get("/api/widget").status_code == 503
+
+
+def test_widget_bearer_non_ascii_token_401_not_500():
+    """비ASCII 바이트가 든 Bearer는 미처리 예외(500)가 아니라 401 — 공개 표면 방어(리뷰 2026-07-16).
+
+    str+compare_digest는 비ASCII에 TypeError를 던진다. 게이트를 ASGI 스코프로 직접 구동해
+    바이트 파싱 경로를 검증한다(httpx TestClient는 헤더를 ASCII로 인코드해 이 바이트를
+    클라이언트에서 막아 서버 코드에 도달하지 못한다)."""
+    from backend.api.auth import AuthGate
+    gate = AuthGate(app=None, widget_token="w" * 32)
+    scope = {"type": "http", "path": "/api/widget",
+             "headers": [(b"authorization", b"Bearer \xff\xfe")]}
+    resp = gate._widget_blocked(scope)      # 예외 없이 401 JSONResponse
+    assert resp is not None and resp.status_code == 401
