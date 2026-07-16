@@ -103,3 +103,56 @@ def test_get_status_without_client_falls_back_to_wallclock(monkeypatch):
     st = asyncio.run(
         ms.get_status(None, now=_kst(2026, 7, 18, 10, 0)))          # 토요일
     assert st["open"] is False and st["trade_date"] == "2026-07-17"  # 금요일
+
+
+# ── /api/widget 데이터 조립 · 응답 계약 ───────────────────────────
+import json as _json
+import os
+
+CONTRACT_KEYS = {"open", "trade_date", "fetched_at", "refresh_after_sec", "items"}
+ITEM_KEYS = {"code", "name", "price", "change"}
+
+
+def _seed_universe(cache_dir, rows):
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(os.path.join(cache_dir, "universe_v2.json"), "w", encoding="utf-8") as f:
+        _json.dump(rows, f, ensure_ascii=False)
+
+
+def test_widget_data_contract_whitelist(tmp_path, monkeypatch):
+    """응답 필드는 화이트리스트 그대로 — 감시선·조언 등 유입 시 여기가 먼저 깨진다."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)    # KIS 없음 → universe 폴백 경로
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.25}])
+    d = asyncio.run(widget_data(["005930", "000660"]))
+    assert set(d.keys()) == CONTRACT_KEYS
+    assert all(set(i.keys()) == ITEM_KEYS for i in d["items"])
+    assert d["items"][0]["price"] == 71200.0
+    assert d["items"][1]["price"] is None                 # 캐시에 없는 종목 = null(행 유지)
+
+
+def test_widget_data_none_when_no_source(tmp_path, monkeypatch):
+    """KIS 없음 + 캐시 없음 → None(라우트 503) — 조용한 빈 위젯 금지."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    assert asyncio.run(widget_data(["005930"])) is None
+
+
+def test_widget_api_route_503_without_source(tmp_path, monkeypatch):
+    """auth 비활성(로컬) 라우트 스모크 — 소스 없음이면 503 + 사용자 메시지.
+
+    ⚠ widget_data는 전역 settings를 읽는다(create_app 주입과 별개) — 마스터
+    실기기 .env의 실제 KIS 키로 라이브 호출이 나가지 않게 전역을 격리한다."""
+    from fastapi.testclient import TestClient
+    from backend.config import settings
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    c = TestClient(create_app(_settings(tmp_path)))
+    r = c.get("/api/widget")
+    assert r.status_code == 503 and "error" in r.json()

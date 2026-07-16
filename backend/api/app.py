@@ -152,6 +152,17 @@ def create_app(settings=None) -> FastAPI:
         return JSONResponse({"open": True,
                              "prices": await fetch_live_prices(settings.watchlist)})
 
+    @app.get("/api/widget")
+    async def widget_api():
+        """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
+        KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16)."""
+        from backend.api.widget import widget_data
+        data = await widget_data(settings.watchlist)
+        if data is None:
+            return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},
+                                status_code=503)
+        return JSONResponse(data)
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}

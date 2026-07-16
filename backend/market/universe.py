@@ -115,6 +115,15 @@ def _write_cache(path: str, cache_dir: str, uni: list) -> None:
         log.warning("universe 캐시 기록 실패: %s", cache_dir)
 
 
+def get_cached(cache_dir=None) -> list:
+    """캐시 파일만 읽는다(나이 무시·수집 트리거 없음) — 위젯 폴백/이름 조회 전용.
+
+    위젯 요청은 어떤 경우에도 FDR 동기 스크랩을 대기하지 않는다(설계 불변식:
+    수 초짜리 수집이 iOS 위젯 시간예산을 태우고 sync 함수가 이벤트루프를 멈춤)."""
+    cache_dir = cache_dir or settings.cache_dir
+    return _read_cache(_cache_path(cache_dir), check_age=False) or []
+
+
 def price_map(universe: list) -> dict:
     """code → {close, change} 빠른 조회용."""
     return {u["code"]: {"close": u.get("close"), "change": u.get("change")}
