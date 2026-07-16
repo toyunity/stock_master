@@ -66,6 +66,31 @@ def test_dashboard_has_watchlist_edit_ui():
         assert marker in html, marker + " 누락"
 
 
+import shutil
+import subprocess
+
+import pytest
+
+_needs_node = pytest.mark.skipif(shutil.which("node") is None,
+                                 reason="node 미설치 — JS 실행 스모크 생략")
+
+
+@_needs_node
+def test_dashboard_inline_js_parses(tmp_path):
+    """대시보드 인라인 JS 문법 스모크(2026-07-17 실사고). onclick의 따옴표 이스케이프가
+    깨지면 스크립트 전체가 파싱 실패 → 카드·검색·반도체 섹션이 전부 안 뜬다.
+    문자열 존재 검사로는 못 잡으므로 node --check로 실제 파싱을 검증한다."""
+    html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자"}],
+                            "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    js = tmp_path / "dash_main.js"
+    js.write_text(main, encoding="utf-8")
+    r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "대시보드 인라인 JS 문법 오류:\n" + r.stderr
+
+
 def test_nav_loader_on_all_pages():
     # 페이지 전환 로딩 바(2026-07-13 요청) — 세 페이지 모두 포함돼야 한다
     from backend.report.scanner_page import render_scanner_page

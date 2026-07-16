@@ -126,7 +126,7 @@ function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
-  h+=' <button class="wdel" onclick="delStock(\''+esc(s.code)+'\')" title="관심종목에서 삭제">－</button>';
+  h+=' <button class="wdel" data-code="'+esc(s.code)+'" onclick="delStock(this.dataset.code)" title="관심종목에서 삭제">－</button>';
   if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
@@ -153,7 +153,7 @@ const q=document.getElementById('q'), res=document.getElementById('results');
 function searchRender(items){
   if(!items.length){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
   res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span>'
-    +(WATCH.indexOf(u.code)<0?' <button class="wadd" onclick="addStock(\''+esc(u.code)+'\')">＋담기</button>':'')
+    +(WATCH.indexOf(u.code)<0?' <button class="wadd" data-code="'+esc(u.code)+'" onclick="addStock(this.dataset.code)">＋담기</button>':'')
     +'</span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
 }
 q.oninput=()=>{
