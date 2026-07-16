@@ -54,6 +54,12 @@ def create_app(settings=None) -> FastAPI:
     """앱 팩토리 — settings 주입 가능(테스트에서 인증 활성 앱 구성). 기본은 모듈 settings.
     auth_enabled면 인증 게이트를 장착(크리덴셜 없으면 기동 거부, fail-closed)."""
     settings = settings if settings is not None else _settings
+    # 위젯 토큰 fail-closed — 약한 토큰(짧은 문자열)이 공개 Funnel의 유일 방어선이
+    # 되는 것을 기동 시점에 차단(auth.install의 fail-closed와 같은 철학).
+    if settings.widget_token and len(settings.widget_token) < 20:
+        raise RuntimeError(
+            "SM_WIDGET_TOKEN이 너무 짧습니다(최소 20자) — "
+            'python3 -c "import secrets; print(secrets.token_urlsafe(32))" 로 생성하세요')
     app = FastAPI(title="Stock Master")
 
     @app.on_event("shutdown")
