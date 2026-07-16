@@ -85,7 +85,7 @@ def _auth_settings(tmp_path, **over):
                google_client_secret="dummy-secret",
                oauth_redirect_url="http://localhost:8000/auth/callback",
                allowed_emails="master@gmail.com", cache_dir=str(tmp_path),
-               cookie_secure=False, flow_mode="demo")
+               cookie_secure=False, flow_mode="demo", widget_token="w" * 32)
     base.update(over)
     return Settings(**base)
 
@@ -98,7 +98,7 @@ def _client(settings):
 
 PROTECTED = ["/", "/live/000660", "/api/live/000660/stream",
              "/api/candles/000660", "/scanner", "/api/scanner", "/api/semi",
-             "/api/watch/000660"]
+             "/api/watch/000660", "/api/widget", "/widget-setup"]
 
 
 @pytest.mark.parametrize("path", PROTECTED)
@@ -208,3 +208,29 @@ def test_callback_rejects_disallowed_email(tmp_path):
     c = TestClient(app, follow_redirects=False)
     assert c.get("/auth/callback").status_code == 403     # allowlist 밖 → 거부
     assert c.get("/api/auth/check").status_code == 401     # 세션 안 생김
+
+
+# ── 위젯 Bearer (게이트 안의 두 번째 잠금 — 공개 예외 아님, 설계 2026-07-16) ──
+def test_widget_bearer_valid_token_passes_gate(tmp_path, monkeypatch):
+    """유효 토큰은 게이트 통과 — 핸들러 도달(데이터 없음 503이지 게이트 401이 아님).
+    전역 settings 격리 — 실기기 .env의 KIS 키로 라이브 호출 방지(결정적 503)."""
+    from backend.config import settings as _gs
+    monkeypatch.setattr(_gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(_gs, "kis_app_key", None)
+    c = _client(_auth_settings(tmp_path))
+    r = c.get("/api/widget", headers={"Authorization": "Bearer " + "w" * 32})
+    assert r.status_code == 503                    # 테스트 환경: KIS/캐시 없음 → 핸들러 503
+    assert r.json()["error"] != "unauthorized"     # 게이트가 아니라 핸들러의 응답
+
+
+def test_widget_bearer_wrong_token_401(tmp_path):
+    c = _client(_auth_settings(tmp_path))
+    r = c.get("/api/widget", headers={"Authorization": "Bearer wrong-token-1234567890"})
+    assert r.status_code == 401
+    assert r.json() == {"error": "unauthorized"}   # 본문으로 실패 사유 구분 금지
+
+
+def test_widget_token_unset_503_fail_closed(tmp_path):
+    """SM_WIDGET_TOKEN 미설정 → 게이트가 503(기능 꺼짐) — 401과 구분, 핸들러 미도달."""
+    c = _client(_auth_settings(tmp_path, widget_token=None))
+    assert c.get("/api/widget").status_code == 503
