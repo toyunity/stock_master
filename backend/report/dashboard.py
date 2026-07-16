@@ -74,6 +74,10 @@ ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(
 .scard .rt{font-size:12px;font-weight:700}
 .rt.up{color:var(--up)}.rt.down{color:var(--down)}.rt.flat{color:var(--flat)}
 #semi>b{font-size:14px}
+button.wadd,button.wdel{border:1px solid var(--border);background:var(--surface-2);
+  color:var(--text-2);border-radius:var(--r-pill);font-size:12px;padding:2px 10px;
+  min-height:28px;cursor:pointer;vertical-align:middle}
+button.wdel{color:var(--up)}
 </style></head><body>
 <div id="app"><div id="app-scroll">
 <h1>📊 Stock Master <small>__DATE__</small></h1>
@@ -123,6 +127,7 @@ function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
+  h+=' <button class="wdel" onclick="delStock(\''+esc(s.code)+'\')" title="관심종목에서 삭제">－</button>';
   if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
@@ -148,7 +153,9 @@ D.stocks.forEach(s=>{
 const q=document.getElementById('q'), res=document.getElementById('results');
 function searchRender(items){
   if(!items.length){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
-  res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span></span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
+  res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span>'
+    +(WATCH.indexOf(u.code)<0?' <button class="wadd" onclick="addStock(\''+esc(u.code)+'\')">＋담기</button>':'')
+    +'</span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
 }
 q.oninput=()=>{
   const t=q.value.trim().toLowerCase();
@@ -204,6 +211,25 @@ async function loadPrices(){
   }catch(e){}
 }
 loadPrices(); setInterval(loadPrices, 12000);
+// ── 관심종목 편집(설계 2026-07-16): 전체 교체 POST, 새 종목 맨 앞, 최소 1·최대 10 ──
+const WATCH = D.stocks.map(s=>s.code);
+async function saveWatch(codes){
+  try{
+    const r=await fetch('/api/watchlist',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({codes})});
+    const d=await r.json();
+    if(!r.ok){alert(d.error||'저장 실패');return;}
+    location.reload();
+  }catch(e){alert('저장 실패 — 네트워크를 확인하세요');}
+}
+function addStock(code){
+  if(WATCH.indexOf(code)>=0)return;
+  saveWatch([code].concat(WATCH));   // 새 종목 맨 앞 — 위젯 상위 5에 바로 보임
+}
+function delStock(code){
+  if(WATCH.length<=1){alert('관심종목은 최소 1개 필요해요');return;}
+  if(confirm('관심종목에서 삭제할까요?')) saveWatch(WATCH.filter(c=>c!==code));
+}
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 
