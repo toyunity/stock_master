@@ -16,6 +16,7 @@ from backend.signals.rules import evaluate_with_gate
 from backend.report.dashboard import assemble_stock, to_candles
 from backend.market.universe import get_universe, price_map
 from backend.news.names import display_name
+from backend.flow.watchlist import get_watchlist
 
 _DISCLAIMER = "※ 모든 정보는 참고용이며 매매 권유가 아닙니다. 투자 책임은 본인에게 있습니다."
 
@@ -79,7 +80,7 @@ def _fmt_stock(s, *, full=False):
 
 def watchlist_summary() -> str:
     """관심종목 전체의 오늘 분석 요약(신호·현재가·근거·뉴스/공시)."""
-    rows = _analyze(settings.watchlist, with_news=True)
+    rows = _analyze(get_watchlist(), with_news=True)
     body = "\n".join(_fmt_stock(s) for s in rows)
     return f"📊 관심종목 분석 ({dt.date.today().isoformat()})\n{body}\n\n{_DISCLAIMER}"
 
@@ -90,7 +91,7 @@ def dashboard_data() -> str:
     Claude가 이 데이터로 인터랙티브 대시보드/캔들차트 아티팩트를 한 번에 만들 수 있다.
     각 종목: code,name,action_ko,confidence,advice,reasons,backtest,close,change,
     news,disclosures,candles(최근 120일 time/open/high/low/close)."""
-    rows = _analyze(settings.watchlist, with_news=True, chart_days=60)
+    rows = _analyze(get_watchlist(), with_news=True, chart_days=60)
     return json.dumps({"date": dt.date.today().isoformat(),
                        "disclaimer": _DISCLAIMER, "stocks": rows}, ensure_ascii=False)
 

@@ -158,7 +158,8 @@ def main():
     sv.add_argument("--reload", action="store_true", help="코드 수정 시 자동 재시작(개발용)")
     args = p.parse_args()
     if args.cmd == "report":
-        html = build_dashboard(settings.watchlist, settings.cache_dir,
+        from backend.flow.watchlist import get_watchlist
+        html = build_dashboard(get_watchlist(), settings.cache_dir,
                                history_days=settings.history_days,
                                force=args.force, with_news=not args.no_news)
         out = Path("docs/report-daily.html")

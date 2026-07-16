@@ -27,6 +27,7 @@ from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow import semi
 from backend.flow import watch as _watch
+from backend.flow import watchlist as _watchlist
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
@@ -74,7 +75,7 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        html = build_dashboard(settings.watchlist, settings.cache_dir,
+        html = build_dashboard(_watchlist.get_watchlist(), settings.cache_dir,
                                history_days=settings.history_days,
                                with_news=True, pwa=True)
         return HTMLResponse(html)
@@ -100,6 +101,29 @@ def create_app(settings=None) -> FastAPI:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
                                 status_code=400)
         return JSONResponse(await candles.get_candles(code, tf))
+
+    @app.get("/api/watchlist")
+    def watchlist_get():
+        """관심종목 목록 — 대시보드 편집 UI·확인용. 이름은 universe 우선."""
+        from backend.market.universe import get_cached, name_map
+        from backend.news.names import resolve_name
+        nm = name_map(get_cached())
+        return JSONResponse({"items": [{"code": c, "name": resolve_name(c, nm)}
+                                       for c in _watchlist.get_watchlist()]})
+
+    @app.post("/api/watchlist")
+    async def watchlist_set(request: Request):
+        """관심종목 저장(전체 교체) — body {"codes":[...]}. 검증 실패 400(사용자 메시지)."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "본문(JSON)을 읽을 수 없어요"}, status_code=400)
+        codes = body.get("codes") if isinstance(body, dict) else None
+        try:
+            saved = _watchlist.set_watchlist(codes)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"codes": saved})
 
     @app.get("/api/watch/{code}")
     def watch_get(code: str):
@@ -163,14 +187,14 @@ def create_app(settings=None) -> FastAPI:
         if not _kr_market_open():
             return JSONResponse({"open": False, "prices": {}})
         return JSONResponse({"open": True,
-                             "prices": await fetch_live_prices(settings.watchlist)})
+                             "prices": await fetch_live_prices(_watchlist.get_watchlist())})
 
     @app.get("/api/widget")
     async def widget_api():
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
         KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16)."""
         from backend.api.widget import widget_data
-        data = await widget_data(settings.watchlist)
+        data = await widget_data(_watchlist.get_watchlist())
         if data is None:
             return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},
                                 status_code=503)

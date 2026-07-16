@@ -185,3 +185,37 @@ def test_widget_data_resolves_new_stock_name(tmp_path, monkeypatch):
         {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
     d = asyncio.run(widget_data(["035720"]))
     assert d["items"][0]["name"] == "카카오"
+
+
+# ── /api/watchlist 편집 API + 소비자 공유 ─────────────────────────
+def _client_local(tmp_path):
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    return TestClient(create_app(_settings(tmp_path)))
+
+
+def test_watchlist_api_roundtrip_and_validation(tmp_path, monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    c = _client_local(tmp_path)
+    r = c.get("/api/watchlist")
+    assert r.status_code == 200 and len(r.json()["items"]) >= 5      # 시드
+    r = c.post("/api/watchlist", json={"codes": ["035720", "005930"]})
+    assert r.status_code == 200
+    assert [i["code"] for i in c.get("/api/watchlist").json()["items"]] == ["035720", "005930"]
+    assert c.post("/api/watchlist", json={"codes": []}).status_code == 400
+    assert c.post("/api/watchlist", json={"codes": ["12"]}).status_code == 400
+    assert c.post("/api/watchlist", json={}).status_code == 400
+
+
+def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
+    """앱에서 편집 → 위젯이 따라감(확정 결정 3)."""
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    _seed_universe(str(tmp_path), [
+        {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
+    c = _client_local(tmp_path)
+    assert c.post("/api/watchlist", json={"codes": ["035720"]}).status_code == 200
+    d = c.get("/api/widget").json()
+    assert [i["code"] for i in d["items"]] == ["035720"]

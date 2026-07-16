@@ -98,7 +98,7 @@ def _client(settings):
 
 PROTECTED = ["/", "/live/000660", "/api/live/000660/stream",
              "/api/candles/000660", "/scanner", "/api/scanner", "/api/semi",
-             "/api/watch/000660", "/api/widget", "/widget-setup"]
+             "/api/watch/000660", "/api/widget", "/widget-setup", "/api/watchlist"]
 
 
 @pytest.mark.parametrize("path", PROTECTED)
