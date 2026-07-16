@@ -128,3 +128,8 @@ def price_map(universe: list) -> dict:
     """code → {close, change} 빠른 조회용."""
     return {u["code"]: {"close": u.get("close"), "change": u.get("change")}
             for u in universe}
+
+
+def name_map(universe: list) -> dict:
+    """code → name — 표시 이름 해석용(resolve_name에 주입)."""
+    return {u["code"]: u["name"] for u in universe if u.get("name")}

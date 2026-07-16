@@ -32,15 +32,19 @@ def _date_range():
 def _analyze(codes, with_news=True, chart_days=120):
     """[assembled_stock_dict] — 대시보드와 같은 조립을 재사용. chart_days로 캔들 길이 조절."""
     from backend.cli import _collect_issues  # 뉴스/공시 수집(그레이스풀) 재사용
+    from backend.market.universe import name_map
     adapter = _adapter()
     start, end = _date_range()
-    pm = price_map(get_universe(settings.cache_dir))
-    issues = _collect_issues(list(codes)) if with_news else {}
+    uni = get_universe(settings.cache_dir)
+    pm = price_map(uni)
+    nm = name_map(uni)
+    issues = _collect_issues(list(codes), nm) if with_news else {}
     rows = []
     for code in codes:
         df = adapter.get_ohlcv(code, start, end)
         sig = evaluate_with_gate(add_indicators(df), code)
-        rows.append(assemble_stock(sig, issues.get(code), to_candles(df, chart_days), pm.get(code)))
+        rows.append(assemble_stock(sig, issues.get(code), to_candles(df, chart_days),
+                                   pm.get(code), nm))
     return rows
 
 

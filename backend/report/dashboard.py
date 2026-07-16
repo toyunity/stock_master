@@ -224,10 +224,12 @@ def to_candles(df, days: int = 120) -> list:
     return out
 
 
-def assemble_stock(signal, issues, candles, price) -> dict:
-    """신호 + 이슈 + 캔들 + 현재가를 대시보드 종목 dict로 합친다."""
+def assemble_stock(signal, issues, candles, price, names=None) -> dict:
+    """신호 + 이슈 + 캔들 + 현재가를 대시보드 종목 dict로 합친다.
+    names(universe code→name)가 있으면 표시 이름을 그것으로(신규 종목 대응)."""
+    from backend.news.names import resolve_name
     iv = _issues_view(issues)
-    return {"code": signal.code, "name": display_name(signal.code),
+    return {"code": signal.code, "name": resolve_name(signal.code, names),
             "action": signal.action, "action_ko": _ACTION_KO[signal.action],
             "confidence": signal.confidence, "advice": signal.advice,
             "reasons": list(signal.reasons), "backtest": _bt_view(signal.backtest),

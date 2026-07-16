@@ -13,7 +13,7 @@ import asyncio
 from backend.config import settings
 from backend.flow import kst, market_status
 from backend.market import universe as _universe
-from backend.news.names import display_name
+from backend.news.names import resolve_name
 
 _SEM = 5   # KIS 동시 호출 상한 — 연속 호출 간헐 500 완화(kis.py 실측 주석)
 
@@ -56,7 +56,8 @@ async def widget_data(codes):
             return None
 
     st = await market_status.get_status(client)
-    items = [{"code": c, "name": display_name(c),
+    names = _universe.name_map(_universe.get_cached())   # stale 허용 읽기 전용(수집 금지)
+    items = [{"code": c, "name": resolve_name(c, names),
               "price": (prices.get(c) or {}).get("price"),
               "change": (prices.get(c) or {}).get("change")} for c in codes]
     return {"open": st["open"], "trade_date": st["trade_date"],

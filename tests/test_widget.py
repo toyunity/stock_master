@@ -156,3 +156,32 @@ def test_widget_api_route_503_without_source(tmp_path, monkeypatch):
     c = TestClient(create_app(_settings(tmp_path)))
     r = c.get("/api/widget")
     assert r.status_code == 503 and "error" in r.json()
+
+
+# ── 이름 해석: universe 우선, 하드코딩 폴백 ────────────────────────
+def test_resolve_name_chain():
+    from backend.news.names import resolve_name
+    uni_names = {"035720": "카카오"}
+    assert resolve_name("035720", uni_names) == "카카오"       # universe 히트
+    assert resolve_name("005930", uni_names) == "삼성전자"     # 미스 → 하드코딩
+    assert resolve_name("999999", uni_names) == "999999"       # 둘 다 미스 → 코드
+
+
+def test_news_aliases_manual_first_then_universe():
+    from backend.cli import _news_aliases
+    a = _news_aliases(["005930", "035720"], {"035720": "카카오"})
+    assert a["005930"] == ["삼성전자"]        # 수동 별칭 우선(STOCK_NAMES)
+    assert a["035720"] == ["카카오"]          # 신규 종목 → universe 이름 1개
+    assert _news_aliases(["035720"], None)["035720"] == []   # 이름 없으면 빈 별칭
+
+
+def test_widget_data_resolves_new_stock_name(tmp_path, monkeypatch):
+    """신규 종목이 '035720' 숫자가 아니라 universe 이름으로 표시(설계 major #6)."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    _seed_universe(str(tmp_path), [
+        {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
+    d = asyncio.run(widget_data(["035720"]))
+    assert d["items"][0]["name"] == "카카오"
