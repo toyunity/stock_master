@@ -28,3 +28,15 @@ _DISPLAY_NAMES: dict[str, str] = {
 def display_name(code: str) -> str:
     """리포트에 보여줄 한글 종목명. 모르는 코드는 코드 그대로 반환."""
     return _DISPLAY_NAMES.get(code, code)
+
+
+def resolve_name(code: str, names=None) -> str:
+    """표시 이름 — universe 이름(names dict) 우선, 하드코딩 폴백, 모르면 코드.
+
+    신규 관심종목이 '035720' 숫자로 표시되는 문제의 해소(설계 2026-07-16).
+    names는 universe.name_map() 결과를 호출부가 주입(이 모듈은 I/O 없음 유지)."""
+    if names:
+        n = names.get(code)
+        if n:
+            return n
+    return display_name(code)

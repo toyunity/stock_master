@@ -66,5 +66,10 @@ class Settings(BaseSettings):
     totp_secret: Optional[str] = None          # SM_TOTP_SECRET (없으면 캐시에 생성·영속)
     cookie_secure: bool = True                 # SM_COOKIE_SECURE (로컬 http 테스트만 False)
 
+    # 아이폰 위젯(Scriptable) 읽기 토큰 — env 단일 경로(캐시파일 자동생성 금지:
+    # env를 지우면 조용히 재생성돼 위젯만 영문 모를 401 — 설계 2026-07-16).
+    # 생성: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    widget_token: Optional[str] = None         # SM_WIDGET_TOKEN
+
 
 settings = Settings()

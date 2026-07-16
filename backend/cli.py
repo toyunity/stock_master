@@ -15,12 +15,20 @@ from backend.ingest.dart_source import fetch_disclosures
 from backend.news.match import attach_issues
 from backend.news.names import STOCK_NAMES
 from backend.report.dashboard import render_dashboard, to_candles, assemble_stock
-from backend.market.universe import get_universe, price_map
+from backend.market.universe import get_universe, price_map, name_map
 
 log = logging.getLogger(__name__)
 
 
-def _collect_issues(codes):
+def _news_aliases(codes, names=None) -> dict:
+    """뉴스 매칭 별칭 — 수동 별칭(STOCK_NAMES, 경계 인식 튜닝됨) 우선,
+    없으면 universe 이름 1개 자동 보강(신규 종목 뉴스 영구 0건 방지 — 설계)."""
+    return {c: (STOCK_NAMES.get(c)
+                or ([names[c]] if names and names.get(c) else []))
+            for c in codes}
+
+
+def _collect_issues(codes, names=None):
     """RSS 뉴스 + DART 공시를 수집해 종목별로 매칭한다.
 
     수집 실패(네트워크/파싱)는 리포트를 막지 않는다 — 빈 결과로 계속 진행한다.
@@ -38,7 +46,7 @@ def _collect_issues(codes):
     except Exception:
         log.warning("DART 공시 수집 실패 — 공시 없이 진행", exc_info=True)
         disclosures = []
-    return attach_issues(news, disclosures, codes, STOCK_NAMES,
+    return attach_issues(news, disclosures, codes, _news_aliases(codes, names),
                          max_per_stock=settings.news_max_per_stock)
 
 
@@ -77,14 +85,18 @@ async def fetch_live_prices(codes) -> dict:
     except Exception:
         return {}
 
+    sem = asyncio.Semaphore(5)   # 동시 호출 제한 — 편집 후 최대 10종목 × 12초 폴링
+                                 # × 위젯이 겹쳐도 KIS 간헐 500(EGW00201) 방어(설계)
+
     async def one(c):
-        try:
-            p = await client.price(c)
-            if p and p.get("price"):
-                return c, {"close": p["price"], "change": p.get("rate")}
-        except Exception:
-            pass
-        return c, None
+        async with sem:
+            try:
+                p = await client.price(c)
+                if p and p.get("price"):
+                    return c, {"close": p["price"], "change": p.get("rate")}
+            except Exception:
+                pass
+            return c, None
     res = await asyncio.gather(*[one(c) for c in codes])
     return {c: v for c, v in res if v}
 
@@ -113,12 +125,13 @@ def build_dashboard(codes, cache_dir, source=None, history_days=400,
         df = adapter.get_ohlcv(code, start.isoformat(), end.isoformat(), force=force)
         signals.append(evaluate_with_gate(add_indicators(df), code))
         candles[code] = to_candles(df, chart_days)
-    issues = _collect_issues(codes) if with_news else {}
     universe = get_universe(cache_dir)
+    nm = name_map(universe)
+    issues = _collect_issues(codes, nm) if with_news else {}
     pm = price_map(universe)
     if _kr_market_open():   # 장중엔 관심종목을 KIS 실시간 현재가로 덮어씀(StockListing=전일 종가)
         pm.update(_live_prices(codes))
-    stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code))
+    stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code), nm)
               for s in signals]
     return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa)
 
@@ -149,7 +162,8 @@ def main():
     sv.add_argument("--reload", action="store_true", help="코드 수정 시 자동 재시작(개발용)")
     args = p.parse_args()
     if args.cmd == "report":
-        html = build_dashboard(settings.watchlist, settings.cache_dir,
+        from backend.flow.watchlist import get_watchlist
+        html = build_dashboard(get_watchlist(), settings.cache_dir,
                                history_days=settings.history_days,
                                force=args.force, with_news=not args.no_news)
         out = Path("docs/report-daily.html")

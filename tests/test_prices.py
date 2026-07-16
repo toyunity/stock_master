@@ -47,3 +47,23 @@ def test_serves_cache_when_it_covers_end(tmp_path):
     adapter.get_ohlcv("005930", "2024-01-01", "2024-01-03")
     adapter.get_ohlcv("005930", "2024-01-01", "2024-01-03")   # covered -> no refetch
     assert len(calls) == 1
+
+def test_fetch_live_prices_limits_concurrency(monkeypatch):
+    """관심종목 10개 편집 시 KIS 버스트(초당 20건·간헐 500) 방어 — 동시 ≤5."""
+    import asyncio
+    from backend import cli
+
+    peak = {"now": 0, "max": 0}
+
+    class _FakeClient:
+        async def price(self, code):
+            peak["now"] += 1
+            peak["max"] = max(peak["max"], peak["now"])
+            await asyncio.sleep(0.01)
+            peak["now"] -= 1
+            return {"price": 100, "rate": 1.0}
+
+    monkeypatch.setattr("backend.flow.candles._get_client", lambda: _FakeClient())
+    codes = ["%06d" % i for i in range(10)]
+    res = asyncio.run(cli.fetch_live_prices(codes))
+    assert len(res) == 10 and peak["max"] <= 5

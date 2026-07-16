@@ -58,6 +58,14 @@ def test_assemble_stock_shape():
     assert s["action_ko"] == "매수 관심" and s["candles"][0]["time"] == "2026-06-01"
 
 
+def test_dashboard_has_watchlist_edit_ui():
+    """편집 UI 마커 — 검색 ＋담기 / 카드 －삭제 / 저장 JS가 템플릿에 존재.
+    tests/test_dashboard.py의 기존 import(render_dashboard)와 _stock() 헬퍼를 재사용한다."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    for marker in ("saveWatch", "addStock", "delStock", "wadd", "wdel"):
+        assert marker in html, marker + " 누락"
+
+
 def test_nav_loader_on_all_pages():
     # 페이지 전환 로딩 바(2026-07-13 요청) — 세 페이지 모두 포함돼야 한다
     from backend.report.scanner_page import render_scanner_page

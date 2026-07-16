@@ -108,13 +108,20 @@ class AuthGate:
     아니라 순수 ASGI라 SSE 스트리밍을 깨지 않는다. SessionMiddleware가 바깥(먼저)에서
     scope['session']을 채운 뒤 이 게이트가 읽는다(설치 시 add 순서로 보장)."""
 
-    def __init__(self, app):
+    def __init__(self, app, widget_token=None):
         self.app = app
+        self.widget_token = widget_token   # /api/widget 전용 Bearer(설계 2026-07-16)
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
             return await self.app(scope, receive, send)
-        resp = self._blocked(scope.get("path", ""), scope.get("session") or {})
+        path = scope.get("path", "")
+        if path == "/api/widget":
+            # 위젯: 세션 대신 Bearer — 공개 예외가 아니라 게이트 안의 두 번째 잠금.
+            # 무토큰이 여전히 401이므로 PROTECTED 불변식 테스트에 예외가 없다.
+            resp = self._widget_blocked(scope)
+        else:
+            resp = self._blocked(path, scope.get("session") or {})
         if resp is None:
             return await self.app(scope, receive, send)
         return await resp(scope, receive, send)
@@ -134,6 +141,26 @@ class AuthGate:
             return (JSONResponse({"error": "2fa required"}, status_code=401)
                     if is_api else RedirectResponse("/2fa", status_code=302))
         return None                                         # 완전 인증
+
+    def _widget_blocked(self, scope):
+        """Bearer 토큰 검사 — 유효하면 None(통과). 미설정 503(fail-closed),
+        그 외 전부 동일한 401 본문(실패 사유로 정보 누출 금지)."""
+        import secrets as _secrets_mod
+        from starlette.responses import JSONResponse
+        if not self.widget_token:
+            return JSONResponse({"error": "widget not configured"}, status_code=503)
+        auth = b""
+        for k, v in scope.get("headers") or ():
+            if k == b"authorization":
+                auth = v
+                break
+        # 바이트끼리 상수시간 비교 — str+compare_digest는 비ASCII 토큰에 TypeError를
+        # 던져 공개 표면에 미처리 500을 낸다(리뷰 2026-07-16). 빈/대소문자/공백/비ASCII
+        # 모두 그대로 401(fail-closed).
+        token = auth[7:] if auth[:7].lower() == b"bearer " else b""
+        if token and _secrets_mod.compare_digest(token, self.widget_token.encode("utf-8")):
+            return None
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
 
 
 def install(app, settings) -> None:
@@ -159,7 +186,7 @@ def install(app, settings) -> None:
     _register_routes(app, google, settings, emails)
     # add 순서: 나중에 add한 것이 바깥(먼저 실행). SessionMiddleware를 바깥에 둬야
     # scope['session']이 채워진 뒤 게이트가 읽는다.
-    app.add_middleware(AuthGate)
+    app.add_middleware(AuthGate, widget_token=settings.widget_token)
     app.add_middleware(
         SessionMiddleware,
         secret_key=get_session_secret(settings.cache_dir, settings.session_secret),

@@ -27,6 +27,7 @@ from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow import semi
 from backend.flow import watch as _watch
+from backend.flow import watchlist as _watchlist
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
@@ -54,6 +55,12 @@ def create_app(settings=None) -> FastAPI:
     """앱 팩토리 — settings 주입 가능(테스트에서 인증 활성 앱 구성). 기본은 모듈 settings.
     auth_enabled면 인증 게이트를 장착(크리덴셜 없으면 기동 거부, fail-closed)."""
     settings = settings if settings is not None else _settings
+    # 위젯 토큰 fail-closed — 약한 토큰(짧은 문자열)이 공개 Funnel의 유일 방어선이
+    # 되는 것을 기동 시점에 차단(auth.install의 fail-closed와 같은 철학).
+    if settings.widget_token and len(settings.widget_token) < 20:
+        raise RuntimeError(
+            "SM_WIDGET_TOKEN이 너무 짧습니다(최소 20자) — "
+            'python3 -c "import secrets; print(secrets.token_urlsafe(32))" 로 생성하세요')
     app = FastAPI(title="Stock Master")
 
     @app.on_event("shutdown")
@@ -68,7 +75,7 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        html = build_dashboard(settings.watchlist, settings.cache_dir,
+        html = build_dashboard(_watchlist.get_watchlist(), settings.cache_dir,
                                history_days=settings.history_days,
                                with_news=True, pwa=True)
         return HTMLResponse(html)
@@ -94,6 +101,29 @@ def create_app(settings=None) -> FastAPI:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
                                 status_code=400)
         return JSONResponse(await candles.get_candles(code, tf))
+
+    @app.get("/api/watchlist")
+    def watchlist_get():
+        """관심종목 목록 — 대시보드 편집 UI·확인용. 이름은 universe 우선."""
+        from backend.market.universe import get_cached, name_map
+        from backend.news.names import resolve_name
+        nm = name_map(get_cached())
+        return JSONResponse({"items": [{"code": c, "name": resolve_name(c, nm)}
+                                       for c in _watchlist.get_watchlist()]})
+
+    @app.post("/api/watchlist")
+    async def watchlist_set(request: Request):
+        """관심종목 저장(전체 교체) — body {"codes":[...]}. 검증 실패 400(사용자 메시지)."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "본문(JSON)을 읽을 수 없어요"}, status_code=400)
+        codes = body.get("codes") if isinstance(body, dict) else None
+        try:
+            saved = _watchlist.set_watchlist(codes)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"codes": saved})
 
     @app.get("/api/watch/{code}")
     def watch_get(code: str):
@@ -124,6 +154,19 @@ def create_app(settings=None) -> FastAPI:
         """수급 스캐너 — 오늘 수급 특이 종목(외인/기관 가집계 × 거래대금/급등 교차)."""
         return HTMLResponse(render_scanner_page())
 
+    @app.get("/widget-setup", response_class=HTMLResponse)
+    def widget_setup_page(request: Request):
+        """위젯 설치 페이지 — 게이트 뒤(공개 아님). 토큰·스크립트를 사파리에서 복사.
+        base_url은 프록시 헤더 우선(Funnel이 X-Forwarded-Proto: https를 붙임)."""
+        if not settings.widget_token:
+            return HTMLResponse("SM_WIDGET_TOKEN이 설정되지 않았어요 — .env에 추가 후 재시작",
+                                status_code=503)
+        from backend.report.widget_setup import render_widget_setup
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("host", request.url.netloc)
+        return HTMLResponse(render_widget_setup(settings.widget_token,
+                                                "%s://%s" % (scheme, host)))
+
     @app.get("/api/scanner")
     async def scanner_api():
         if not (settings.kis_app_key and settings.kis_app_secret):
@@ -144,7 +187,18 @@ def create_app(settings=None) -> FastAPI:
         if not _kr_market_open():
             return JSONResponse({"open": False, "prices": {}})
         return JSONResponse({"open": True,
-                             "prices": await fetch_live_prices(settings.watchlist)})
+                             "prices": await fetch_live_prices(_watchlist.get_watchlist())})
+
+    @app.get("/api/widget")
+    async def widget_api():
+        """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
+        KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16)."""
+        from backend.api.widget import widget_data
+        data = await widget_data(_watchlist.get_watchlist())
+        if data is None:
+            return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},
+                                status_code=503)
+        return JSONResponse(data)
 
     @app.get("/healthz")
     def healthz():
