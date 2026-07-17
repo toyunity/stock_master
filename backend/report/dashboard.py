@@ -83,7 +83,8 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .mtitle{font-size:12.5px;color:var(--text-2);font-weight:700;padding:11px 14px 7px}
 .mtitle .meta{font-weight:500}
 .mrow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--border-2);
-  flex-wrap:wrap}
+  flex-wrap:wrap;touch-action:pan-y;transition:background .12s}
+.mrow.mdrag{opacity:.65;background:var(--surface-2)}
 .mhandle{color:var(--text-3);font-size:17px;cursor:grab;touch-action:none;padding:0 2px;
   user-select:none;-webkit-user-select:none}
 .mname{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);
@@ -345,6 +346,89 @@ async function loadItems(){
   }catch(e){}   // 정적/아티팩트 컨텍스트에선 조용히 비활성(관리=서버 전용)
 }
 loadItems();
+// ── 드래그 순서변경 + 스와이프 삭제(Task 15, 향상) — 순수 Pointer Events(외부 라이브러리 0).
+//    초기화 전체를 try/catch로 감싸 이 코드가 런타임 실패해도 ▲▼·×·[보유] 버튼 폴백은 계속 동작.
+//    (파스 오류는 test_dashboard_inline_js_parses의 node --check가 차단 — 이 블록이 renderManage와
+//    같은 <script>여야 파스 게이트가 드래그 JS까지 덮는다.) 스크롤 충돌 방지: 핸들에서만 드래그
+//    시작, 스와이프는 가로 이동이 세로보다 크고 좌향일 때만 확정(각도 임계). #manage 위임 바인딩
+//    이라 renderManage가 innerHTML을 갈아끼워도 리스너가 살아남는다. ──
+try{
+  (function(){
+    var box=document.getElementById('manage');
+    if(!box || typeof window.PointerEvent==='undefined') return;   // 미지원 → 버튼 폴백만
+    var SWIPE_MIN=64, START_SLOP=8;   // 삭제 확정 가로거리 · 판정 시작 여유(px)
+    var mode=null, row=null, code=null, sx=0, sy=0, pid=null;
+    function reset(){
+      if(row){ row.style.transform=''; row.style.background=''; row.classList.remove('mdrag'); }
+      mode=null; row=null; code=null; pid=null;
+    }
+    function rowAtY(y){
+      var rows=box.querySelectorAll('.mrow');
+      for(var i=0;i<rows.length;i++){
+        var b=rows[i].getBoundingClientRect();
+        if(y>=b.top && y<=b.bottom) return rows[i];
+      }
+      return null;
+    }
+    box.addEventListener('pointerdown', function(e){
+      var r=e.target.closest ? e.target.closest('.mrow') : null;
+      if(!r) return;
+      row=r; code=r.getAttribute('data-code'); sx=e.clientX; sy=e.clientY; pid=e.pointerId;
+      if(e.target.classList && e.target.classList.contains('mhandle')){   // 핸들에서만 드래그
+        mode='drag'; row.classList.add('mdrag');
+        try{ box.setPointerCapture(pid); }catch(_){}
+        e.preventDefault();
+      }else{
+        mode='pending';                    // 스와이프 후보 — 이동 방향으로 확정
+      }
+    });
+    box.addEventListener('pointermove', function(e){
+      if(!mode||!row) return;
+      var dx=e.clientX-sx, dy=e.clientY-sy;
+      if(mode==='pending'){
+        if(Math.abs(dx)<START_SLOP && Math.abs(dy)<START_SLOP) return;
+        if(dx<0 && Math.abs(dx)>Math.abs(dy)){        // 좌 + 가로>세로(각도) → 스와이프
+          mode='swipe';
+          try{ box.setPointerCapture(pid); }catch(_){}
+        }else{ reset(); return; }                     // 세로 우위 → 스크롤에 양보
+      }
+      if(mode==='swipe'){
+        var off=Math.min(0,dx);
+        row.style.transform='translateX('+off+'px)';
+        row.style.background=(-off>=SWIPE_MIN)?'var(--up)':'';
+        e.preventDefault();
+      }else if(mode==='drag'){
+        var over=rowAtY(e.clientY);
+        if(over && over!==row){
+          var rows=Array.prototype.slice.call(box.querySelectorAll('.mrow'));
+          if(rows.indexOf(row)<rows.indexOf(over)) over.after(row);   // 아래로 → over 뒤
+          else over.before(row);                                      // 위로 → over 앞
+        }
+        e.preventDefault();
+      }
+    });
+    box.addEventListener('pointerup', function(e){
+      if(!mode||!row){ reset(); return; }
+      var m=mode, dx=e.clientX-sx, dcode=code;
+      if(m==='swipe'){
+        var del=(-dx>=SWIPE_MIN);
+        reset();
+        if(del) delItem(dcode);            // 확인창→저장(최소 1개 가드·격리 email 서버 해석 재사용)
+      }else if(m==='drag'){
+        var codes=Array.prototype.map.call(box.querySelectorAll('.mrow'),
+          function(r){ return r.getAttribute('data-code'); });
+        reset();
+        var map={}; ITEMS.forEach(function(i){ map[i.code]=i; });
+        var ordered=codes.map(function(c){ return map[c]; }).filter(Boolean);
+        var before=ITEMS.map(function(i){ return i.code; }).join(',');
+        if(ordered.length===ITEMS.length && codes.join(',')!==before)
+          saveItems(cleanItems(ordered));  // 순서가 실제로 바뀐 경우만 저장
+        else renderManage();               // 무변경/불일치 → 시각 원복
+      }else reset();
+    });
+    box.addEventListener('pointercancel', reset);
+  })();
+}catch(e){}   // 드래그/스와이프 향상 비활성 — ▲▼·×·[보유] 버튼 폴백은 계속 동작(progressive enhancement)
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 

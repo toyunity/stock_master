@@ -88,6 +88,29 @@ def test_dashboard_search_detects_us_ticker():
         assert marker in html, marker + " 누락"
 
 
+def test_dashboard_drag_swipe_enhancement():
+    """드래그 순서변경·스와이프 삭제(Task 15) — Pointer Events 향상이 편집 블록(renderManage와
+    같은 <script>)에 얹히고 try/catch로 감싸, 향상 코드가 런타임 실패해도 ▲▼·× 버튼 폴백이
+    유지된다(progressive enhancement). 같은 블록이라야 test_dashboard_inline_js_parses의
+    node --check 파스 게이트가 드래그 JS까지 덮어 파스 오류 시에도 폴백이 지켜진다."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    edit = next((s for s in scripts if "renderManage" in s), "")
+    main = next((s for s in scripts if "cardHtml" in s), "")
+    assert edit and main, "편집/메인 블록 분리 실패"
+    # Pointer Events 드래그/스와이프 마커 — 편집 블록 안에(메인 블록 오염 금지)
+    for marker in ("pointerdown", "pointermove", "pointerup", "setPointerCapture"):
+        assert marker in edit, marker + " 누락(편집 블록)"
+        assert marker not in main, marker + " 가 메인 블록으로 새어나감"
+    # 향상 초기화를 try/catch로 격리 — 런타임 실패 시 버튼 폴백 유지.
+    # 드래그 초기화(setPointerCapture)를 실제로 감싸는지 고정(기존 loadItems try/catch와 구분).
+    assert re.search(r"try\s*\{[\s\S]*setPointerCapture[\s\S]*\}\s*catch\s*\(", edit), \
+        "드래그 초기화가 try/catch로 감싸이지 않음(향상 실패 시 버튼 폴백 유지 불가)"
+    # 커밋 경로 재사용 — 스와이프=삭제(delItem·최소1개 가드), 드롭=순서저장(saveItems)
+    for fn in ("delItem", "saveItems", "moveItem"):
+        assert fn in edit, fn + " 누락(버튼 폴백/커밋 경로)"
+
+
 import shutil
 import subprocess
 
