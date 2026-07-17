@@ -73,10 +73,34 @@ ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(
 .scard .rt{font-size:12px;font-weight:700}
 .rt.up{color:var(--up)}.rt.down{color:var(--down)}.rt.flat{color:var(--flat)}
 #semi>b{font-size:14px}
-button.wadd,button.wdel{border:1px solid var(--border);background:var(--surface-2);
+button.wadd{border:1px solid var(--border);background:var(--surface-2);
   color:var(--text-2);border-radius:var(--r-pill);font-size:12px;padding:2px 10px;
   min-height:28px;cursor:pointer;vertical-align:middle}
-button.wdel{color:var(--up)}
+/* ── 관심종목 관리 리스트(순서 ▲▼·삭제 ×·보유) — 버튼 폴백은 드래그와 독립적으로 항상 동작 ── */
+.manage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow);margin:12px 0;overflow:hidden}
+.manage:empty{display:none}
+.mtitle{font-size:12.5px;color:var(--text-2);font-weight:700;padding:11px 14px 7px}
+.mtitle .meta{font-weight:500}
+.mrow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--border-2);
+  flex-wrap:wrap}
+.mhandle{color:var(--text-3);font-size:17px;cursor:grab;touch-action:none;padding:0 2px;
+  user-select:none;-webkit-user-select:none}
+.mname{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mtag{font-size:10px;font-weight:700;color:var(--text-3);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:0 4px;vertical-align:middle}
+.mpx{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mctl{display:flex;gap:4px}
+.mctl button{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);
+  border-radius:var(--r-sm);font-size:13px;min-width:30px;min-height:30px;padding:0;cursor:pointer}
+.mctl .mdel{color:var(--up)}
+.mctl .mhold{min-width:auto;padding:0 8px;font-size:11px}
+.mhe{flex-basis:100%;display:flex;gap:6px;align-items:center;padding-top:8px}
+.mhe input{flex:1;min-width:0;font-size:15px;padding:8px 10px;border:1px solid var(--border);
+  border-radius:var(--r-sm);box-sizing:border-box;background:var(--surface-2);color:var(--text)}
+.mhe button{border:0;background:var(--primary);color:#fff;border-radius:var(--r-sm);
+  font-size:13px;padding:0 12px;min-height:36px;cursor:pointer}
 </style></head><body>
 <div id="app"><div id="app-scroll">
 <h1>📊 Stock Master <small>__DATE__</small></h1>
@@ -91,6 +115,7 @@ __REFRESH__
   <div class="meta" style="margin-top:6px">미국: KIS 해외시세(계정에 따라 15분 지연) ·
   국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
 </div>
+<div class="manage" id="manage"></div>
 <div class="search">
   <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">
   <div id="results"></div>
@@ -126,7 +151,6 @@ function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
-  h+=' <button class="wdel" data-code="'+esc(s.code)+'" onclick="delStock(this.dataset.code)" title="관심종목에서 삭제">－</button>';
   if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
@@ -161,7 +185,7 @@ function searchRender(items,usHint){
   usHint=usHint||'';
   if(!items.length&&!usHint){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
   res.innerHTML=usHint+items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span>'
-    +(WATCH.indexOf(u.code)<0?' <button class="wadd" data-code="'+esc(u.code)+'" onclick="addStock(this.dataset.code)">＋담기</button>':'')
+    +(!inWatch(u.code)?' <button class="wadd" data-code="'+esc(u.code)+'" onclick="addStock(this.dataset.code)">＋담기</button>':'')
     +'</span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
 }
 q.oninput=()=>{
@@ -220,41 +244,107 @@ async function loadPrices(){
   }catch(e){}
 }
 loadPrices(); setInterval(loadPrices, 12000);
-// ── 관심종목 편집(설계 2026-07-16): 전체 교체 POST, 새 종목 맨 앞, 최소 1·최대 10 ──
-const WATCH = D.stocks.map(s=>s.code);
-async function saveWatch(codes){
+// ── 관심종목 편집(v2 2026-07-17): items 계약({items:[{code,market,shares,avg}]}) 전체 교체 POST.
+//    순서·삭제·보유는 아래 관리 리스트(별도 <script>)가 담당. 여기엔 공유 유틸 + 검색 담기만. ──
+const WATCH = D.stocks.map(s=>s.code);   // 검색 담기 버튼 표시용(KR 카드 코드)
+let ITEMS = [];                          // 관리 리스트 authoritative items(KR+US) — /api/watchlist에서 로드
+function inWatch(code){ return ITEMS.some(i=>i.code===code) || WATCH.indexOf(code)>=0; }
+function cleanItem(i){ return {code:i.code, market:i.market, shares:i.shares, avg:i.avg}; }
+function cleanItems(items){ return items.map(cleanItem); }
+async function _freshItems(){
+  // 담기 직전 서버에서 현재 items를 다시 읽는다 — 비동기 로드 완료 전 담기해도 기존 보유가 날아가지 않게(경합 방지).
+  const r = await fetch('/api/watchlist');
+  if(!r.ok) throw new Error('load');
+  return (await r.json()).items || [];
+}
+async function saveItems(items){
   try{
     const r=await fetch('/api/watchlist',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({codes})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
     const d=await r.json();
     if(!r.ok){alert(d.error||'저장 실패');return;}
     location.reload();
   }catch(e){alert('저장 실패 — 네트워크를 확인하세요');}
 }
-function addStock(code){
-  if(WATCH.indexOf(code)>=0)return;
-  saveWatch([code].concat(WATCH));   // 새 종목 맨 앞 — 위젯 상위 5에 바로 보임
-}
-async function addUS(sym){
-  // 미국 티커 담기 — 현재 전체 items(KR+US)를 읽어 뒤에 US 항목을 붙여 저장(기존 US 유지).
-  // 카드 기반 WATCH는 KR뿐이라 items를 서버에서 재조회한다(관리 리스트 Task 14 전 최소 배선).
+async function addStock(code){
   try{
-    const g=await fetch('/api/watchlist'); if(!g.ok){alert('현재 목록을 불러오지 못했어요');return;}
-    const cur=(await g.json()).items||[];
-    if(cur.some(i=>i.code===sym)){alert('이미 담긴 종목이에요');return;}
-    const items=cur.map(i=>({code:i.code,market:i.market,shares:i.shares,avg:i.avg}))
-                   .concat([{code:sym,market:'US'}]);
-    const r=await fetch('/api/watchlist',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
-    const d=await r.json();
-    if(!r.ok){alert(d.error||'담기 실패');return;}   // 없는 티커면 서버 400 메시지
-    location.reload();
+    const cur=await _freshItems();
+    if(cur.some(i=>i.code===code))return;
+    saveItems([{code:code,market:'KR'}].concat(cleanItems(cur)));   // 새 KR 종목 맨 앞 — 위젯 상위 노출
   }catch(e){alert('담기 실패 — 네트워크를 확인하세요');}
 }
-function delStock(code){
-  if(WATCH.length<=1){alert('관심종목은 최소 1개 필요해요');return;}
-  if(confirm('관심종목에서 삭제할까요?')) saveWatch(WATCH.filter(c=>c!==code));
+async function addUS(sym){
+  try{
+    const cur=await _freshItems();
+    if(cur.some(i=>i.code===sym)){alert('이미 담긴 종목이에요');return;}
+    saveItems(cleanItems(cur).concat([{code:sym,market:'US'}]));    // 없는 티커면 서버 400 메시지
+  }catch(e){alert('담기 실패 — 네트워크를 확인하세요');}
 }
+</script>
+<script>
+// ── 관심종목 관리 리스트(Task 14, 별도 <script>) — 행별 핸들·▲▼·×·[보유] 버튼 폴백.
+//    함수 선언은 hoist되므로 이 블록 하단(드래그 Task 15)이 실패해도 버튼 핸들러는 계속 동작한다.
+//    ITEMS·saveItems·cleanItems·esc·won·D는 메인 블록의 전역을 재사용(정적 컨텍스트에선 조용히 비활성). ──
+function pxOf(code){ const s=D.stocks.find(x=>x.code===code); return s?s.close:null; }
+function manageRow(it){
+  const isUS=it.market==='US', px=isUS?null:pxOf(it.code);
+  let h='<div class="mrow" data-code="'+esc(it.code)+'" data-market="'+esc(it.market)+'">';
+  h+='<span class="mhandle" title="드래그로 순서변경">⠿</span>';
+  h+='<span class="mname">'+esc(it.name||it.code)+' <span class="code">'+esc(it.code)+'</span>'
+    +(isUS?' <span class="mtag">US</span>':'')+'</span>';
+  h+='<span class="mpx'+(isUS?'':' cpx')+'" data-code="'+esc(it.code)+'">'
+    +(px!=null?won(px):(isUS?'$—':'–'))+'</span>';
+  h+='<span class="mctl">'
+    +'<button class="mmv" data-code="'+esc(it.code)+'" onclick="moveItem(this.dataset.code,-1)" title="위로">▲</button>'
+    +'<button class="mmv" data-code="'+esc(it.code)+'" onclick="moveItem(this.dataset.code,1)" title="아래로">▼</button>'
+    +'<button class="mhold" data-code="'+esc(it.code)+'" onclick="editHold(this.dataset.code)" title="보유 편집">보유</button>'
+    +'<button class="mdel" data-code="'+esc(it.code)+'" onclick="delItem(this.dataset.code)" title="관심종목에서 삭제">×</button>'
+    +'</span>';
+  const sv=it.shares!=null?esc(it.shares):'', av=it.avg!=null?esc(it.avg):'';
+  h+='<div class="mhe" id="he-'+esc(it.code)+'" style="display:none">'
+    +'<input id="hs-'+esc(it.code)+'" type="number" inputmode="numeric" min="0" placeholder="수량" value="'+sv+'">'
+    +'<input id="ha-'+esc(it.code)+'" type="number" inputmode="decimal" min="0" step="any" placeholder="평균매입가'+(isUS?'($)':'(원)')+'" value="'+av+'">'
+    +'<button data-code="'+esc(it.code)+'" onclick="saveHold(this.dataset.code)">저장</button>'
+    +'</div>';
+  return h+'</div>';
+}
+function renderManage(){
+  const box=document.getElementById('manage'); if(!box)return;
+  if(!ITEMS.length){box.innerHTML='';return;}
+  box.innerHTML='<div class="mtitle">관심종목 관리 <span class="meta">· 순서 ▲▼ · 삭제 × · 보유 입력</span></div>'
+    +ITEMS.map(manageRow).join('');
+}
+function moveItem(code,dir){
+  const i=ITEMS.findIndex(x=>x.code===code); if(i<0)return;
+  const j=i+dir; if(j<0||j>=ITEMS.length)return;
+  const items=cleanItems(ITEMS), t=items[i]; items[i]=items[j]; items[j]=t;
+  saveItems(items);
+}
+function delItem(code){
+  if(ITEMS.length<=1){alert('관심종목은 최소 1개 필요해요');return;}
+  if(confirm('관심종목에서 삭제할까요?')) saveItems(cleanItems(ITEMS).filter(x=>x.code!==code));
+}
+function editHold(code){
+  const box=document.getElementById('he-'+code); if(!box)return;
+  box.style.display=box.style.display==='none'?'flex':'none';
+}
+function saveHold(code){
+  const sEl=document.getElementById('hs-'+code), aEl=document.getElementById('ha-'+code);
+  if(!sEl||!aEl)return;
+  const sv=sEl.value.trim(), av=aEl.value.trim();
+  const items=cleanItems(ITEMS), t=items.find(x=>x.code===code); if(!t)return;
+  t.shares=sv===''?null:Number(sv);
+  t.avg=av===''?null:Number(av);   // KR 원정수/US 소수 정규화는 서버 _clean_item가 담당
+  saveItems(items);
+}
+async function loadItems(){
+  try{
+    const r=await fetch('/api/watchlist'); if(!r.ok)return;
+    ITEMS=(await r.json()).items||[];
+    renderManage();
+  }catch(e){}   // 정적/아티팩트 컨텍스트에선 조용히 비활성(관리=서버 전용)
+}
+loadItems();
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 

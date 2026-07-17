@@ -59,11 +59,26 @@ def test_assemble_stock_shape():
 
 
 def test_dashboard_has_watchlist_edit_ui():
-    """편집 UI 마커 — 검색 ＋담기 / 카드 －삭제 / 저장 JS가 템플릿에 존재.
-    tests/test_dashboard.py의 기존 import(render_dashboard)와 _stock() 헬퍼를 재사용한다."""
+    """편집 UI 마커 — 검색 ＋담기(addStock/addUS)·관리 리스트 저장(saveItems, items 계약)이 존재하고,
+    카드의 삭제버튼(구 delStock/wdel)은 관리 리스트로 이전돼 카드에서 제거됐다(Task 14)."""
     html = render_dashboard([_stock()], [], "2026-06-22")
-    for marker in ("saveWatch", "addStock", "delStock", "wadd", "wdel"):
+    for marker in ("saveItems", "addStock", "addUS", "wadd"):
         assert marker in html, marker + " 누락"
+    # 카드 편집버튼 제거 — 삭제/순서변경/보유는 관리 리스트가 담당(카드는 순서만 반영)
+    assert "delStock(" not in html, "카드 삭제 핸들러(delStock)가 남아있음 — 관리 리스트로 이전해야 함"
+    assert 'class="wdel"' not in html, "카드 삭제버튼(wdel)이 남아있음"
+    assert 'body:JSON.stringify({codes})' not in html, "구 {codes} 저장 계약 잔존(현재 서버는 400)"
+
+
+def test_dashboard_manage_list_button_fallback():
+    """관리 리스트(Task 14) — 검색창 위 컨테이너 + 행별 핸들·▲▼·×·[보유] 버튼 폴백이 항상 렌더되고
+    핸들러가 정의된다(드래그 없이도 순서변경·삭제·보유편집 동작)."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    assert 'id="manage"' in html                       # 관리 리스트 컨테이너
+    assert html.index('id="manage"') < html.index('class="search"')  # 검색창 위
+    for fn in ("loadItems", "renderManage", "moveItem", "delItem", "editHold", "saveHold"):
+        assert fn in html, fn + " 핸들러 누락"
+    assert "⠿" in html                                 # 드래그 핸들 자리(버튼 폴백은 별개로 항상 동작)
 
 
 def test_dashboard_search_detects_us_ticker():
@@ -84,18 +99,22 @@ _needs_node = pytest.mark.skipif(shutil.which("node") is None,
 
 @_needs_node
 def test_dashboard_inline_js_parses(tmp_path):
-    """대시보드 인라인 JS 문법 스모크(2026-07-17 실사고). onclick의 따옴표 이스케이프가
-    깨지면 스크립트 전체가 파싱 실패 → 카드·검색·반도체 섹션이 전부 안 뜬다.
-    문자열 존재 검사로는 못 잡으므로 node --check로 실제 파싱을 검증한다."""
+    """대시보드 인라인 JS 문법 스모크(2026-07-17 실사고) — 메인 블록 + 편집(관리 리스트) 블록
+    둘 다 node --check. onclick 이스케이프가 깨지면 스크립트 전체가 파싱 실패 → 섹션이 전부
+    안 뜬다. 편집 로직은 별도 <script>로 분리돼 드래그/스와이프(Task 15)가 죽어도 격리된다."""
     html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자"}],
                             "2026-06-22")
     scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
     main = next((s for s in scripts if "cardHtml" in s), None)
+    edit = next((s for s in scripts if "renderManage" in s), None)
     assert main, "메인 스크립트 블록을 찾지 못함"
-    js = tmp_path / "dash_main.js"
-    js.write_text(main, encoding="utf-8")
-    r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
-    assert r.returncode == 0, "대시보드 인라인 JS 문법 오류:\n" + r.stderr
+    assert edit, "편집(관리 리스트) 스크립트 블록을 찾지 못함"
+    assert main != edit, "편집 블록이 메인 블록과 분리되지 않음(별도 <script> 필요)"
+    for fname, src in (("dash_main.js", main), ("dash_edit.js", edit)):
+        js = tmp_path / fname
+        js.write_text(src, encoding="utf-8")
+        r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
+        assert r.returncode == 0, fname + " 인라인 JS 문법 오류:\n" + r.stderr
 
 
 def test_nav_loader_on_all_pages():
