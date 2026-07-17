@@ -157,3 +157,74 @@ def set_lines(email, code, lines) -> list:
     d["watch_lines"] = wl
     _save(email, d)
     return norm
+
+
+# 위젯 토큰 — 단일 진실원 = 유저 파일의 widget_token. 별도 인덱스 파일 없음.
+# email_for_token은 users/ 디렉터리를 스캔해 역매핑을 만들고 디렉터리 mtime이
+# 변할 때만 재빌드(3계정=3파일). 쓰기 함수는 _save 직후 mtime 캐시를 무효화해
+# 동일-초 회전에도 구 토큰이 즉시 사망하도록 보장한다.
+_tok_cache = {"mtime": None, "map": {}}
+
+
+def get_token(email):
+    return _load(norm_email(email)).get("widget_token")
+
+
+def ensure_token(email) -> str:
+    email = norm_email(email)
+    d = _load(email)
+    if not d.get("widget_token"):
+        d["widget_token"] = secrets.token_urlsafe(32)
+        _save(email, d)
+        _tok_cache["mtime"] = None
+    return d["widget_token"]
+
+
+def rotate_token(email) -> str:
+    email = norm_email(email)
+    d = _load(email)
+    d["widget_token"] = secrets.token_urlsafe(32)
+    _save(email, d)
+    _tok_cache["mtime"] = None
+    return d["widget_token"]
+
+
+def register_env_token(token, email) -> None:
+    """마이그레이션 전용 — env SM_WIDGET_TOKEN을 고정 마스터 유저파일에 1회 등록."""
+    email = norm_email(email)
+    d = _load(email)
+    if not d.get("widget_token"):
+        d["widget_token"] = token
+        _save(email, d)
+        _tok_cache["mtime"] = None
+
+
+def _rebuild_token_map():
+    d = _dir()
+    try:
+        mtime = os.path.getmtime(d)
+    except OSError:
+        mtime = None
+    if mtime != _tok_cache["mtime"]:
+        m = {}
+        try:
+            for f in os.listdir(d):
+                if f.endswith(".json"):
+                    try:
+                        with open(d / f, encoding="utf-8") as fh:
+                            j = json.load(fh)
+                        tok = j.get("widget_token")
+                        if tok:
+                            m[tok] = norm_email(j.get("email"))
+                    except Exception:
+                        continue
+        except OSError:
+            pass
+        _tok_cache["mtime"], _tok_cache["map"] = mtime, m
+    return _tok_cache["map"]
+
+
+def email_for_token(token):
+    if not token:
+        return None
+    return _rebuild_token_map().get(token)

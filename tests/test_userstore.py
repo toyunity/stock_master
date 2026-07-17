@@ -73,3 +73,26 @@ def test_watch_lines_set_get_isolation():
     us.set_lines(M, "005930", [{"price": 70000, "label": "지지"}])
     assert us.get_lines(M, "005930")[0]["price"] == 70000
     assert us.get_lines(B, "005930") == []                 # 격리
+
+
+def test_token_lifecycle_and_reverse():
+    from backend.flow import userstore as us
+    t = us.ensure_token(M)
+    assert len(t) >= 20 and us.email_for_token(t) == M
+    assert us.email_for_token("nope-" + "x" * 20) is None      # 미매칭 None(폴백 금지)
+
+
+def test_token_rotation_kills_old():
+    from backend.flow import userstore as us
+    old = us.ensure_token(M)
+    new = us.rotate_token(M)
+    assert new != old
+    assert us.email_for_token(new) == M
+    assert us.email_for_token(old) is None                     # 구 토큰 즉시 사망
+
+
+def test_cross_account_token_never_crosses():
+    from backend.flow import userstore as us
+    ta, tb = us.ensure_token(M), us.ensure_token(B)
+    assert us.email_for_token(ta) == M and us.email_for_token(tb) == B
+    assert us.email_for_token(ta) != B                         # 교차 금지
