@@ -1207,14 +1207,15 @@ connect();
 _MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}
 
 
-def render_live_page(code: str, name: str, mode: str) -> str:
+def render_live_page(code: str, name: str, mode: str, email=None) -> str:
     import json
 
     from backend.config import settings
-    from backend.flow import watch as watch_mod
+    from backend.flow import userstore
     lib = _LIB_PATH.read_text(encoding="utf-8")
-    # 파일 저장값(사용자 편집) 우선, 없으면 config 기본값 — 이미 정규화된 [{price:int,label}]
-    watch = watch_mod.get_lines(code)
+    # 계정별 감시선(사용자 편집) 우선, 없으면 마스터만 config 폴백 — 이미 정규화된 [{price:int,label}].
+    # email=None(직접 렌더/테스트)은 default_account로 해석(마스터 config 시드).
+    watch = userstore.get_lines(email or userstore.default_account(), code)
     # </script> 이스케이프: 라벨에 '</'가 들어오면 스크립트 블록이 조기 종료되어
     # 페이지 JS 전체가 죽는다(스크립트 컨텍스트 브레이크아웃, 리뷰 확정)
     watch_js = json.dumps(watch, ensure_ascii=False).replace("</", "<\\/")

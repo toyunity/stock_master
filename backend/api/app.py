@@ -26,13 +26,19 @@ from backend.api import auth as _auth
 from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow import semi
-from backend.flow import watch as _watch
-from backend.flow import watchlist as _watchlist
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
 
 _CODE_RE = re.compile(r"^\d{6}$")
+
+
+def _req_email(request, settings):
+    """라우트 계정 해석 — 세션 이메일(로그인)이 있으면 그것, 없으면(인증 비활성) default_account.
+    request.session 직접 접근 금지(SessionMiddleware 미설치 시 AssertionError) — scope.get으로 방어."""
+    from backend.flow.userstore import default_account
+    sess = request.scope.get("session") or {}
+    return sess.get("email") or default_account()
 
 
 async def live_stream(code: str):
@@ -74,19 +80,21 @@ def create_app(settings=None) -> FastAPI:
                 pass
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse:
-        html = build_dashboard(_watchlist.get_watchlist(), settings.cache_dir,
-                               history_days=settings.history_days,
+    def index(request: Request) -> HTMLResponse:
+        from backend.flow import userstore
+        html = build_dashboard(userstore.get_kr_codes(_req_email(request, settings)),
+                               settings.cache_dir, history_days=settings.history_days,
                                with_news=True, pwa=True)
         return HTMLResponse(html)
 
     @app.get("/live/{code}", response_class=HTMLResponse)
-    def live(code: str):
+    def live(code: str, request: Request):
         """실시간 수급 화면 — KIS 키 있으면 LIVE, 없으면 DEMO(시뮬레이션)."""
         if not _CODE_RE.match(code):
             return HTMLResponse("종목 코드는 6자리 숫자입니다", status_code=404)
         eng = FlowEngine.get(code)
-        return HTMLResponse(render_live_page(code, eng.state.name, eng.mode))
+        return HTMLResponse(render_live_page(code, eng.state.name, eng.mode,
+                                             _req_email(request, settings)))
 
     @app.get("/api/live/{code}/stream")
     async def _live_stream(code: str):
@@ -103,48 +111,60 @@ def create_app(settings=None) -> FastAPI:
         return JSONResponse(await candles.get_candles(code, tf))
 
     @app.get("/api/watchlist")
-    def watchlist_get():
-        """관심종목 목록 — 대시보드 편집 UI·확인용. 이름은 universe 우선."""
+    def watchlist_get(request: Request):
+        """관심종목 목록(계정별) — items[{code,market,shares,avg,name}]. 이름은 KR=universe, US=티커명.
+        US 이름은 임시(semi.US_NAMES) — Task 12의 usquote.us_name으로 교체 예정."""
+        from backend.flow import userstore
+        from backend.flow.semi import US_NAMES
         from backend.market.universe import get_cached, name_map
         from backend.news.names import resolve_name
         nm = name_map(get_cached())
-        return JSONResponse({"items": [{"code": c, "name": resolve_name(c, nm)}
-                                       for c in _watchlist.get_watchlist()]})
+        email = _req_email(request, settings)
+        items = [dict(i, name=(resolve_name(i["code"], nm) if i["market"] == "KR"
+                               else US_NAMES.get(i["code"], i["code"])))
+                 for i in userstore.get_watchlist(email)]
+        return JSONResponse({"items": items})
 
     @app.post("/api/watchlist")
     async def watchlist_set(request: Request):
-        """관심종목 저장(전체 교체) — body {"codes":[...]}. 검증 실패 400(사용자 메시지)."""
+        """관심종목 저장(계정별 전체 교체) — body {"items":[{code,market,shares,avg}]}.
+        검증 실패 400(사용자 메시지). 구 계약 {"codes":[...]}은 items 부재로 400."""
+        from backend.flow import userstore
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "본문(JSON)을 읽을 수 없어요"}, status_code=400)
-        codes = body.get("codes") if isinstance(body, dict) else None
+        items = body.get("items") if isinstance(body, dict) else None
+        if items is None:
+            return JSONResponse({"error": "items 배열이 필요해요"}, status_code=400)
         try:
-            saved = _watchlist.set_watchlist(codes)
+            saved = userstore.set_watchlist(_req_email(request, settings), items)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
-        return JSONResponse({"codes": saved})
+        return JSONResponse({"items": saved})
 
     @app.get("/api/watch/{code}")
-    def watch_get(code: str):
-        """감시선(참조선) 조회 — 파일 저장값 우선, 없으면 config 기본값."""
+    def watch_get(code: str, request: Request):
+        """감시선(참조선) 조회(계정별) — 파일 저장값 우선, 없으면 마스터만 config 폴백."""
         if not _CODE_RE.match(code):
             return Response(status_code=404)
-        return JSONResponse({"lines": _watch.get_lines(code)})
+        from backend.flow import userstore
+        return JSONResponse({"lines": userstore.get_lines(_req_email(request, settings), code)})
 
     @app.post("/api/watch/{code}")
     async def watch_set(code: str, request: Request):
-        """감시선 저장 — body {"lines":[{"price":num,"label":str}, ...]}.
+        """감시선 저장(계정별) — body {"lines":[{"price":num,"label":str}, ...]}.
         검증 실패 400(사용자 메시지), 성공 시 정규화된 {"lines": [...]}."""
         if not _CODE_RE.match(code):
             return Response(status_code=404)
+        from backend.flow import userstore
         try:
             body = await request.json()
         except Exception:
             return JSONResponse({"error": "본문(JSON)을 읽을 수 없어요"}, status_code=400)
         lines = body.get("lines") if isinstance(body, dict) else None
         try:
-            saved = _watch.set_lines(code, lines)
+            saved = userstore.set_lines(_req_email(request, settings), code, lines)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse({"lines": saved})
@@ -181,20 +201,25 @@ def create_app(settings=None) -> FastAPI:
         return JSONResponse(await semi.get_overview())
 
     @app.get("/api/prices")
-    async def prices_api():
-        """관심종목 실시간 현재가 — 대시보드 카드가 폴링. 장중에만 KIS 조회(장외/주말은 open:false)."""
+    async def prices_api(request: Request):
+        """관심종목 실시간 현재가 — 대시보드 카드가 폴링. 장중에만 KIS 조회(장외/주말은 open:false).
+        KR 파이프라인이라 계정 watchlist의 KR 코드만 조회(US는 여기 경로 없음)."""
         from backend.cli import _kr_market_open, fetch_live_prices
+        from backend.flow import userstore
         if not _kr_market_open():
             return JSONResponse({"open": False, "prices": {}})
-        return JSONResponse({"open": True,
-                             "prices": await fetch_live_prices(_watchlist.get_watchlist())})
+        codes = userstore.get_kr_codes(_req_email(request, settings))
+        return JSONResponse({"open": True, "prices": await fetch_live_prices(codes)})
 
     @app.get("/api/widget")
-    async def widget_api():
+    async def widget_api(request: Request):
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
-        KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16)."""
+        KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16).
+        # Task 7: Bearer→계정을 scope["state"]["widget_email"]로 교체(default 폴백 금지 — 교차계정 유출 차단)."""
         from backend.api.widget import widget_data
-        data = await widget_data(_watchlist.get_watchlist())
+        from backend.flow import userstore
+        codes = userstore.get_kr_codes(_req_email(request, settings))
+        data = await widget_data(codes)
         if data is None:
             return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},
                                 status_code=503)

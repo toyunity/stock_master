@@ -214,15 +214,34 @@ def _client_local(tmp_path):
 def test_watchlist_api_roundtrip_and_validation(tmp_path, monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
     c = _client_local(tmp_path)
     r = c.get("/api/watchlist")
-    assert r.status_code == 200 and len(r.json()["items"]) >= 5      # 시드
-    r = c.post("/api/watchlist", json={"codes": ["035720", "005930"]})
+    assert r.status_code == 200 and len(r.json()["items"]) >= 5      # 마스터 시드
+    r = c.post("/api/watchlist", json={"items": [{"code": "035720", "market": "KR"},
+                                                 {"code": "005930", "market": "KR"}]})
     assert r.status_code == 200
     assert [i["code"] for i in c.get("/api/watchlist").json()["items"]] == ["035720", "005930"]
-    assert c.post("/api/watchlist", json={"codes": []}).status_code == 400
-    assert c.post("/api/watchlist", json={"codes": ["12"]}).status_code == 400
-    assert c.post("/api/watchlist", json={}).status_code == 400
+    assert c.post("/api/watchlist", json={"items": []}).status_code == 400        # 최소 1
+    assert c.post("/api/watchlist", json={"items": [{"code": "12", "market": "KR"}]}).status_code == 400
+    assert c.post("/api/watchlist", json={}).status_code == 400                    # items 없음
+    assert c.post("/api/watchlist", json={"codes": ["005930"]}).status_code == 400  # 구 계약 거부
+
+
+def test_watchlist_api_items_contract(tmp_path, monkeypatch):
+    """items 계약(계정별) — 보유(shares/avg) 왕복 + 구 codes 계약 거부."""
+    from backend.config import settings
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    c = TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+    r = c.post("/api/watchlist",
+               json={"items": [{"code": "005930", "market": "KR", "shares": 10, "avg": 230000}]})
+    assert r.status_code == 200
+    got = c.get("/api/watchlist").json()["items"]
+    assert got[0]["code"] == "005930" and got[0]["shares"] == 10 and got[0]["avg"] == 230000
+    assert c.post("/api/watchlist", json={"codes": ["005930"]}).status_code == 400  # 구 계약 거부
 
 
 def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
@@ -230,9 +249,11 @@ def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
     _seed_universe(str(tmp_path), [
         {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
     c = _client_local(tmp_path)
-    assert c.post("/api/watchlist", json={"codes": ["035720"]}).status_code == 200
+    assert c.post("/api/watchlist",
+                  json={"items": [{"code": "035720", "market": "KR"}]}).status_code == 200
     d = c.get("/api/widget").json()
     assert [i["code"] for i in d["items"]] == ["035720"]
