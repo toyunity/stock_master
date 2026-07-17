@@ -110,7 +110,7 @@ function planCapacity(items, budget) {
   // 반환 {drawn, more}: more는 '실제로 그린 개수' 기준(drawn+more===길이 — 무경고 잘림 방지).
   var used = 0, drawn = 0;
   for (var i = 0; i < items.length; i++) {
-    var cost = (hasHolding(items[i]) ? 42 : 26) + (drawn > 0 ? 5 : 0);   // 실선은 두 번째부터
+    var cost = (hasHolding(items[i]) ? 34 : 20) + (drawn > 0 ? 4 : 0);   // 컴팩트 폰트 기준·실선은 두 번째부터
     if (used + cost > budget) break;
     used += cost;
     drawn++;
@@ -145,14 +145,14 @@ function drawItem(w, it) {
   const label = (it.market === "US" && it.name && it.name !== it.code)
     ? (it.code + " " + it.name) : it.name;
   const nm = r1.addText(label);
-  nm.font = Font.boldSystemFont(14);
+  nm.font = Font.boldSystemFont(12);   // 4×1 컴팩트 — 폰트 축소
   nm.lineLimit = 1;
   nm.minimumScaleFactor = 0.6;   // 긴 이름/US 병기 완충
   r1.addSpacer();
   const px = r1.addText(fmtMoney(it.price, it.currency));
-  px.font = Font.boldSystemFont(14);
-  const ch = r1.addText("  " + fmtChg(it.change));
-  ch.font = Font.boldSystemFont(12);
+  px.font = Font.boldSystemFont(12);
+  const ch = r1.addText("  " + fmtChg(it.change));   // 오늘 등락%(라벨 없음)
+  ch.font = Font.boldSystemFont(10);
   ch.textColor = chgColor(it.change);
   if (!two) return;
   w.addSpacer(2);
@@ -160,16 +160,20 @@ function drawItem(w, it) {
   r2.centerAlignContent();
   // 투자금액현황 = 평가금액(현재가×보유수량) + 보유수량 맥락. 수익과 짝을 이룸.
   const ev = r2.addText(it.shares + "주 · " + fmtMoney(it.price * it.shares, it.currency));
-  ev.font = Font.mediumSystemFont(12);
+  ev.font = Font.mediumSystemFont(10);
   ev.textColor = Color.gray();
   ev.lineLimit = 1;
   ev.minimumScaleFactor = 0.6;
   r2.addSpacer();
+  // '수익' 라벨 + 괄호로 첫째 줄 등락%와 구분(퍼센트 2개 혼동 방지).
+  const lbl = r2.addText("수익 ");
+  lbl.font = Font.mediumSystemFont(10);
+  lbl.textColor = Color.gray();
   const pl = r2.addText(fmtPnl(it.pnl, it.currency));   // 수익 금액(± 부호·통화)
-  pl.font = Font.mediumSystemFont(12);
+  pl.font = Font.mediumSystemFont(10);
   pl.textColor = pnlColor(it.pnl);
-  const pp = r2.addText("  " + fmtChg(it.pnl_pct));      // 수익률
-  pp.font = Font.mediumSystemFont(12);
+  const pp = r2.addText(" (" + fmtChg(it.pnl_pct) + ")");   // 수익률 — 괄호로 금액에 귀속 명시
+  pp.font = Font.mediumSystemFont(10);
   pp.textColor = pnlColor(it.pnl);
 }
 

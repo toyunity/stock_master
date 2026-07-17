@@ -236,7 +236,9 @@ def create_app(settings=None) -> FastAPI:
         token = userstore.ensure_token(email)
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("host", request.url.netloc)
-        return HTMLResponse(render_widget_setup(token, "%s://%s" % (scheme, host)))
+        # no-store — 스크립트가 바뀌면 사파리가 옛 페이지를 서빙해 옛 스크립트를 복사하는 것 방지.
+        return HTMLResponse(render_widget_setup(token, "%s://%s" % (scheme, host)),
+                            headers={"Cache-Control": "no-store"})
 
     @app.post("/widget-setup/rotate")
     def widget_setup_rotate(request: Request):

@@ -49,7 +49,7 @@ def test_script_has_pnl_2line_parts():
     s = _script()
     for marker in ("pnl", "addSpacer", "addDivider", "budget",
                    "planCapacity", "fmtMoney", "pnlColor",
-                   '"USD"', "boldSystemFont(14)"):
+                   '"USD"', "boldSystemFont", '"수익 "'):   # '수익' 라벨=등락%와 수익률% 구분(퍼센트 혼동 방지)
         assert marker in s, marker + " 누락"
 
 

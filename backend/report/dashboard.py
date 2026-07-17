@@ -371,7 +371,10 @@ try{
       return null;
     }
     box.addEventListener('pointerdown', function(e){
-      var r=e.target.closest ? e.target.closest('.mrow') : null;
+      if(!e.target.closest) return;
+      // 입력/버튼/편집폼 위에선 제스처 시작 안 함 — 네이티브 탭·타이핑을 뺏지 않는다(입력 깨짐 방지).
+      if(e.target.closest('.mhe, button, input, textarea, select, a')) return;
+      var r=e.target.closest('.mrow');
       if(!r) return;
       row=r; code=r.getAttribute('data-code'); sx=e.clientX; sy=e.clientY; pid=e.pointerId;
       if(e.target.classList && e.target.classList.contains('mhandle')){   // 핸들에서만 드래그
@@ -379,6 +382,8 @@ try{
         try{ box.setPointerCapture(pid); }catch(_){}
         e.preventDefault();
       }else{
+        var he=r.querySelector('.mhe');   // 보유 편집 폼이 열린 행은 스와이프 금지(빨강이 폼 위로 번짐 방지)
+        if(he && he.style.display!=='none'){ row=null; return; }
         mode='pending';                    // 스와이프 후보 — 이동 방향으로 확정
       }
     });
@@ -427,6 +432,7 @@ try{
       }else reset();
     });
     box.addEventListener('pointercancel', reset);
+    box.addEventListener('lostpointercapture', reset);   // 캡처 유실 시 stuck(빨강·이동) 복구
   })();
 }catch(e){}   // 드래그/스와이프 향상 비활성 — ▲▼·×·[보유] 버튼 폴백은 계속 동작(progressive enhancement)
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
