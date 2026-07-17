@@ -255,6 +255,8 @@ pre#script{font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1
   padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 button.copy{min-height:44px;padding:10px 18px;border:0;border-radius:var(--r-sm);
   background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+button.copy.rotate{background:var(--surface-2);color:var(--text-2);
+  border:1px solid var(--border);margin-left:8px}
 .warn{background:var(--warn-bg);border:1px solid var(--border);border-radius:var(--r);
   padding:12px 14px;font-size:13px;margin:14px 0}
 </style></head><body>
@@ -274,7 +276,11 @@ KIS 시세 제3자 제공은 약관 위반입니다. 자세한 사용법: docs/w
 <p>아래 토큰을 복사해 두세요. 토큰은 아이폰 Keychain에 저장되고 파일엔 남지 않습니다.</p>
 <div class="tok" id="token">__TOKEN__</div>
 <p><button class="copy" onclick="copyToken()">토큰 복사</button>
-<span id="copied2" style="font-size:12px;color:var(--good)"></span></p></div>
+<button class="copy rotate" onclick="rotateToken()">토큰 재발급</button>
+<span id="copied2" style="font-size:12px;color:var(--good)"></span></p>
+<p id="rotmsg" style="font-size:12px;color:var(--text-2);margin:6px 0 0"></p>
+<p style="font-size:12px;color:var(--text-2);margin:6px 0 0">토큰이 유출됐다고 의심되면
+<b>재발급</b>하세요 — 이전 토큰은 즉시 무효화됩니다(설치된 위젯은 새 토큰 재입력 필요).</p></div>
 <div class="step"><h3>4. 홈 화면 길게 누르기 → ＋ → Scriptable → <b>중간 크기</b> → 추가</h3>
 <p>작게/크게 말고 중간(4×2)을 선택하세요.</p></div>
 <div class="step"><h3>5. 위젯 길게 누르기 → 위젯 편집 → Script: <b>StockMaster</b> 지정</h3>
@@ -288,6 +294,19 @@ function _copy(id, mark){
 }
 function copyScript(){ _copy('script', 'copied1'); }
 function copyToken(){ _copy('token', 'copied2'); }
+async function rotateToken(){
+  if(!confirm('재발급하면 이전 토큰이 즉시 무효화됩니다.\\n설치된 위젯은 스크립트를 실행해 새 토큰을 다시 입력해야 동작해요.\\n계속할까요?')) return;
+  var msg = document.getElementById('rotmsg');
+  msg.textContent = '재발급 중…';
+  try{
+    var r = await fetch('/widget-setup/rotate', {method:'POST', credentials:'same-origin'});
+    if(!r.ok) throw new Error('실패');
+    var d = await r.json();
+    document.getElementById('token').textContent = d.token;   // copyToken이 새 값을 집도록
+    document.getElementById('copied2').textContent = '';
+    msg.textContent = '✓ 새 토큰 발급 — 위 토큰을 복사해 위젯에 다시 입력하세요.';
+  }catch(e){ msg.textContent = '재발급에 실패했어요. 잠시 후 다시 시도해 주세요.'; }
+}
 </script>
 </div></div></body></html>"""
 

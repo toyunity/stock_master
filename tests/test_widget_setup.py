@@ -52,15 +52,58 @@ def test_script_syntax_ok(tmp_path):
     assert r.returncode == 0, r.stderr
 
 
-def test_route_serves_page_and_503_without_token(tmp_path):
+def test_setup_shows_account_token(tmp_path, monkeypatch):
+    """세션 없음(인증 비활성) → default 계정 토큰을 발급해 페이지 렌더(설계 2026-07-17).
+    토큰원이 settings.widget_token이 아니라 userstore.ensure_token(email)로 이동.
+    userstore·_req_email이 전역 settings를 읽으므로 전역을 tmp로 격리(test_auth 선례)."""
+    import html as _html
     from fastapi.testclient import TestClient
-    from backend.config import Settings
+    from backend.config import Settings, settings as gs
     from backend.api.app import create_app
-    s = Settings(cache_dir=str(tmp_path), flow_mode="demo", widget_token=TOKEN,
+    from backend.flow import userstore
+    monkeypatch.setattr(gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(gs, "default_account", "master@gmail.com")
+    s = Settings(cache_dir=str(tmp_path), flow_mode="demo", default_account="master@gmail.com",
                  kis_app_key=None, kis_app_secret=None, dart_api_key=None)
     c = TestClient(create_app(s))
     r = c.get("/widget-setup")
-    assert r.status_code == 200 and "Scriptable" in r.text
-    s2 = Settings(cache_dir=str(tmp_path), flow_mode="demo", widget_token=None,
+    assert r.status_code == 200 and "Scriptable" in r.text          # 세션없음→default 계정 토큰
+    # 페이지에 실린 토큰이 곧 그 계정의 저장 토큰(발급 후 파일 단일원)
+    tok = userstore.get_token("master@gmail.com")
+    assert tok and tok in _html.unescape(r.text)
+
+
+def test_route_503_when_no_account_resolvable(tmp_path, monkeypatch):
+    """계정을 해석할 수 없으면(로그인 없음·default_account 없음·allowlist 비어있음) 503.
+    .env의 SM_ALLOWED_EMAILS가 새지 않게 전역을 명시적으로 비운다(constraint: 미설정은 값 명시)."""
+    from fastapi.testclient import TestClient
+    from backend.config import Settings, settings as gs
+    from backend.api.app import create_app
+    monkeypatch.setattr(gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(gs, "default_account", None)
+    monkeypatch.setattr(gs, "allowed_emails", "")
+    s2 = Settings(cache_dir=str(tmp_path), flow_mode="demo", default_account=None,
+                  allowed_emails="", widget_token=None,
                   kis_app_key=None, kis_app_secret=None, dart_api_key=None)
     assert TestClient(create_app(s2)).get("/widget-setup").status_code == 503
+
+
+def test_rotate_route_issues_new_token_and_kills_old(tmp_path, monkeypatch):
+    """POST /widget-setup/rotate → 새 토큰 반환, 구 토큰 즉시 사망(email_for_token None).
+    계정 격리 불변식: 요청자(_req_email) 계정의 토큰만 회전한다."""
+    from fastapi.testclient import TestClient
+    from backend.config import Settings, settings as gs
+    from backend.api.app import create_app
+    from backend.flow import userstore
+    monkeypatch.setattr(gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(gs, "default_account", "master@gmail.com")
+    s = Settings(cache_dir=str(tmp_path), flow_mode="demo", default_account="master@gmail.com",
+                 kis_app_key=None, kis_app_secret=None, dart_api_key=None)
+    old = userstore.ensure_token("master@gmail.com")
+    c = TestClient(create_app(s))
+    r = c.post("/widget-setup/rotate")
+    assert r.status_code == 200
+    new = r.json()["token"]
+    assert new and new != old                          # 새 토큰
+    assert userstore.email_for_token(new) == "master@gmail.com"
+    assert userstore.email_for_token(old) is None      # 구 토큰 즉시 사망

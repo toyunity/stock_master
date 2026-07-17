@@ -176,16 +176,29 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/widget-setup", response_class=HTMLResponse)
     def widget_setup_page(request: Request):
-        """위젯 설치 페이지 — 게이트 뒤(공개 아님). 토큰·스크립트를 사파리에서 복사.
+        """위젯 설치 페이지 — 게이트 뒤(공개 아님). 계정별 토큰·스크립트를 사파리에서 복사.
+        토큰원 = userstore.ensure_token(요청자 계정)(유저파일 단일원, env 정적토큰 아님).
         base_url은 프록시 헤더 우선(Funnel이 X-Forwarded-Proto: https를 붙임)."""
-        if not settings.widget_token:
-            return HTMLResponse("SM_WIDGET_TOKEN이 설정되지 않았어요 — .env에 추가 후 재시작",
-                                status_code=503)
+        from backend.flow import userstore
         from backend.report.widget_setup import render_widget_setup
+        email = _req_email(request, settings)
+        if not email:
+            return HTMLResponse("계정을 확인할 수 없어요 — 로그인 후 다시 시도하세요",
+                                status_code=503)
+        token = userstore.ensure_token(email)
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("host", request.url.netloc)
-        return HTMLResponse(render_widget_setup(settings.widget_token,
-                                                "%s://%s" % (scheme, host)))
+        return HTMLResponse(render_widget_setup(token, "%s://%s" % (scheme, host)))
+
+    @app.post("/widget-setup/rotate")
+    def widget_setup_rotate(request: Request):
+        """위젯 토큰 재발급 — 요청자(_req_email) 계정의 토큰만 회전(계정 격리). 회전 즉시
+        구 토큰 사망(email_for_token→None) → 유출 시 대응 경로. 새 토큰을 JSON으로 반환."""
+        from backend.flow import userstore
+        email = _req_email(request, settings)
+        if not email:
+            return JSONResponse({"error": "계정을 확인할 수 없어요"}, status_code=503)
+        return JSONResponse({"token": userstore.rotate_token(email)})
 
     @app.get("/api/scanner")
     async def scanner_api():
