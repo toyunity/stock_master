@@ -215,10 +215,16 @@ def create_app(settings=None) -> FastAPI:
     async def widget_api(request: Request):
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
         KIS 단일 소스, 장외에도 직전 세션 종가+등락률(설계 2026-07-16).
-        # Task 7: Bearer→계정을 scope["state"]["widget_email"]로 교체(default 폴백 금지 — 교차계정 유출 차단)."""
+
+        계정 해석: 게이트가 Bearer→계정을 검증해 넣은 scope['state']['widget_email']이
+        유일 해석원(default_account 폴백 금지 — 교차계정 유출 차단). 인증 비활성(로컬)일 때만
+        게이트가 없어 _req_email(→default_account)로 폴백한다(그 경로엔 위젯 토큰이 없음)."""
         from backend.api.widget import widget_data
         from backend.flow import userstore
-        codes = userstore.get_kr_codes(_req_email(request, settings))
+        email = (request.scope.get("state") or {}).get("widget_email")
+        if not email:
+            email = _req_email(request, settings)
+        codes = userstore.get_kr_codes(email)
         data = await widget_data(codes)
         if data is None:
             return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},

@@ -143,23 +143,37 @@ class AuthGate:
         return None                                         # 완전 인증
 
     def _widget_blocked(self, scope):
-        """Bearer 토큰 검사 — 유효하면 None(통과). 미설정 503(fail-closed),
-        그 외 전부 동일한 401 본문(실패 사유로 정보 누출 금지)."""
-        import secrets as _secrets_mod
+        """Bearer 토큰 → 계정 email 매핑(계정별 토큰). 유효하면 검증한 email을
+        scope['state']['widget_email']에 실어 통과(None) — 핸들러가 토큰을 다시 조회하거나
+        default_account로 폴백하지 않는 단일 해석 지점(교차계정 유출 차단). 미매칭/무토큰은
+        동일 401(실패 사유로 정보 누출 금지). 위젯 자체 미설정(env·계정 토큰 전무)이면 503
+        (fail-closed) — 기능 꺼짐을 401과 구분. 바이트 파싱 유지(비ASCII도 500 아닌 401)."""
         from starlette.responses import JSONResponse
-        if not self.widget_token:
-            return JSONResponse({"error": "widget not configured"}, status_code=503)
+        from backend.flow.userstore import email_for_token
         auth = b""
         for k, v in scope.get("headers") or ():
             if k == b"authorization":
                 auth = v
                 break
-        # 바이트끼리 상수시간 비교 — str+compare_digest는 비ASCII 토큰에 TypeError를
-        # 던져 공개 표면에 미처리 500을 낸다(리뷰 2026-07-16). 빈/대소문자/공백/비ASCII
-        # 모두 그대로 401(fail-closed).
-        token = auth[7:] if auth[:7].lower() == b"bearer " else b""
-        if token and _secrets_mod.compare_digest(token, self.widget_token.encode("utf-8")):
+        # 바이트로 파싱한 뒤 안전 디코드 — 비ASCII 토큰(예: b"\xff\xfe")은 str화에서
+        # 예외를 던질 수 있으므로 try/except로 ""로 흡수(공개 표면에 미처리 500 금지).
+        raw = auth[7:] if auth[:7].lower() == b"bearer " else b""
+        try:
+            token = raw.decode("utf-8") if raw else ""
+        except Exception:
+            token = ""
+        email = email_for_token(token) if token else None
+        if email:
+            st = scope.get("state")
+            if not isinstance(st, dict):
+                st = {}
+                scope["state"] = st
+            st["widget_email"] = email
             return None
+        # 미설정 503은 self.widget_token(주입 env 토큰)에만 근거 — 파일(cache_dir/users)을
+        # 읽지 않아 결정적. env·계정 토큰이 전무하면 503(기능 꺼짐), 있으면 미매칭 401.
+        if not self.widget_token:
+            return JSONResponse({"error": "widget not configured"}, status_code=503)
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
 
