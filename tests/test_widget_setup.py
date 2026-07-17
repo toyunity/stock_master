@@ -47,12 +47,11 @@ def test_script_has_required_parts():
 
 
 def test_script_has_pnl_2line_parts():
-    """위젯 2줄 보유/수익 재디자인 마커(설계 §5) — 실선·예산·통화·수익색."""
+    """위젯 1줄 + 상단 합계 마커 — 합계(총평가·총손익)·종목별 현재가·등락%·수익(▲▼)."""
     s = _script()
-    # 레퍼런스(증권 MY홈) 스타일: 상단 합계(총평가·총손익) + 종목별 평가금액·손익(▲▼ 우측 스택).
     for marker in ("pnl", "addSpacer", "addDivider", "budget",
                    "planCapacity", "fmtVal", "fmtPnlArrow", "pnlColor",
-                   '"USD"', "boldSystemFont", "sumTotals", '"합계"'):
+                   '"USD"', "boldSystemFont", "sumTotals", "합계", "수익 "):
         assert marker in s, marker + " 누락"
 
 
@@ -81,15 +80,13 @@ if (!(big.drawn > 0)) bad("big drawn " + JSON.stringify(big));
 if (mid.drawn + mid.more !== N) bad("mid sum " + JSON.stringify(mid));
 if (!(mid.more > 0)) bad("mid more " + JSON.stringify(mid));
 if (!(big.drawn > mid.drawn)) bad("big should fit more than mid");
-// shares=0/null 은 '시세만'(1줄), 보유(shares>0)는 2줄 — 예산 코스트가 실제로 갈려야(설계 §49).
-// 단일 항목은 1줄/2줄 모두 예산에 들어가 구분 불가 → 예산 경계를 넘기는 10항목으로 팩킹 차이를 못박음.
+// 종목당 1줄 균일 — 보유/미보유 관계없이 같은 코스트로 팩킹(무경고 잘림 없음).
 function mk(n, t){ var a = []; for (var i = 0; i < n; i++) a.push(Object.assign({}, t)); return a; }
-const z = planCapacity(mk(10, {shares:0, avg:100}), 110).drawn;   // 0주 = 시세만(1줄)
-const nn = planCapacity(mk(10, {shares:null}), 110).drawn;         // 미보유(1줄)
-const h = planCapacity(mk(10, {shares:1, avg:100}), 110).drawn;    // 보유(2줄)
-if (z !== nn) bad("shares=0 must pack like shares=null (price-only 1-line) z=" + z + " nn=" + nn);
-if (!(z > h)) bad("1-line items must pack more than 2-line held z=" + z + " h=" + h);
-console.log("OK", big.drawn, mid.drawn, z, h);
+const held = planCapacity(mk(6, {shares:1, avg:100}), 120);
+const bare = planCapacity(mk(6, {shares:null}), 120);
+if (held.drawn !== bare.drawn) bad("1줄 균일 — 보유/미보유 팩킹 동일 held=" + held.drawn + " bare=" + bare.drawn);
+if (held.drawn + held.more !== 6) bad("held sum " + JSON.stringify(held));
+console.log("OK", big.drawn, mid.drawn, held.drawn);
 """
     p = tmp_path / "cap.mjs"
     p.write_text(harness, encoding="utf-8")

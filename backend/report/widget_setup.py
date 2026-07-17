@@ -99,22 +99,22 @@ function pnlColor(v) {
   if (v == null || v === 0) return Color.gray();
   return v > 0 ? UP : DOWN;
 }
-function fmtVal(v, currency) {
-  // 평가금액/합계 — 레퍼런스처럼 '원' 표기. US=$소수2자리. 부호 없음.
-  if (v == null) return "—";
-  const n = Number(v);
-  return currency === "USD" ? "$" + n.toFixed(2) : n.toLocaleString("ko-KR") + "원";
-}
 function fmtPnlArrow(v, currency) {
-  // 손익 — 레퍼런스식 ▲/▼ + 금액(원/$). (%는 호출부가 괄호로 덧붙임)
+  // 손익 — ▲/▼ + 금액(원/$). 상승 빨강 / 하락 파랑(색은 호출부 pnlColor).
   if (v == null) return "—";
   const n = Number(v);
   const ar = n > 0 ? "▲" : (n < 0 ? "▼" : "·");
   const abs = Math.abs(n);
   return ar + (currency === "USD" ? "$" + abs.toFixed(2) : abs.toLocaleString("ko-KR") + "원");
 }
+function fmtVal(v, currency) {
+  // 평가금액/합계 — '원' 표기. US=$소수2자리. 부호 없음.
+  if (v == null) return "—";
+  const n = Number(v);
+  return currency === "USD" ? "$" + n.toFixed(2) : n.toLocaleString("ko-KR") + "원";
+}
 function sumTotals(items) {
-  // 통화별 보유 합계 {currency:{val,cost}} — 레퍼런스 상단 총평가/총손익. 통화 혼합은 합산 안 함(FX 없음).
+  // 통화별 보유 합계 {currency:{val,cost}} — 상단 총평가/총손익. 통화 혼합은 합산 안 함(FX 없음).
   var t = {};
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
@@ -134,11 +134,11 @@ function hasHolding(it) {
   return it && it.shares > 0 && it.avg != null;
 }
 function planCapacity(items, budget) {
-  // 세로 예산 누적 — 고정 개수 금지(설계 §137). 2줄 42pt / 1줄 26pt / 실선 5pt(항목 사이).
+  // 세로 예산 누적 — 고정 개수 금지(설계 §137). 종목당 1줄 20pt + 실선 3pt(항목 사이).
   // 반환 {drawn, more}: more는 '실제로 그린 개수' 기준(drawn+more===길이 — 무경고 잘림 방지).
   var used = 0, drawn = 0;
   for (var i = 0; i < items.length; i++) {
-    var cost = (hasHolding(items[i]) ? 26 : 16) + (drawn > 0 ? 3 : 0);   // 컴팩트 폰트 기준·실선은 두 번째부터
+    var cost = 20 + (drawn > 0 ? 3 : 0);   // 1줄 균일·실선은 두 번째부터
     if (used + cost > budget) break;
     used += cost;
     drawn++;
@@ -166,34 +166,28 @@ function statusLabel(d) {
 }
 
 function drawItem(w, it) {
-  // 1줄: 이름 · 한주당 현재가 · 오늘 등락%.  보유 있으면 2줄: '평가 평가금액'(좌) · 손익(▲▼금액(%), 우).
+  // 종목당 1줄: 이름 · 한주당 현재가 · 오늘 등락% · (보유 시) 수익 ▲▼금액.
   const held = hasHolding(it);
-  const r1 = w.addStack();
-  r1.centerAlignContent();
+  const r = w.addStack();
+  r.centerAlignContent();
   const label = (it.market === "US" && it.name && it.name !== it.code)
     ? (it.code + " " + it.name) : it.name;
-  const nm = r1.addText(label);
+  const nm = r.addText(label);
   nm.font = Font.boldSystemFont(13);
   nm.lineLimit = 1;
   nm.minimumScaleFactor = 0.6;   // 긴 이름/US 병기 완충
-  r1.addSpacer();
-  const px = r1.addText(fmtMoney(it.price, it.currency));   // 한주당 현재가
+  r.addSpacer();
+  const px = r.addText(fmtMoney(it.price, it.currency));   // 한주당 현재가
   px.font = Font.boldSystemFont(13);
-  const ch = r1.addText("  " + fmtChg(it.change));          // 오늘 등락%
+  const ch = r.addText(" " + fmtChg(it.change));           // 오늘 등락%
   ch.font = Font.boldSystemFont(11);
   ch.textColor = chgColor(it.change);
-  if (!held) return;   // 미보유는 1줄(현재가·등락%)
-  w.addSpacer(1);
-  const r2 = w.addStack();
-  r2.centerAlignContent();
-  const ev = r2.addText("평가 " + fmtVal(it.price * it.shares, it.currency));   // 평가금액(좌)
-  ev.font = Font.mediumSystemFont(10);
-  ev.textColor = Color.gray();
-  ev.lineLimit = 1;
-  ev.minimumScaleFactor = 0.6;
-  r2.addSpacer();
-  const pl = r2.addText(fmtPnlArrow(it.pnl, it.currency) + " (" + fmtChg(it.pnl_pct) + ")");   // 손익(우)
-  pl.font = Font.mediumSystemFont(11);
+  if (!held) return;
+  const lbl = r.addText("  수익 ");   // 등락%와 구분하는 라벨
+  lbl.font = Font.mediumSystemFont(10);
+  lbl.textColor = Color.gray();
+  const pl = r.addText(fmtPnlArrow(it.pnl, it.currency));   // 수익 ▲▼금액
+  pl.font = Font.boldSystemFont(11);
   pl.textColor = pnlColor(it.pnl);
   pl.lineLimit = 1;
   pl.minimumScaleFactor = 0.7;
@@ -228,7 +222,7 @@ function buildWidget(d, offline) {
     t.font = Font.systemFont(12);
     return w;
   }
-  // 상단 합계(레퍼런스 총평가/총손익) — 통화별 보유 합. 통화 혼합은 각 줄로(FX 없음).
+  // 상단 합계(총평가·총손익) — 통화별. 1줄 종목이라 합계와 4종목이 함께 들어감.
   const tot = sumTotals(d.items);
   const totKeys = Object.keys(tot);
   let hadTotal = false;
@@ -237,11 +231,10 @@ function buildWidget(d, offline) {
     const tpnl = tv0 - tc0, tpct = tc0 > 0 ? (tv0 / tc0 - 1) * 100 : 0;
     const tr = w.addStack();
     tr.centerAlignContent();
-    const tl = tr.addText("합계");
-    tl.font = Font.boldSystemFont(11);
-    tl.textColor = Color.gray();
-    const tvv = tr.addText("  " + fmtVal(tv0, tot[c].currency));
-    tvv.font = Font.boldSystemFont(13);
+    const tl = tr.addText("합계 " + fmtVal(tv0, tot[c].currency));
+    tl.font = Font.boldSystemFont(12);
+    tl.lineLimit = 1;
+    tl.minimumScaleFactor = 0.6;
     tr.addSpacer();
     const tpp = tr.addText(fmtPnlArrow(tpnl, tot[c].currency) + " (" + fmtChg(tpct) + ")");
     tpp.font = Font.mediumSystemFont(11);
@@ -251,8 +244,8 @@ function buildWidget(d, offline) {
     hadTotal = true;
   }
   if (hadTotal) addDivider(w);
-  // 세로 예산 동적 컷(고정 개수 금지) — 그린 개수만큼만, 사이엔 실선. 합계가 공간을 쓰므로 예산 하향.
-  const budget = fam === "large" ? 300 : (hadTotal ? 96 : 120);
+  // 세로 예산 동적 컷(고정 개수 금지) — 종목당 1줄, 사이엔 실선. 합계가 공간을 쓰므로 예산 소폭 하향.
+  const budget = fam === "large" ? 300 : (hadTotal ? 100 : 120);
   const plan = planCapacity(d.items, budget);
   for (let i = 0; i < plan.drawn; i++) {
     if (i > 0) addDivider(w);
