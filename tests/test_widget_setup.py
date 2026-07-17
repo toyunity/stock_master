@@ -49,9 +49,10 @@ def test_script_has_required_parts():
 def test_script_has_pnl_2line_parts():
     """위젯 2줄 보유/수익 재디자인 마커(설계 §5) — 실선·예산·통화·수익색."""
     s = _script()
+    # 레퍼런스(증권 MY홈) 스타일: 상단 합계(총평가·총손익) + 종목별 평가금액·손익(▲▼ 우측 스택).
     for marker in ("pnl", "addSpacer", "addDivider", "budget",
-                   "planCapacity", "fmtMoney", "pnlColor",
-                   '"USD"', "boldSystemFont", '"수익 "'):   # '수익' 라벨=등락%와 수익률% 구분(퍼센트 혼동 방지)
+                   "planCapacity", "fmtVal", "fmtPnlArrow", "pnlColor",
+                   '"USD"', "boldSystemFont", "sumTotals", '"합계"'):
         assert marker in s, marker + " 누락"
 
 
