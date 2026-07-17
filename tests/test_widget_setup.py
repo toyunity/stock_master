@@ -38,9 +38,11 @@ def test_page_shows_token_but_script_never_contains_it():
 
 def test_script_has_required_parts():
     s = _script()
+    # ↻ 위젯 버튼(mode=refresh URL)은 사용자 요청으로 제거(iOS 인플레이스 갱신 불가) — 재실행 메뉴의
+    # showLive는 유지. 갱신시각은 헤더 statusLabel로 표시.
     for marker in ("Keychain", "timeoutInterval", "FileManager.local",
-                   "refreshAfterDate", "mode=refresh", "widgetFamily",
-                   "isAuth", "토큰 다시 입력"):
+                   "refreshAfterDate", "showLive", "widgetFamily",
+                   "isAuth", "토큰 다시 입력", "statusLabel"):
         assert marker in s, marker + " 누락"
 
 
@@ -66,15 +68,16 @@ def test_capacity_no_silent_truncation(tmp_path):
     세로예산 컷 + '+N종목' 정확(drawn+more===길이, more>0 — 무경고 잘림 없음).
     고정 max=10이면 하위가 무경고로 잘렸다 → 실제 그린 개수 기준 산정을 JS 단위로 못박음."""
     harness = _capacity_js() + """
+const N = 16;
 const items = [];
-for (let i = 0; i < 10; i++) items.push({ shares: 1, avg: 100 });
-const big = planCapacity(items, 290);   // 큰 위젯
-const mid = planCapacity(items, 110);   // 중간 위젯
+for (let i = 0; i < N; i++) items.push({ shares: 1, avg: 100 });   // 전부 보유(2줄)
+const big = planCapacity(items, 320);   // 큰 위젯(현행 예산)
+const mid = planCapacity(items, 120);   // 중간 위젯(현행 예산)
 function bad(m){ console.error(m); process.exit(1); }
-if (big.drawn + big.more !== 10) bad("big sum " + JSON.stringify(big));
-if (!(big.more > 0)) bad("big more " + JSON.stringify(big));
+if (big.drawn + big.more !== N) bad("big sum " + JSON.stringify(big));   // 무경고 잘림 없음
+if (!(big.more > 0)) bad("big more " + JSON.stringify(big));             // 16종목은 넘침
 if (!(big.drawn > 0)) bad("big drawn " + JSON.stringify(big));
-if (mid.drawn + mid.more !== 10) bad("mid sum " + JSON.stringify(mid));
+if (mid.drawn + mid.more !== N) bad("mid sum " + JSON.stringify(mid));
 if (!(mid.more > 0)) bad("mid more " + JSON.stringify(mid));
 if (!(big.drawn > mid.drawn)) bad("big should fit more than mid");
 // shares=0/null 은 '시세만'(1줄), 보유(shares>0)는 2줄 — 예산 코스트가 실제로 갈려야(설계 §49).

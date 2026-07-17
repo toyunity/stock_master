@@ -110,7 +110,7 @@ function planCapacity(items, budget) {
   // 반환 {drawn, more}: more는 '실제로 그린 개수' 기준(drawn+more===길이 — 무경고 잘림 방지).
   var used = 0, drawn = 0;
   for (var i = 0; i < items.length; i++) {
-    var cost = (hasHolding(items[i]) ? 34 : 20) + (drawn > 0 ? 4 : 0);   // 컴팩트 폰트 기준·실선은 두 번째부터
+    var cost = (hasHolding(items[i]) ? 26 : 16) + (drawn > 0 ? 3 : 0);   // 컴팩트 폰트 기준·실선은 두 번째부터
     if (used + cost > budget) break;
     used += cost;
     drawn++;
@@ -120,12 +120,12 @@ function planCapacity(items, budget) {
 // </capacity>
 function addDivider(w) {
   // 구분 실선 — 높이 1pt 반투명 스택 + 내부 스페이서로 폭 채움(설계 §124).
-  w.addSpacer(3);
+  w.addSpacer(2);
   const line = w.addStack();
   line.backgroundColor = DIVIDER;
   line.size = new Size(0, 1);
   line.addSpacer();
-  w.addSpacer(3);
+  w.addSpacer(2);
 }
 function statusLabel(d) {
   // 갱신 시각(fetched_at)을 항상 앞에 — 카카오페이식 '언제 기준인지'. 오프라인이면 캐시 시각이라 정확.
@@ -155,7 +155,7 @@ function drawItem(w, it) {
   ch.font = Font.boldSystemFont(10);
   ch.textColor = chgColor(it.change);
   if (!two) return;
-  w.addSpacer(2);
+  w.addSpacer(1);
   const r2 = w.addStack();
   r2.centerAlignContent();
   // 투자금액현황 = 평가금액(현재가×보유수량) + 보유수량 맥락. 수익과 짝을 이룸.
@@ -183,21 +183,31 @@ function buildWidget(d, offline) {
   const fam = config.widgetFamily || "medium";   // 앱 내 미리보기(null) = medium 취급
   if (d && d.refresh_after_sec)
     w.refreshAfterDate = new Date(Date.now() + d.refresh_after_sec * 1000);
+  w.setPadding(9, 12, 9, 12);   // 기본 패딩 축소 — 4종목 수용 공간 확보
+  // 헤더: 제목 옆에 갱신시각·날짜(하단 대신 상단으로 이동) + 브랜드.
   const head = w.addStack();
+  head.centerAlignContent();
   const title = head.addText("관심종목");
-  title.font = Font.boldSystemFont(13);
+  title.font = Font.boldSystemFont(12);
+  if (d) {
+    const stat = head.addText("  " + (offline ? "오프라인·" : "") + statusLabel(d));
+    stat.font = Font.systemFont(9);
+    stat.textColor = offline ? Color.orange() : Color.gray();
+    stat.lineLimit = 1;
+    stat.minimumScaleFactor = 0.7;
+  }
   head.addSpacer();
   const brand = head.addText("STOCK MASTER");
-  brand.font = Font.mediumSystemFont(9);
+  brand.font = Font.mediumSystemFont(8);
   brand.textColor = Color.gray();
-  w.addSpacer(4);
+  w.addSpacer(3);
   if (!d) {
     const t = w.addText("서버에 연결할 수 없어요.\n스크립트를 실행해 토큰을 확인하세요.");
     t.font = Font.systemFont(12);
     return w;
   }
-  // 세로 예산 동적 컷(고정 개수 금지) — 그린 개수만큼만, 사이엔 실선.
-  const budget = fam === "large" ? 290 : 110;
+  // 세로 예산 동적 컷(고정 개수 금지) — 그린 개수만큼만, 사이엔 실선. 하단/↻ 제거로 4종목 수용.
+  const budget = fam === "large" ? 320 : 120;
   const plan = planCapacity(d.items, budget);
   for (let i = 0; i < plan.drawn; i++) {
     if (i > 0) addDivider(w);
@@ -205,21 +215,9 @@ function buildWidget(d, offline) {
   }
   if (plan.more > 0) {
     const more = w.addText("+" + plan.more + "종목");   // 실제로 그린 개수 기준(무경고 잘림 없음)
-    more.font = Font.systemFont(10);
+    more.font = Font.systemFont(9);
     more.textColor = Color.gray();
   }
-  w.addSpacer();
-  const foot = w.addStack();
-  foot.centerAlignContent();
-  const st = foot.addText((offline ? "오프라인 · " : "") + statusLabel(d));
-  st.font = Font.systemFont(10);
-  st.textColor = offline ? Color.orange() : Color.gray();
-  foot.addSpacer();
-  const rf = foot.addStack();   // ↻ 갱신: 자체 url — 몸통 탭(대시보드)과 영역 구분
-  rf.url = "scriptable:///run/" + encodeURIComponent(Script.name()) + "?mode=refresh";
-  const rt = rf.addText("↻ 갱신");
-  rt.font = Font.boldSystemFont(10);
-  rt.textColor = Color.gray();
   return w;
 }
 
