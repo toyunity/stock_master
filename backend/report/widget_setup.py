@@ -18,8 +18,9 @@ _SCRIPT = r"""// Stock Master 아이폰 위젯 — 관심종목 시세 (중간 �
 const BASE = "__BASE_URL__";
 const KEY = "sm_widget_token";
 const CACHE = "sm_widget_cache.json";
-const UP = Color.dynamic(new Color("#d32f2f"), new Color("#ff6b6b"));
-const DOWN = Color.dynamic(new Color("#1565c0"), new Color("#6ba3ff"));
+const UP = Color.dynamic(new Color("#d32f2f"), new Color("#ff6b6b"));   // 상승 빨강
+const DOWN = Color.dynamic(new Color("#1565c0"), new Color("#6ba3ff")); // 하락 파랑
+const DIVIDER = Color.dynamic(new Color("#000000", 0.12), new Color("#ffffff", 0.16)); // 반투명 실선
 
 function cachePath() {
   // FileManager.local 고정 — iCloud는 위젯 컨텍스트에서 '미다운로드'로 못 읽고,
@@ -68,7 +69,22 @@ async function fetchData(token) {
 }
 
 function pad(n) { return (n < 10 ? "0" : "") + n; }
-function fmtPrice(v) { return v == null ? "—" : Number(v).toLocaleString("ko-KR"); }
+function fmtMoney(v, currency) {
+  // 통화별 현재가/금액 — US=$소수2자리, KR=천단위(원 생략, 공간 절약). 부호 없음.
+  if (v == null) return "—";
+  const n = Number(v);
+  if (currency === "USD") return "$" + n.toFixed(2);
+  return n.toLocaleString("ko-KR");
+}
+function fmtPnl(v, currency) {
+  // 수익 금액 — ± 부호 항상. US=$소수2자리, KR=천단위.
+  if (v == null) return "—";
+  const n = Number(v);
+  const s = n > 0 ? "+" : (n < 0 ? "−" : "");
+  const abs = Math.abs(n);
+  const body = currency === "USD" ? "$" + abs.toFixed(2) : abs.toLocaleString("ko-KR");
+  return s + body;
+}
 function fmtChg(c) {
   if (c == null) return "—";
   const s = c > 0 ? "+" : (c < 0 ? "−" : "");
@@ -78,6 +94,39 @@ function chgColor(c) {
   if (c == null || c === 0) return Color.gray();
   return c > 0 ? UP : DOWN;
 }
+function pnlColor(v) {
+  // 수익도 등락과 동일 색규칙: 이익 빨강 / 손실 파랑 / 0·미보유 회색.
+  if (v == null || v === 0) return Color.gray();
+  return v > 0 ? UP : DOWN;
+}
+// <capacity>
+function hasHolding(it) {
+  // 보유 있음 = 수량>0 && 평균가 존재(0주·미입력은 시세만 — 설계 §49). 가격 실패(pnl==null)여도 2줄 유지.
+  // 예산(planCapacity)과 렌더(drawItem)가 이 단일 술어를 공유 — 코스트/렌더 desync로 무경고 잘림 재발 방지.
+  return it && it.shares > 0 && it.avg != null;
+}
+function planCapacity(items, budget) {
+  // 세로 예산 누적 — 고정 개수 금지(설계 §137). 2줄 42pt / 1줄 26pt / 실선 5pt(항목 사이).
+  // 반환 {drawn, more}: more는 '실제로 그린 개수' 기준(drawn+more===길이 — 무경고 잘림 방지).
+  var used = 0, drawn = 0;
+  for (var i = 0; i < items.length; i++) {
+    var cost = (hasHolding(items[i]) ? 42 : 26) + (drawn > 0 ? 5 : 0);   // 실선은 두 번째부터
+    if (used + cost > budget) break;
+    used += cost;
+    drawn++;
+  }
+  return { drawn: drawn, more: items.length - drawn };
+}
+// </capacity>
+function addDivider(w) {
+  // 구분 실선 — 높이 1pt 반투명 스택 + 내부 스페이서로 폭 채움(설계 §124).
+  w.addSpacer(3);
+  const line = w.addStack();
+  line.backgroundColor = DIVIDER;
+  line.size = new Size(0, 1);
+  line.addSpacer();
+  w.addSpacer(3);
+}
 function statusLabel(d) {
   if (d.open) {
     const t = new Date(d.fetched_at);
@@ -86,6 +135,39 @@ function statusLabel(d) {
   const td = new Date(d.trade_date + "T00:00:00+09:00");
   const w = "일월화수목금토".charAt(td.getDay());
   return (td.getMonth() + 1) + "/" + td.getDate() + "(" + w + ") 마감";
+}
+
+function drawItem(w, it) {
+  // 1줄: 이름(US는 '티커 한글명' 병기) · 현재가 · 등락%.  보유 있으면 2줄: '수량주' · 수익 · 수익률.
+  const two = hasHolding(it);
+  const r1 = w.addStack();
+  r1.centerAlignContent();
+  const label = (it.market === "US" && it.name && it.name !== it.code)
+    ? (it.code + " " + it.name) : it.name;
+  const nm = r1.addText(label);
+  nm.font = Font.boldSystemFont(14);
+  nm.lineLimit = 1;
+  nm.minimumScaleFactor = 0.6;   // 긴 이름/US 병기 완충
+  r1.addSpacer();
+  const px = r1.addText(fmtMoney(it.price, it.currency));
+  px.font = Font.boldSystemFont(14);
+  const ch = r1.addText("  " + fmtChg(it.change));
+  ch.font = Font.boldSystemFont(12);
+  ch.textColor = chgColor(it.change);
+  if (!two) return;
+  w.addSpacer(2);
+  const r2 = w.addStack();
+  r2.centerAlignContent();
+  const sh = r2.addText(it.shares + "주");
+  sh.font = Font.mediumSystemFont(12);
+  sh.textColor = Color.gray();
+  r2.addSpacer();
+  const pl = r2.addText(fmtPnl(it.pnl, it.currency));   // 수익 금액(± 부호·통화)
+  pl.font = Font.mediumSystemFont(12);
+  pl.textColor = pnlColor(it.pnl);
+  const pp = r2.addText("  " + fmtChg(it.pnl_pct));      // 수익률
+  pp.font = Font.mediumSystemFont(12);
+  pp.textColor = pnlColor(it.pnl);
 }
 
 function buildWidget(d, offline) {
@@ -107,26 +189,15 @@ function buildWidget(d, offline) {
     t.font = Font.systemFont(12);
     return w;
   }
-  const max = fam === "large" ? 10 : 5;
-  const items = d.items.slice(0, max);
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    const row = w.addStack();
-    row.centerAlignContent();
-    const nm = row.addText(it.name);
-    nm.font = Font.mediumSystemFont(13);
-    nm.lineLimit = 1;
-    nm.minimumScaleFactor = 0.7;   // 'LG에너지솔루션' 등 긴 이름 완충
-    row.addSpacer();
-    const px = row.addText(fmtPrice(it.price));
-    px.font = Font.mediumSystemFont(13);
-    const ch = row.addText("  " + fmtChg(it.change));
-    ch.font = Font.boldSystemFont(12);
-    ch.textColor = chgColor(it.change);
-    w.addSpacer(2);
+  // 세로 예산 동적 컷(고정 개수 금지) — 그린 개수만큼만, 사이엔 실선.
+  const budget = fam === "large" ? 290 : 110;
+  const plan = planCapacity(d.items, budget);
+  for (let i = 0; i < plan.drawn; i++) {
+    if (i > 0) addDivider(w);
+    drawItem(w, d.items[i]);
   }
-  if (d.items.length > max) {
-    const more = w.addText("+" + (d.items.length - max) + "종목");
+  if (plan.more > 0) {
+    const more = w.addText("+" + plan.more + "종목");   // 실제로 그린 개수 기준(무경고 잘림 없음)
     more.font = Font.systemFont(10);
     more.textColor = Color.gray();
   }
@@ -175,7 +246,7 @@ async function showLive(token) {
     const r = new UITableRow();
     r.height = 48;
     r.addText(it.name, it.code);
-    r.addText(fmtPrice(it.price) + "   " + fmtChg(it.change)).rightAligned();
+    r.addText(fmtMoney(it.price, it.currency) + "   " + fmtChg(it.change)).rightAligned();
     t.addRow(r);
   }
   await t.present(false);
@@ -255,6 +326,8 @@ pre#script{font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1
   padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 button.copy{min-height:44px;padding:10px 18px;border:0;border-radius:var(--r-sm);
   background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+button.copy.rotate{background:var(--surface-2);color:var(--text-2);
+  border:1px solid var(--border);margin-left:8px}
 .warn{background:var(--warn-bg);border:1px solid var(--border);border-radius:var(--r);
   padding:12px 14px;font-size:13px;margin:14px 0}
 </style></head><body>
@@ -274,7 +347,11 @@ KIS 시세 제3자 제공은 약관 위반입니다. 자세한 사용법: docs/w
 <p>아래 토큰을 복사해 두세요. 토큰은 아이폰 Keychain에 저장되고 파일엔 남지 않습니다.</p>
 <div class="tok" id="token">__TOKEN__</div>
 <p><button class="copy" onclick="copyToken()">토큰 복사</button>
-<span id="copied2" style="font-size:12px;color:var(--good)"></span></p></div>
+<button class="copy rotate" onclick="rotateToken()">토큰 재발급</button>
+<span id="copied2" style="font-size:12px;color:var(--good)"></span></p>
+<p id="rotmsg" style="font-size:12px;color:var(--text-2);margin:6px 0 0"></p>
+<p style="font-size:12px;color:var(--text-2);margin:6px 0 0">토큰이 유출됐다고 의심되면
+<b>재발급</b>하세요 — 이전 토큰은 즉시 무효화됩니다(설치된 위젯은 새 토큰 재입력 필요).</p></div>
 <div class="step"><h3>4. 홈 화면 길게 누르기 → ＋ → Scriptable → <b>중간 크기</b> → 추가</h3>
 <p>작게/크게 말고 중간(4×2)을 선택하세요.</p></div>
 <div class="step"><h3>5. 위젯 길게 누르기 → 위젯 편집 → Script: <b>StockMaster</b> 지정</h3>
@@ -288,6 +365,19 @@ function _copy(id, mark){
 }
 function copyScript(){ _copy('script', 'copied1'); }
 function copyToken(){ _copy('token', 'copied2'); }
+async function rotateToken(){
+  if(!confirm('재발급하면 이전 토큰이 즉시 무효화됩니다.\\n설치된 위젯은 스크립트를 실행해 새 토큰을 다시 입력해야 동작해요.\\n계속할까요?')) return;
+  var msg = document.getElementById('rotmsg');
+  msg.textContent = '재발급 중…';
+  try{
+    var r = await fetch('/widget-setup/rotate', {method:'POST', credentials:'same-origin'});
+    if(!r.ok) throw new Error('실패');
+    var d = await r.json();
+    document.getElementById('token').textContent = d.token;   // copyToken이 새 값을 집도록
+    document.getElementById('copied2').textContent = '';
+    msg.textContent = '✓ 새 토큰 발급 — 위 토큰을 복사해 위젯에 다시 입력하세요.';
+  }catch(e){ msg.textContent = '재발급에 실패했어요. 잠시 후 다시 시도해 주세요.'; }
+}
 </script>
 </div></div></body></html>"""
 

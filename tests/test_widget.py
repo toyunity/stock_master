@@ -31,6 +31,24 @@ def test_valid_or_absent_widget_token_boots(tmp_path):
     create_app(_settings(tmp_path, widget_token=None))    # 미설정 → OK(위젯만 꺼짐)
 
 
+def test_create_app_runs_migration_backward_compat(tmp_path, monkeypatch):
+    """create_app이 migrate_globals를 실행해 env 토큰이 마스터 계정으로 매핑됨 — 마스터 아이폰
+    위젯 하위호환(미배선 시 기존 env 토큰이 401로 파손, 2026-07-17 실사고)."""
+    import json
+    from backend.config import settings as _gs
+    from backend.api.app import create_app
+    from backend.flow import userstore
+    monkeypatch.setattr(_gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(_gs, "default_account", "master@gmail.com")
+    monkeypatch.setattr(_gs, "widget_token", TOKEN)   # migrate_globals는 모듈 settings 토큰을 읽음
+    userstore._tok_cache["mtime"] = None              # 이전 테스트의 토큰맵 캐시 격리
+    with open(tmp_path / "watchlist.json", "w", encoding="utf-8") as f:
+        json.dump({"codes": ["005930"]}, f)
+    create_app(_settings(tmp_path, default_account="master@gmail.com"))  # 여기서 마이그레이션
+    assert userstore.email_for_token(TOKEN) == "master@gmail.com"        # env 토큰 → 마스터
+    assert [i["code"] for i in userstore.get_watchlist("master@gmail.com")] == ["005930"]
+
+
 # ── 거래일/장 상태 판정 ────────────────────────────────────────────
 import asyncio
 import datetime as dt
@@ -127,7 +145,9 @@ import json as _json
 import os
 
 CONTRACT_KEYS = {"open", "trade_date", "fetched_at", "refresh_after_sec", "items"}
-ITEM_KEYS = {"code", "name", "price", "change"}
+# 계정 items 계약(§4): KR 항목은 아래 정확히, US는 여기에 us_open 추가.
+ITEM_KEYS = {"code", "name", "market", "currency", "price", "change",
+             "shares", "avg", "pnl", "pnl_pct"}
 
 
 def _seed_universe(cache_dir, rows):
@@ -144,7 +164,8 @@ def test_widget_data_contract_whitelist(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "kis_app_key", None)    # KIS 없음 → universe 폴백 경로
     _seed_universe(str(tmp_path), [
         {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.25}])
-    d = asyncio.run(widget_data(["005930", "000660"]))
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "000660", "market": "KR"}]))
     assert set(d.keys()) == CONTRACT_KEYS
     assert all(set(i.keys()) == ITEM_KEYS for i in d["items"])
     assert d["items"][0]["price"] == 71200.0
@@ -157,7 +178,7 @@ def test_widget_data_none_when_no_source(tmp_path, monkeypatch):
     from backend.api.widget import widget_data
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(settings, "kis_app_key", None)
-    assert asyncio.run(widget_data(["005930"])) is None
+    assert asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"}])) is None
 
 
 def test_widget_api_route_503_without_source(tmp_path, monkeypatch):
@@ -200,8 +221,120 @@ def test_widget_data_resolves_new_stock_name(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "kis_app_key", None)
     _seed_universe(str(tmp_path), [
         {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
-    d = asyncio.run(widget_data(["035720"]))
+    d = asyncio.run(widget_data("m@x.com", [{"code": "035720", "market": "KR"}]))
     assert d["items"][0]["name"] == "카카오"
+
+
+def test_widget_includes_pnl_and_whitelist(tmp_path, monkeypatch):
+    """계정 보유 종목의 pnl이 응답에 포함되고 화이트리스트(감시선 등 없음) 유지."""
+    import asyncio
+    from backend.config import settings
+    from backend.flow import userstore
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "default_account", "m@x.com")
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 253500.0, "change": -9.3}])
+    userstore.set_watchlist("m@x.com", [{"code": "005930", "market": "KR", "shares": 10, "avg": 230000}])
+    d = asyncio.run(widget_data("m@x.com", userstore.get_watchlist("m@x.com")))
+    it = d["items"][0]
+    assert it["pnl"] == 235000 and it["market"] == "KR" and it["currency"] == "KRW"
+    assert set(it.keys()) <= {"code", "name", "market", "currency", "price", "change",
+                              "shares", "avg", "pnl", "pnl_pct", "us_open"}
+
+
+def test_widget_us_row_shape(tmp_path, monkeypatch):
+    """US 행 shape(§4) — currency USD·us_open·price null(KIS client 없음 → US 시세 조회 불가).
+    KR가 universe 폴백으로 소스를 제공해 전멸(503) 단락을 피하고 US 분기를 실제로 실행한다.
+    (client 있을 때의 US 실시세는 test_widget_us_price_wired에서 검증.)"""
+    import asyncio
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.25}])
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US", "shares": 5, "avg": 170.0}]))
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert us["currency"] == "USD" and us["price"] is None      # 시세는 Task 13까지 null
+    assert us["pnl"] is None and us["pnl_pct"] is None          # price 없으면 수익 없음
+    assert isinstance(us.get("us_open"), bool)                  # US 신선도 플래그(ET)
+    assert us["name"] == "엔비디아"                             # semi.US_NAMES 우선
+    assert set(us.keys()) == {"code", "name", "market", "currency", "price", "change",
+                              "shares", "avg", "pnl", "pnl_pct", "us_open"}
+
+
+# ── Task 13: US 시세 배선(usquote.price_us) + 전멸 판정 KR+US 합산 ──
+class _FakeKis:
+    """widget_data용 최소 KIS client 더블 — KR price()만(US는 usquote.price_us 모킹).
+    비ASCII/실호출 방지: 넘긴 dict에 없는 코드는 None(부분 실패)."""
+
+    def __init__(self, kr=None):
+        self._kr = kr or {}
+
+    async def price(self, code):
+        return self._kr.get(code)
+
+
+def _patch_us(monkeypatch, client, price_us):
+    """widget_data의 client 빌더와 usquote.price_us를 모킹(실 KIS 호출 0)."""
+    from backend.flow import candles, usquote
+    monkeypatch.setattr(candles, "_get_client", lambda: client)
+    monkeypatch.setattr(usquote, "price_us", price_us)
+
+
+def test_widget_us_price_wired(tmp_path, monkeypatch):
+    """US 항목이 usquote.price_us로 실제 시세를 받는다(client 있을 때) — USD·수익 계산."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    _patch_us(monkeypatch, _FakeKis({"005930": {"price": 71200, "rate": 1.25}}), _pu)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US",
+                                             "shares": 5, "avg": 170.0}]))
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert us["price"] == 189.70 and us["currency"] == "USD" and us["change"] == -0.85
+    assert abs(us["pnl"] - (189.70 - 170.0) * 5) < 1e-6      # US 소수 수익
+    assert isinstance(us["us_open"], bool)
+
+
+def test_widget_us_only_account_not_503(tmp_path, monkeypatch):
+    """US 전용 계정 — KR 소스가 없어도 US 시세가 있으면 None(503) 아님(회귀 방지).
+    전멸 판정이 KR 코드만 보면 US-only 계정이 항상 503으로 죽는다(advisor #1)."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    _patch_us(monkeypatch, _FakeKis(), _pu)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "NVDA", "market": "US"}]))
+    assert d is not None and d["items"][0]["price"] == 189.70
+
+
+def test_widget_kr_fail_us_succeed(tmp_path, monkeypatch):
+    """KR 전멸 + US 성공 → 데이터 반환(전멸 판정은 KR+US 합산). KR은 부분실패 null 유지."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 100.0, "change": 1.0, "currency": "USD", "exch": "NYS"}
+    _patch_us(monkeypatch, _FakeKis(), _pu)     # KR price() → None(전멸)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US"}]))
+    assert d is not None
+    kr = [i for i in d["items"] if i["market"] == "KR"][0]
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert kr["price"] is None and us["price"] == 100.0
 
 
 # ── /api/watchlist 편집 API + 소비자 공유 ─────────────────────────
@@ -214,15 +347,34 @@ def _client_local(tmp_path):
 def test_watchlist_api_roundtrip_and_validation(tmp_path, monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
     c = _client_local(tmp_path)
     r = c.get("/api/watchlist")
-    assert r.status_code == 200 and len(r.json()["items"]) >= 5      # 시드
-    r = c.post("/api/watchlist", json={"codes": ["035720", "005930"]})
+    assert r.status_code == 200 and len(r.json()["items"]) >= 5      # 마스터 시드
+    r = c.post("/api/watchlist", json={"items": [{"code": "035720", "market": "KR"},
+                                                 {"code": "005930", "market": "KR"}]})
     assert r.status_code == 200
     assert [i["code"] for i in c.get("/api/watchlist").json()["items"]] == ["035720", "005930"]
-    assert c.post("/api/watchlist", json={"codes": []}).status_code == 400
-    assert c.post("/api/watchlist", json={"codes": ["12"]}).status_code == 400
-    assert c.post("/api/watchlist", json={}).status_code == 400
+    assert c.post("/api/watchlist", json={"items": []}).status_code == 400        # 최소 1
+    assert c.post("/api/watchlist", json={"items": [{"code": "12", "market": "KR"}]}).status_code == 400
+    assert c.post("/api/watchlist", json={}).status_code == 400                    # items 없음
+    assert c.post("/api/watchlist", json={"codes": ["005930"]}).status_code == 400  # 구 계약 거부
+
+
+def test_watchlist_api_items_contract(tmp_path, monkeypatch):
+    """items 계약(계정별) — 보유(shares/avg) 왕복 + 구 codes 계약 거부."""
+    from backend.config import settings
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    c = TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+    r = c.post("/api/watchlist",
+               json={"items": [{"code": "005930", "market": "KR", "shares": 10, "avg": 230000}]})
+    assert r.status_code == 200
+    got = c.get("/api/watchlist").json()["items"]
+    assert got[0]["code"] == "005930" and got[0]["shares"] == 10 and got[0]["avg"] == 230000
+    assert c.post("/api/watchlist", json={"codes": ["005930"]}).status_code == 400  # 구 계약 거부
 
 
 def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
@@ -230,9 +382,83 @@ def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
     _seed_universe(str(tmp_path), [
         {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
     c = _client_local(tmp_path)
-    assert c.post("/api/watchlist", json={"codes": ["035720"]}).status_code == 200
+    assert c.post("/api/watchlist",
+                  json={"items": [{"code": "035720", "market": "KR"}]}).status_code == 200
     d = c.get("/api/widget").json()
     assert [i["code"] for i in d["items"]] == ["035720"]
+
+
+# ── Task 13: /api/watchlist 신규 US 티커 존재확인(price_us) ─────────
+def _us_client(tmp_path, monkeypatch, price_us):
+    """kis_app_key 주입 + client/price_us 모킹된 로컬 앱(실 KIS 호출 0)."""
+    from backend.config import settings
+    from backend.flow import candles, usquote
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+    monkeypatch.setattr(candles, "_get_client", lambda: object())
+    monkeypatch.setattr(usquote, "price_us", price_us)
+    return TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+
+
+def test_watchlist_post_rejects_unknown_us_ticker(tmp_path, monkeypatch):
+    """신규 US 티커는 price_us 존재확인 — 없으면 400(NAS/NYS/AMS·티커 포함)."""
+    async def _none(client, sym):
+        return None
+    c = _us_client(tmp_path, monkeypatch, _none)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "ZZZZ", "market": "US"}]})
+    assert r.status_code == 400 and "ZZZZ" in r.json()["error"]
+    # 거부됐으니 저장 안 됨(마스터 시드 그대로)
+    assert "ZZZZ" not in [i["code"] for i in c.get("/api/watchlist").json()["items"]]
+
+
+def test_watchlist_post_accepts_valid_us_ticker(tmp_path, monkeypatch):
+    """price_us가 유효 응답이면 신규 US 티커 저장 200."""
+    async def _ok(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    c = _us_client(tmp_path, monkeypatch, _ok)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200
+    assert "NVDA" in [i["code"] for i in r.json()["items"]]
+
+
+def test_watchlist_post_reorder_skips_us_verification(tmp_path, monkeypatch):
+    """기존 US 티커는 재검증 안 함 — price_us가 이후 실패해도 재정렬/삭제 저장은 통과.
+    (매 저장마다 KIS 재호출·outage 시 재정렬 불가를 방지.)"""
+    from backend.flow import usquote
+
+    async def _ok(client, sym):
+        return {"price": 1.0, "change": 0.0, "currency": "USD", "exch": "NAS"}
+    c = _us_client(tmp_path, monkeypatch, _ok)
+    assert c.post("/api/watchlist",
+                  json={"items": [{"code": "NVDA", "market": "US"},
+                                  {"code": "005930", "market": "KR"}]}).status_code == 200
+
+    async def _fail(client, sym):   # 이제 price_us 전멸
+        return None
+    monkeypatch.setattr(usquote, "price_us", _fail)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200      # 기존 NVDA는 재검증 없이 통과
+
+
+def test_watchlist_post_us_skipped_without_kis(tmp_path, monkeypatch):
+    """KIS 미설정(로컬/데모)이면 US 존재확인 생략 — 담기 허용(프로덕션 KIS에서만 강제)."""
+    from backend.config import settings
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    c = TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200 and "NVDA" in [i["code"] for i in r.json()["items"]]
