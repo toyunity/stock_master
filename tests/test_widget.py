@@ -227,8 +227,9 @@ def test_widget_includes_pnl_and_whitelist(tmp_path, monkeypatch):
 
 
 def test_widget_us_row_shape(tmp_path, monkeypatch):
-    """US 행 shape(§4) — currency USD·us_open·price null(시세는 Task 13 usquote에서 배선).
-    KR가 소스를 제공해 전멸(503) 단락을 피하고 US 분기를 실제로 실행한다."""
+    """US 행 shape(§4) — currency USD·us_open·price null(KIS client 없음 → US 시세 조회 불가).
+    KR가 universe 폴백으로 소스를 제공해 전멸(503) 단락을 피하고 US 분기를 실제로 실행한다.
+    (client 있을 때의 US 실시세는 test_widget_us_price_wired에서 검증.)"""
     import asyncio
     from backend.config import settings
     from backend.api.widget import widget_data
@@ -245,6 +246,77 @@ def test_widget_us_row_shape(tmp_path, monkeypatch):
     assert us["name"] == "엔비디아"                             # semi.US_NAMES 우선
     assert set(us.keys()) == {"code", "name", "market", "currency", "price", "change",
                               "shares", "avg", "pnl", "pnl_pct", "us_open"}
+
+
+# ── Task 13: US 시세 배선(usquote.price_us) + 전멸 판정 KR+US 합산 ──
+class _FakeKis:
+    """widget_data용 최소 KIS client 더블 — KR price()만(US는 usquote.price_us 모킹).
+    비ASCII/실호출 방지: 넘긴 dict에 없는 코드는 None(부분 실패)."""
+
+    def __init__(self, kr=None):
+        self._kr = kr or {}
+
+    async def price(self, code):
+        return self._kr.get(code)
+
+
+def _patch_us(monkeypatch, client, price_us):
+    """widget_data의 client 빌더와 usquote.price_us를 모킹(실 KIS 호출 0)."""
+    from backend.flow import candles, usquote
+    monkeypatch.setattr(candles, "_get_client", lambda: client)
+    monkeypatch.setattr(usquote, "price_us", price_us)
+
+
+def test_widget_us_price_wired(tmp_path, monkeypatch):
+    """US 항목이 usquote.price_us로 실제 시세를 받는다(client 있을 때) — USD·수익 계산."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    _patch_us(monkeypatch, _FakeKis({"005930": {"price": 71200, "rate": 1.25}}), _pu)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US",
+                                             "shares": 5, "avg": 170.0}]))
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert us["price"] == 189.70 and us["currency"] == "USD" and us["change"] == -0.85
+    assert abs(us["pnl"] - (189.70 - 170.0) * 5) < 1e-6      # US 소수 수익
+    assert isinstance(us["us_open"], bool)
+
+
+def test_widget_us_only_account_not_503(tmp_path, monkeypatch):
+    """US 전용 계정 — KR 소스가 없어도 US 시세가 있으면 None(503) 아님(회귀 방지).
+    전멸 판정이 KR 코드만 보면 US-only 계정이 항상 503으로 죽는다(advisor #1)."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    _patch_us(monkeypatch, _FakeKis(), _pu)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "NVDA", "market": "US"}]))
+    assert d is not None and d["items"][0]["price"] == 189.70
+
+
+def test_widget_kr_fail_us_succeed(tmp_path, monkeypatch):
+    """KR 전멸 + US 성공 → 데이터 반환(전멸 판정은 KR+US 합산). KR은 부분실패 null 유지."""
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+
+    async def _pu(client, sym):
+        return {"price": 100.0, "change": 1.0, "currency": "USD", "exch": "NYS"}
+    _patch_us(monkeypatch, _FakeKis(), _pu)     # KR price() → None(전멸)
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US"}]))
+    assert d is not None
+    kr = [i for i in d["items"] if i["market"] == "KR"][0]
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert kr["price"] is None and us["price"] == 100.0
 
 
 # ── /api/watchlist 편집 API + 소비자 공유 ─────────────────────────
@@ -300,3 +372,75 @@ def test_widget_follows_edited_watchlist(tmp_path, monkeypatch):
                   json={"items": [{"code": "035720", "market": "KR"}]}).status_code == 200
     d = c.get("/api/widget").json()
     assert [i["code"] for i in d["items"]] == ["035720"]
+
+
+# ── Task 13: /api/watchlist 신규 US 티커 존재확인(price_us) ─────────
+def _us_client(tmp_path, monkeypatch, price_us):
+    """kis_app_key 주입 + client/price_us 모킹된 로컬 앱(실 KIS 호출 0)."""
+    from backend.config import settings
+    from backend.flow import candles, usquote
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    monkeypatch.setattr(settings, "kis_app_key", "dummy")
+    monkeypatch.setattr(candles, "_get_client", lambda: object())
+    monkeypatch.setattr(usquote, "price_us", price_us)
+    return TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+
+
+def test_watchlist_post_rejects_unknown_us_ticker(tmp_path, monkeypatch):
+    """신규 US 티커는 price_us 존재확인 — 없으면 400(NAS/NYS/AMS·티커 포함)."""
+    async def _none(client, sym):
+        return None
+    c = _us_client(tmp_path, monkeypatch, _none)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "ZZZZ", "market": "US"}]})
+    assert r.status_code == 400 and "ZZZZ" in r.json()["error"]
+    # 거부됐으니 저장 안 됨(마스터 시드 그대로)
+    assert "ZZZZ" not in [i["code"] for i in c.get("/api/watchlist").json()["items"]]
+
+
+def test_watchlist_post_accepts_valid_us_ticker(tmp_path, monkeypatch):
+    """price_us가 유효 응답이면 신규 US 티커 저장 200."""
+    async def _ok(client, sym):
+        return {"price": 189.70, "change": -0.85, "currency": "USD", "exch": "NAS"}
+    c = _us_client(tmp_path, monkeypatch, _ok)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200
+    assert "NVDA" in [i["code"] for i in r.json()["items"]]
+
+
+def test_watchlist_post_reorder_skips_us_verification(tmp_path, monkeypatch):
+    """기존 US 티커는 재검증 안 함 — price_us가 이후 실패해도 재정렬/삭제 저장은 통과.
+    (매 저장마다 KIS 재호출·outage 시 재정렬 불가를 방지.)"""
+    from backend.flow import usquote
+
+    async def _ok(client, sym):
+        return {"price": 1.0, "change": 0.0, "currency": "USD", "exch": "NAS"}
+    c = _us_client(tmp_path, monkeypatch, _ok)
+    assert c.post("/api/watchlist",
+                  json={"items": [{"code": "NVDA", "market": "US"},
+                                  {"code": "005930", "market": "KR"}]}).status_code == 200
+
+    async def _fail(client, sym):   # 이제 price_us 전멸
+        return None
+    monkeypatch.setattr(usquote, "price_us", _fail)
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200      # 기존 NVDA는 재검증 없이 통과
+
+
+def test_watchlist_post_us_skipped_without_kis(tmp_path, monkeypatch):
+    """KIS 미설정(로컬/데모)이면 US 존재확인 생략 — 담기 허용(프로덕션 KIS에서만 강제)."""
+    from backend.config import settings
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "default_account", "master@gmail.com")
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    c = TestClient(create_app(_settings(tmp_path, default_account="master@gmail.com")))
+    r = c.post("/api/watchlist", json={"items": [{"code": "005930", "market": "KR"},
+                                                 {"code": "NVDA", "market": "US"}]})
+    assert r.status_code == 200 and "NVDA" in [i["code"] for i in r.json()["items"]]

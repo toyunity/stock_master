@@ -150,16 +150,26 @@ D.stocks.forEach(s=>{
   series.setData(s.candles); chart.timeScale().fitContent();
 });
 const q=document.getElementById('q'), res=document.getElementById('results');
-function searchRender(items){
-  if(!items.length){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
-  res.innerHTML=items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span>'
+const US_TICKER=/^[A-Z]{1,5}(\.[A-Z])?$/;   // 미국 티커(대문자 1~5자 +.접미) 감지
+function usSuggestHtml(sym){
+  // KRX universe엔 없는 대문자 입력 = 미국 티커 후보 — 담기 시 서버가 price_us로 존재확인(없으면 400)
+  return '<div class="srow"><span>'+esc(sym)+' <span class="code">US</span>'
+    +' <button class="wadd" data-sym="'+esc(sym)+'" onclick="addUS(this.dataset.sym)">＋담기(US)</button>'
+    +'</span><span class="spx meta">미국 티커</span></div>';
+}
+function searchRender(items,usHint){
+  usHint=usHint||'';
+  if(!items.length&&!usHint){res.innerHTML='<div class="meta" style="padding:8px">검색 결과 없음</div>';return;}
+  res.innerHTML=usHint+items.slice(0,30).map(u=>'<div class="srow"><span><a href="/live/'+esc(u.code)+'">'+esc(u.name)+' 📡</a> <span class="code">'+esc(u.code)+'</span>'
     +(WATCH.indexOf(u.code)<0?' <button class="wadd" data-code="'+esc(u.code)+'" onclick="addStock(this.dataset.code)">＋담기</button>':'')
     +'</span><span class="spx">'+(u.close!=null?won(u.close)+' ':'')+chg(u.change)+'</span></div>').join('');
 }
 q.oninput=()=>{
+  const raw=q.value.trim().toUpperCase();
   const t=q.value.trim().toLowerCase();
   if(!t){res.innerHTML='';return;}
-  searchRender(D.universe.filter(u=>u.name.toLowerCase().includes(t)||u.code.indexOf(t)>=0));
+  const hits=D.universe.filter(u=>u.name.toLowerCase().includes(t)||u.code.indexOf(t)>=0);
+  searchRender(hits, US_TICKER.test(raw)?usSuggestHtml(raw):'');
 };
 // ── 반도체 동향(메모리 중심): /api/semi 60초 폴링 — 서버 서빙일 때만 뜨고,
 //    아티팩트(정적 파일)에서는 fetch 실패로 자동 숨김(자기완결 유지) ──
@@ -224,6 +234,22 @@ async function saveWatch(codes){
 function addStock(code){
   if(WATCH.indexOf(code)>=0)return;
   saveWatch([code].concat(WATCH));   // 새 종목 맨 앞 — 위젯 상위 5에 바로 보임
+}
+async function addUS(sym){
+  // 미국 티커 담기 — 현재 전체 items(KR+US)를 읽어 뒤에 US 항목을 붙여 저장(기존 US 유지).
+  // 카드 기반 WATCH는 KR뿐이라 items를 서버에서 재조회한다(관리 리스트 Task 14 전 최소 배선).
+  try{
+    const g=await fetch('/api/watchlist'); if(!g.ok){alert('현재 목록을 불러오지 못했어요');return;}
+    const cur=(await g.json()).items||[];
+    if(cur.some(i=>i.code===sym)){alert('이미 담긴 종목이에요');return;}
+    const items=cur.map(i=>({code:i.code,market:i.market,shares:i.shares,avg:i.avg}))
+                   .concat([{code:sym,market:'US'}]);
+    const r=await fetch('/api/watchlist',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+    const d=await r.json();
+    if(!r.ok){alert(d.error||'담기 실패');return;}   // 없는 티커면 서버 400 메시지
+    location.reload();
+  }catch(e){alert('담기 실패 — 네트워크를 확인하세요');}
 }
 function delStock(code){
   if(WATCH.length<=1){alert('관심종목은 최소 1개 필요해요');return;}

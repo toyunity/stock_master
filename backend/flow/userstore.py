@@ -23,6 +23,17 @@ def norm_email(e) -> str:
     return str(e or "").strip().lower()
 
 
+def market_of(code):
+    """티커 문자열의 시장 분류 — 'KR'(6자리 숫자) | 'US'(대문자 티커) | None(무효).
+    _clean_item과 동일 규칙·정규식을 재사용(대문자화)해 라우트 존재확인 등에서 규칙이 갈리지 않게 한다."""
+    c = str(code or "").strip().upper()
+    if _KR_RE.match(c):
+        return "KR"
+    if _US_RE.match(c):
+        return "US"
+    return None
+
+
 def _uid(email) -> str:
     return hashlib.sha256(norm_email(email).encode("utf-8")).hexdigest()[:16]
 

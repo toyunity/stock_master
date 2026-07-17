@@ -66,6 +66,13 @@ def test_dashboard_has_watchlist_edit_ui():
         assert marker in html, marker + " 누락"
 
 
+def test_dashboard_search_detects_us_ticker():
+    """검색 US 티커 감지(Task 13) — 대문자 티커 입력 시 '담기(US)' 제안 JS + 담기 핸들러 마커."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    for marker in ("addUS", "(US)"):
+        assert marker in html, marker + " 누락"
+
+
 import shutil
 import subprocess
 

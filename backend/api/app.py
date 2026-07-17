@@ -41,6 +41,45 @@ def _req_email(request, settings):
     return sess.get("email") or default_account()
 
 
+async def _verify_new_us_tickers(email, items):
+    """신규 US 티커만 price_us로 존재 확인(설계 §6·에러표). 통과면 None, 없으면 사용자 메시지(400).
+
+    - 재정렬·삭제·보유변경(기존 US 티커)은 재검증 안 함 — 매 저장마다 KIS 재호출·outage 시
+      재정렬 불가를 막는다(신규분 diff = incoming − 저장된 US 집합).
+    - KIS 미설정(로컬/데모)이면 검증 생략(통과) — 프로덕션 마스터 KIS에서만 강제.
+    - 모듈 경유 호출(usquote.price_us / candles._get_client)이라 테스트가 모킹 가능·실 KIS 0."""
+    if not isinstance(items, list):
+        return None
+    from backend.flow import userstore
+    existing = {i["code"] for i in userstore.get_watchlist(email)
+                if i.get("market") == "US"}
+    new_us, seen = [], set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        code = str(it.get("code", "")).strip().upper()
+        if userstore.market_of(code) == "US" and code not in existing and code not in seen:
+            seen.add(code)
+            new_us.append(code)
+    if not new_us:
+        return None
+    if not _settings.kis_app_key:      # 로컬/데모 — 존재확인 불가, 통과
+        return None
+    from backend.flow import usquote
+    try:
+        client = candles._get_client()
+    except Exception:
+        return None
+    for c in new_us:
+        try:
+            q = await usquote.price_us(client, c)
+        except Exception:
+            q = None
+        if not q or not q.get("price"):
+            return "티커를 찾을 수 없어요(NAS/NYS/AMS): %s" % c
+    return None
+
+
 async def live_stream(code: str):
     """SSE — 1초마다 수급 전체 스냅샷(JSON)을 push. 모듈 레벨(설정 불요)이라
     라우트가 위임하고 테스트가 제너레이터를 직접 구동할 수 있다."""
@@ -137,8 +176,13 @@ def create_app(settings=None) -> FastAPI:
         items = body.get("items") if isinstance(body, dict) else None
         if items is None:
             return JSONResponse({"error": "items 배열이 필요해요"}, status_code=400)
+        email = _req_email(request, settings)
+        # 신규 US 티커는 저장 전 price_us로 존재확인(없으면 400) — 기존 US는 재검증 안 함.
+        err = await _verify_new_us_tickers(email, items)
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
         try:
-            saved = userstore.set_watchlist(_req_email(request, settings), items)
+            saved = userstore.set_watchlist(email, items)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse({"items": saved})
