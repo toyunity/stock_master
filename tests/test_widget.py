@@ -127,7 +127,9 @@ import json as _json
 import os
 
 CONTRACT_KEYS = {"open", "trade_date", "fetched_at", "refresh_after_sec", "items"}
-ITEM_KEYS = {"code", "name", "price", "change"}
+# 계정 items 계약(§4): KR 항목은 아래 정확히, US는 여기에 us_open 추가.
+ITEM_KEYS = {"code", "name", "market", "currency", "price", "change",
+             "shares", "avg", "pnl", "pnl_pct"}
 
 
 def _seed_universe(cache_dir, rows):
@@ -144,7 +146,8 @@ def test_widget_data_contract_whitelist(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "kis_app_key", None)    # KIS 없음 → universe 폴백 경로
     _seed_universe(str(tmp_path), [
         {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.25}])
-    d = asyncio.run(widget_data(["005930", "000660"]))
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "000660", "market": "KR"}]))
     assert set(d.keys()) == CONTRACT_KEYS
     assert all(set(i.keys()) == ITEM_KEYS for i in d["items"])
     assert d["items"][0]["price"] == 71200.0
@@ -157,7 +160,7 @@ def test_widget_data_none_when_no_source(tmp_path, monkeypatch):
     from backend.api.widget import widget_data
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(settings, "kis_app_key", None)
-    assert asyncio.run(widget_data(["005930"])) is None
+    assert asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"}])) is None
 
 
 def test_widget_api_route_503_without_source(tmp_path, monkeypatch):
@@ -200,8 +203,48 @@ def test_widget_data_resolves_new_stock_name(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "kis_app_key", None)
     _seed_universe(str(tmp_path), [
         {"code": "035720", "name": "카카오", "close": 43000.0, "change": -0.5}])
-    d = asyncio.run(widget_data(["035720"]))
+    d = asyncio.run(widget_data("m@x.com", [{"code": "035720", "market": "KR"}]))
     assert d["items"][0]["name"] == "카카오"
+
+
+def test_widget_includes_pnl_and_whitelist(tmp_path, monkeypatch):
+    """계정 보유 종목의 pnl이 응답에 포함되고 화이트리스트(감시선 등 없음) 유지."""
+    import asyncio
+    from backend.config import settings
+    from backend.flow import userstore
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "default_account", "m@x.com")
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 253500.0, "change": -9.3}])
+    userstore.set_watchlist("m@x.com", [{"code": "005930", "market": "KR", "shares": 10, "avg": 230000}])
+    d = asyncio.run(widget_data("m@x.com", userstore.get_watchlist("m@x.com")))
+    it = d["items"][0]
+    assert it["pnl"] == 235000 and it["market"] == "KR" and it["currency"] == "KRW"
+    assert set(it.keys()) <= {"code", "name", "market", "currency", "price", "change",
+                              "shares", "avg", "pnl", "pnl_pct", "us_open"}
+
+
+def test_widget_us_row_shape(tmp_path, monkeypatch):
+    """US 행 shape(§4) — currency USD·us_open·price null(시세는 Task 13 usquote에서 배선).
+    KR가 소스를 제공해 전멸(503) 단락을 피하고 US 분기를 실제로 실행한다."""
+    import asyncio
+    from backend.config import settings
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.25}])
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "NVDA", "market": "US", "shares": 5, "avg": 170.0}]))
+    us = [i for i in d["items"] if i["market"] == "US"][0]
+    assert us["currency"] == "USD" and us["price"] is None      # 시세는 Task 13까지 null
+    assert us["pnl"] is None and us["pnl_pct"] is None          # price 없으면 수익 없음
+    assert isinstance(us.get("us_open"), bool)                  # US 신선도 플래그(ET)
+    assert us["name"] == "엔비디아"                             # semi.US_NAMES 우선
+    assert set(us.keys()) == {"code", "name", "market", "currency", "price", "change",
+                              "shares", "avg", "pnl", "pnl_pct", "us_open"}
 
 
 # ── /api/watchlist 편집 API + 소비자 공유 ─────────────────────────

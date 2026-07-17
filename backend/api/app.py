@@ -237,8 +237,8 @@ def create_app(settings=None) -> FastAPI:
         email = (request.scope.get("state") or {}).get("widget_email")
         if not email:
             email = _req_email(request, settings)
-        codes = userstore.get_kr_codes(email)
-        data = await widget_data(codes)
+        # 위젯은 KR+US를 함께 싣는 유일 표면(§4) — 전체 items로 조립(KR 파이프라인 분리 불변식과 별개).
+        data = await widget_data(email, userstore.get_watchlist(email))
         if data is None:
             return JSONResponse({"error": "시세를 가져올 수 없어요 (KIS 키 또는 캐시 필요)"},
                                 status_code=503)
