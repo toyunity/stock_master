@@ -166,8 +166,7 @@ function statusLabel(d) {
 }
 
 function drawItem(w, it) {
-  // 레퍼런스(증권 MY홈): 이름(좌) · 평가금액(우, 굵게) / 아래 손익(▲▼ 금액 (%)) 우측 정렬.
-  //   미보유는 1줄: 이름 · 현재가 · 등락%.
+  // 1줄: 이름 · 한주당 현재가 · 오늘 등락%.  보유 있으면 2줄: '평가 평가금액'(좌) · 손익(▲▼금액(%), 우).
   const held = hasHolding(it);
   const r1 = w.addStack();
   r1.centerAlignContent();
@@ -178,22 +177,22 @@ function drawItem(w, it) {
   nm.lineLimit = 1;
   nm.minimumScaleFactor = 0.6;   // 긴 이름/US 병기 완충
   r1.addSpacer();
-  if (!held) {   // 미보유: 현재가 · 등락%(1줄)
-    const px = r1.addText(fmtMoney(it.price, it.currency));
-    px.font = Font.boldSystemFont(13);
-    const ch = r1.addText("  " + fmtChg(it.change));
-    ch.font = Font.boldSystemFont(11);
-    ch.textColor = chgColor(it.change);
-    return;
-  }
-  const val = r1.addText(fmtVal(it.price * it.shares, it.currency));   // 평가금액(우, 굵게)
-  val.font = Font.boldSystemFont(14);
-  val.lineLimit = 1;
-  val.minimumScaleFactor = 0.6;
+  const px = r1.addText(fmtMoney(it.price, it.currency));   // 한주당 현재가
+  px.font = Font.boldSystemFont(13);
+  const ch = r1.addText("  " + fmtChg(it.change));          // 오늘 등락%
+  ch.font = Font.boldSystemFont(11);
+  ch.textColor = chgColor(it.change);
+  if (!held) return;   // 미보유는 1줄(현재가·등락%)
   w.addSpacer(1);
-  const r2 = w.addStack();   // 손익 우측 정렬(레퍼런스처럼 평가금액 아래)
+  const r2 = w.addStack();
+  r2.centerAlignContent();
+  const ev = r2.addText("평가 " + fmtVal(it.price * it.shares, it.currency));   // 평가금액(좌)
+  ev.font = Font.mediumSystemFont(10);
+  ev.textColor = Color.gray();
+  ev.lineLimit = 1;
+  ev.minimumScaleFactor = 0.6;
   r2.addSpacer();
-  const pl = r2.addText(fmtPnlArrow(it.pnl, it.currency) + " (" + fmtChg(it.pnl_pct) + ")");
+  const pl = r2.addText(fmtPnlArrow(it.pnl, it.currency) + " (" + fmtChg(it.pnl_pct) + ")");   // 손익(우)
   pl.font = Font.mediumSystemFont(11);
   pl.textColor = pnlColor(it.pnl);
   pl.lineLimit = 1;
