@@ -85,6 +85,14 @@ async def widget_data(email, items):
             return None
 
     st = await market_status.get_status(client)
+    from backend.flow.adr import us_market_open
+    us_open_now = us_market_open()   # ET 정규장 여부(순수 함수) — US 행 신선도 + 갱신 힌트에 공유
+    # 갱신 힌트 보정: refresh_after_sec는 KR 장 기준이라, 밤(KR 마감·US 개장) 구간에서 6h로
+    # 늘어져 미국주식(하이닉스 ADR 등)이 최대 6시간 얼어붙었다. 계정에 US 종목 + 미국 정규장이면
+    # 장중값(10분)으로 당긴다 — KR 장중값 재사용(refresh_after_sec(True) == _REFRESH_OPEN, 2026-07-17).
+    refresh = st["refresh_after_sec"]
+    if us_syms and us_open_now:
+        refresh = min(refresh, market_status.refresh_after_sec(True))
     names = _universe.name_map(_universe.get_cached())   # stale 허용 읽기 전용(수집 금지)
     out = []
     for it in items:
@@ -102,9 +110,8 @@ async def widget_data(email, items):
                "shares": shares, "avg": avg,
                "pnl": pnl["pnl"], "pnl_pct": pnl["pnl_pct"]}
         if market == "US":
-            from backend.flow.adr import us_market_open
-            row["us_open"] = us_market_open()   # ET 정규장 여부(US 행 신선도, 순수 함수)
+            row["us_open"] = us_open_now   # ET 정규장 여부(US 행 신선도) — 갱신 힌트와 동일 값 공유
         out.append(row)
     return {"open": st["open"], "trade_date": st["trade_date"],
             "fetched_at": kst.now().isoformat(timespec="seconds"),
-            "refresh_after_sec": st["refresh_after_sec"], "items": out}
+            "refresh_after_sec": refresh, "items": out}

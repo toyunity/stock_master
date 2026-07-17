@@ -38,11 +38,12 @@ def test_page_shows_token_but_script_never_contains_it():
 
 def test_script_has_required_parts():
     s = _script()
-    # ↻ 위젯 버튼(mode=refresh URL)은 사용자 요청으로 제거(iOS 인플레이스 갱신 불가) — 재실행 메뉴의
-    # showLive는 유지. 갱신시각은 헤더 statusLabel로 표시.
+    # 위젯 몸통 탭 = scriptable:///run/StockMaster?mode=refresh 로 재실행 → 즉시 실시간 시세(showLive).
+    # iOS는 '볼 때' 자동 갱신을 못 하므로 탭이 사용자 주도 갱신 경로(2026-07-17). 갱신시각은 statusLabel.
     for marker in ("Keychain", "timeoutInterval", "FileManager.local",
                    "refreshAfterDate", "showLive", "widgetFamily",
-                   "isAuth", "토큰 다시 입력", "statusLabel"):
+                   "isAuth", "토큰 다시 입력", "statusLabel",
+                   "scriptable:///run/StockMaster?mode=refresh"):
         assert marker in s, marker + " 누락"
 
 

@@ -195,7 +195,10 @@ function drawItem(w, it) {
 
 function buildWidget(d, offline) {
   const w = new ListWidget();
-  w.url = BASE + "/";   // 몸통 탭 → 대시보드(미지정 시 편집기가 열려 초보 사고 지점)
+  // 몸통 탭 → 이 스크립트를 refresh 모드로 재실행 = 즉시 KIS 최신 시세 전체화면(showLive).
+  // iOS는 '위젯을 볼 때' 자동 갱신을 못 하므로, 탭 = 사용자가 원할 때 실시간 조회(설계 2026-07-17).
+  // 스크립트명은 설치 안내가 'StockMaster'로 고정(4단계) — URL 스킴이 이 이름으로 재실행.
+  w.url = "scriptable:///run/StockMaster?mode=refresh";
   const fam = config.widgetFamily || "medium";   // 앱 내 미리보기(null) = medium 취급
   if (d && d.refresh_after_sec)
     w.refreshAfterDate = new Date(Date.now() + d.refresh_after_sec * 1000);

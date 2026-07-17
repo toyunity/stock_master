@@ -13,7 +13,9 @@ import time
 from backend.flow import kst
 
 _TTL_OPEN, _TTL_CLOSED = 600.0, 3600.0      # TR 캐시: 장중 10분 / 장외 60분
-_REFRESH_OPEN, _REFRESH_CAP = 900, 21600    # 위젯 갱신 힌트: 장중 15분 / 장외 6h 캡
+_REFRESH_OPEN, _REFRESH_CAP = 600, 21600    # 위젯 갱신 힌트: 장중 10분 / 장외 6h 캡
+# 장중 10분 = 09:00~15:30(390분) 최대 39회 — iOS 위젯 하루 예산(~40-70회) 한도 내 최소.
+# 더 낮추면(예:5분=78회) iOS가 예산 초과분을 임의로 건너뛰어 오히려 불규칙해진다(2026-07-17).
 _cache = {"ts": 0.0, "trade_date": None, "wall": None}
 
 
@@ -40,7 +42,7 @@ def next_open_sec(now=None) -> int:
 
 
 def refresh_after_sec(open_: bool, now=None) -> int:
-    """위젯 갱신 힌트 — 장중 900초, 장외 min(다음 개장까지, 6h 캡)."""
+    """위젯 갱신 힌트 — 장중 600초, 장외 min(다음 개장까지, 6h 캡)."""
     return _REFRESH_OPEN if open_ else min(next_open_sec(now), _REFRESH_CAP)
 
 

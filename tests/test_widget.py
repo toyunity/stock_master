@@ -80,7 +80,7 @@ def test_wallclock_open_hours_and_weekend():
 
 def test_refresh_after_sec_open_vs_closed():
     from backend.flow import market_status as ms
-    assert ms.refresh_after_sec(True, _kst(2026, 7, 16, 10, 0)) == 900
+    assert ms.refresh_after_sec(True, _kst(2026, 7, 16, 10, 0)) == 600
     # 목 16:00 → 금 09:00 = 17시간 = 61200초 → 6h 캡
     assert ms.refresh_after_sec(False, _kst(2026, 7, 16, 16, 0)) == 21600
     # 금 08:00 → 당일 09:00 = 3600초(캡 미달)
@@ -111,7 +111,7 @@ def test_get_status_trading_day_open(monkeypatch):
     now = _kst(2026, 7, 16, 10, 0)
     st = asyncio.run(
         ms.get_status(_FakeClient("2026-07-16"), now=now))
-    assert st["open"] is True and st["refresh_after_sec"] == 900
+    assert st["open"] is True and st["refresh_after_sec"] == 600
 
 
 def test_get_status_refetches_on_open_boundary(monkeypatch):
@@ -170,6 +170,46 @@ def test_widget_data_contract_whitelist(tmp_path, monkeypatch):
     assert all(set(i.keys()) == ITEM_KEYS for i in d["items"])
     assert d["items"][0]["price"] == 71200.0
     assert d["items"][1]["price"] is None                 # 캐시에 없는 종목 = null(행 유지)
+
+
+def test_widget_us_market_open_shortens_refresh(tmp_path, monkeypatch):
+    """US 종목 보유 + 미국 정규장 개장이면, 한국장 마감이어도 갱신 힌트를 장중값으로 당긴다.
+
+    버그(2026-07-17): refresh_after_sec가 KR 장만 봐서, 밤(KR 마감·US 개장) 구간에
+    6h로 늘어져 하이닉스 ADR 등 미국주식이 최대 6시간 얼어붙었다."""
+    from backend.config import settings
+    from backend.flow import market_status as ms, adr
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)          # client None → universe 폴백
+    monkeypatch.setattr(ms, "wallclock_open", lambda *a, **k: False)   # KR 마감
+    monkeypatch.setattr(ms, "next_open_sec", lambda *a, **k: 21600)    # 다음 개장 멀리 → 6h 캡
+    monkeypatch.setattr(adr, "us_market_open", lambda *a, **k: True)   # 미국 정규장 개장
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None, "wall": None})
+    _seed_universe(str(tmp_path), [                             # KR 소스로 전멸(503) 회피
+        {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.0}])
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "SKHY", "market": "US"}]))
+    assert d["open"] is False                # KR 마감(계약상 open은 KR 기준 유지)
+    assert d["refresh_after_sec"] == 600     # US 장중이라 장중값으로 당겨짐(버그 전엔 21600)
+
+
+def test_widget_us_closed_keeps_kr_refresh(tmp_path, monkeypatch):
+    """US도 마감이면 KR 기준 긴 힌트를 그대로 둔다(불필요한 잦은 깨움 방지 — 회귀 가드)."""
+    from backend.config import settings
+    from backend.flow import market_status as ms, adr
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(ms, "wallclock_open", lambda *a, **k: False)
+    monkeypatch.setattr(ms, "next_open_sec", lambda *a, **k: 21600)
+    monkeypatch.setattr(adr, "us_market_open", lambda *a, **k: False)  # US도 마감
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None, "wall": None})
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 71200.0, "change": 1.0}])
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"},
+                                            {"code": "SKHY", "market": "US"}]))
+    assert d["refresh_after_sec"] == 21600   # 둘 다 마감 → KR 6h 캡 유지
 
 
 def test_widget_data_none_when_no_source(tmp_path, monkeypatch):
