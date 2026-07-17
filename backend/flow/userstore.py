@@ -129,3 +129,31 @@ def set_watchlist(email, items) -> list:
 
 def get_kr_codes(email) -> list:
     return [i["code"] for i in get_watchlist(email) if i["market"] == "KR"]
+
+
+def get_lines(email, code) -> list:
+    """코드의 감시선 목록(계정별). 파일에 코드 키가 있으면 파일값(빈 배열=전부 지운 상태 영속),
+    없으면 마스터 계정만 config 시드. 비마스터는 폴백 금지(마스터 실매도가 유출 방지)."""
+    from backend.flow import watch
+    email = norm_email(email)
+    d = _load(email)
+    lines = (d.get("watch_lines") or {}).get(code)
+    if isinstance(lines, list):
+        return watch._clean(lines)
+    if email == default_account():
+        return watch._clean(settings.watch_lines.get(code) or [])   # 마스터만 config 시드
+    return []                                                        # 비마스터: 폴백 금지
+
+
+def set_lines(email, code, lines) -> list:
+    """검증 후 계정 파일에 원자적 저장. 위반 시 ValueError. 빈 배열도 영속."""
+    from backend.flow import watch
+    norm = watch._validate_lines(lines)
+    d = _load(norm_email(email))
+    wl = d.get("watch_lines")
+    if not isinstance(wl, dict):
+        wl = {}
+    wl[code] = norm
+    d["watch_lines"] = wl
+    _save(email, d)
+    return norm

@@ -57,3 +57,19 @@ def test_us_avg_keeps_float():
     from backend.flow import userstore as us
     saved = us.set_watchlist(M, [{"code": "NVDA", "market": "US", "shares": 1, "avg": 170.55}])
     assert saved[0]["avg"] == 170.55           # US 소수 보존(int 반올림 금지)
+
+
+def test_watch_lines_non_master_never_sees_config(monkeypatch):
+    """blocker 회귀 방지 — 비마스터 계정은 config 감시선(마스터 실매도가) 절대 못 봄."""
+    from backend.flow import userstore as us
+    from backend.config import settings
+    monkeypatch.setattr(settings, "watch_lines", {"000660": [{"price": 1853000, "label": "절대선"}]})
+    assert us.get_lines(B, "000660") == []                 # B는 빈(폴백 금지)
+    assert us.get_lines(M, "000660")[0]["price"] == 1853000  # 마스터만 시드
+
+
+def test_watch_lines_set_get_isolation():
+    from backend.flow import userstore as us
+    us.set_lines(M, "005930", [{"price": 70000, "label": "지지"}])
+    assert us.get_lines(M, "005930")[0]["price"] == 70000
+    assert us.get_lines(B, "005930") == []                 # 격리

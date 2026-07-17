@@ -69,9 +69,9 @@ def get_lines(code: str) -> list:
     return _clean(settings.watch_lines.get(code) or [])
 
 
-def set_lines(code: str, lines) -> list:
-    """검증 후 원자적 저장. 위반 시 ValueError(사용자 노출 메시지). 정규화 리스트 반환.
-    빈 리스트도 영속(사용자가 전부 지운 상태 유지)."""
+def _validate_lines(lines) -> list:
+    """감시선 검증·정규화(저장 무관). 위반 시 ValueError(사용자 노출 메시지).
+    계정별 저장(userstore)과 전역 저장(set_lines)이 동일 규칙을 공유한다."""
     if not isinstance(lines, list):
         raise ValueError("감시선 목록(배열)이 필요해요")
     if len(lines) > MAX_LINES:
@@ -87,6 +87,13 @@ def set_lines(code: str, lines) -> list:
         if not (1 <= len(label) <= MAX_LABEL):
             raise ValueError("%d번째 줄: 라벨은 1~%d자여야 해요" % (n, MAX_LABEL))
         norm.append({"price": int(round(float(item["price"]))), "label": label})
+    return norm
+
+
+def set_lines(code: str, lines) -> list:
+    """검증 후 원자적 저장. 위반 시 ValueError(사용자 노출 메시지). 정규화 리스트 반환.
+    빈 리스트도 영속(사용자가 전부 지운 상태 유지)."""
+    norm = _validate_lines(lines)
     with _LOCK:
         d = _load_all()
         d[code] = norm
