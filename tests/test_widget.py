@@ -31,6 +31,24 @@ def test_valid_or_absent_widget_token_boots(tmp_path):
     create_app(_settings(tmp_path, widget_token=None))    # 미설정 → OK(위젯만 꺼짐)
 
 
+def test_create_app_runs_migration_backward_compat(tmp_path, monkeypatch):
+    """create_app이 migrate_globals를 실행해 env 토큰이 마스터 계정으로 매핑됨 — 마스터 아이폰
+    위젯 하위호환(미배선 시 기존 env 토큰이 401로 파손, 2026-07-17 실사고)."""
+    import json
+    from backend.config import settings as _gs
+    from backend.api.app import create_app
+    from backend.flow import userstore
+    monkeypatch.setattr(_gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(_gs, "default_account", "master@gmail.com")
+    monkeypatch.setattr(_gs, "widget_token", TOKEN)   # migrate_globals는 모듈 settings 토큰을 읽음
+    userstore._tok_cache["mtime"] = None              # 이전 테스트의 토큰맵 캐시 격리
+    with open(tmp_path / "watchlist.json", "w", encoding="utf-8") as f:
+        json.dump({"codes": ["005930"]}, f)
+    create_app(_settings(tmp_path, default_account="master@gmail.com"))  # 여기서 마이그레이션
+    assert userstore.email_for_token(TOKEN) == "master@gmail.com"        # env 토큰 → 마스터
+    assert [i["code"] for i in userstore.get_watchlist("master@gmail.com")] == ["005930"]
+
+
 # ── 거래일/장 상태 판정 ────────────────────────────────────────────
 import asyncio
 import datetime as dt

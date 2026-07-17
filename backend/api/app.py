@@ -106,6 +106,10 @@ def create_app(settings=None) -> FastAPI:
         raise RuntimeError(
             "SM_WIDGET_TOKEN이 너무 짧습니다(최소 20자) — "
             'python3 -c "import secrets; print(secrets.token_urlsafe(32))" 로 생성하세요')
+    # 계정별 저장소 마이그레이션 — 전역 watchlist·watch_lines·env 위젯토큰을 마스터 계정으로
+    # 1회 승격(멱등). 미호출 시 마스터 아이폰 위젯이 기존 env 토큰으로 401(하위호환 파손).
+    from backend.flow.userstore import migrate_globals as _migrate_globals
+    _migrate_globals()
     app = FastAPI(title="Stock Master")
 
     @app.on_event("shutdown")
