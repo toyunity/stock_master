@@ -228,3 +228,38 @@ def email_for_token(token):
     if not token:
         return None
     return _rebuild_token_map().get(token)
+
+
+def migrate_globals() -> None:
+    """전역 저장물을 마스터 계정 파일로 1회 승격(이미 있으면 건너뜀). 앱 시작 시 호출.
+    전역 watchlist.json({"codes":[...]})·watch_lines.json·env 위젯토큰을 마스터 파일로."""
+    master = default_account()
+    if not master:
+        return
+    d = _load(master)
+    changed = False
+    if "watchlist" not in d:
+        try:
+            with open(Path(settings.cache_dir) / "watchlist.json", encoding="utf-8") as f:
+                codes = (json.load(f) or {}).get("codes") or []
+            if codes:
+                d["watchlist"] = [{"code": c, "market": "KR", "shares": None, "avg": None}
+                                  for c in codes if _KR_RE.match(str(c))]
+                changed = True
+        except Exception:
+            pass
+    if "watch_lines" not in d:
+        try:
+            with open(Path(settings.cache_dir) / "watch_lines.json", encoding="utf-8") as f:
+                wl = json.load(f)
+            if isinstance(wl, dict):
+                d["watch_lines"] = wl
+                changed = True
+        except Exception:
+            pass
+    if settings.widget_token and not d.get("widget_token"):
+        d["widget_token"] = settings.widget_token
+        changed = True
+    if changed:
+        _save(master, d)
+        _tok_cache["mtime"] = None

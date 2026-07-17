@@ -96,3 +96,19 @@ def test_cross_account_token_never_crosses():
     ta, tb = us.ensure_token(M), us.ensure_token(B)
     assert us.email_for_token(ta) == M and us.email_for_token(tb) == B
     assert us.email_for_token(ta) != B                         # 교차 금지
+
+
+def test_migration_promotes_globals(tmp_path, monkeypatch):
+    import json, os
+    from backend.config import settings
+    from backend.flow import userstore as us
+    # 전역 파일 시드
+    with open(os.path.join(str(tmp_path), "watchlist.json"), "w") as f:
+        json.dump({"codes": ["005930", "000660"]}, f)
+    with open(os.path.join(str(tmp_path), "watch_lines.json"), "w") as f:
+        json.dump({"000660": [{"price": 1853000, "label": "절대선"}]}, f)
+    monkeypatch.setattr(settings, "widget_token", "e" * 32)
+    us.migrate_globals()
+    assert [i["code"] for i in us.get_watchlist(M)] == ["005930", "000660"]
+    assert us.get_lines(M, "000660")[0]["price"] == 1853000
+    assert us.email_for_token("e" * 32) == M          # env 토큰 → 마스터 고정
