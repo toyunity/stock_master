@@ -128,13 +128,13 @@ function addDivider(w) {
   w.addSpacer(3);
 }
 function statusLabel(d) {
-  if (d.open) {
-    const t = new Date(d.fetched_at);
-    return pad(t.getHours()) + ":" + pad(t.getMinutes()) + " 장중";
-  }
+  // 갱신 시각(fetched_at)을 항상 앞에 — 카카오페이식 '언제 기준인지'. 오프라인이면 캐시 시각이라 정확.
+  const t = new Date(d.fetched_at);
+  const hm = pad(t.getHours()) + ":" + pad(t.getMinutes()) + " 갱신";
+  if (d.open) return hm + " · 장중";
   const td = new Date(d.trade_date + "T00:00:00+09:00");
   const w = "일월화수목금토".charAt(td.getDay());
-  return (td.getMonth() + 1) + "/" + td.getDate() + "(" + w + ") 마감";
+  return hm + " · " + (td.getMonth() + 1) + "/" + td.getDate() + "(" + w + ") 마감";
 }
 
 function drawItem(w, it) {
@@ -158,9 +158,12 @@ function drawItem(w, it) {
   w.addSpacer(2);
   const r2 = w.addStack();
   r2.centerAlignContent();
-  const sh = r2.addText(it.shares + "주");
-  sh.font = Font.mediumSystemFont(12);
-  sh.textColor = Color.gray();
+  // 투자금액현황 = 평가금액(현재가×보유수량) + 보유수량 맥락. 수익과 짝을 이룸.
+  const ev = r2.addText(it.shares + "주 · " + fmtMoney(it.price * it.shares, it.currency));
+  ev.font = Font.mediumSystemFont(12);
+  ev.textColor = Color.gray();
+  ev.lineLimit = 1;
+  ev.minimumScaleFactor = 0.6;
   r2.addSpacer();
   const pl = r2.addText(fmtPnl(it.pnl, it.currency));   // 수익 금액(± 부호·통화)
   pl.font = Font.mediumSystemFont(12);
