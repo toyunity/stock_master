@@ -44,6 +44,27 @@ def test_get_fundamentals_maps_skips_failure_and_caches(monkeypatch):
     assert sorted(c.fun_calls) == ["A", "BAD"]
 
 
+def test_get_stock_detail_assembles_and_caches():
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class C:
+        def __init__(self):
+            self.calls = 0
+        async def fundamentals(self, code):
+            self.calls += 1
+            return {"per": 31.24, "w52_pos": 58.2}
+        async def financials(self, code):
+            return [{"period": "2026-03", "roe": 61.16, "debt": 35.56}] * 6
+
+    c = C()
+    d = asyncio.run(md.get_stock_detail("000660", client=c))
+    assert d["valuation"] == {"per": 31.24, "w52_pos": 58.2}
+    assert len(d["financials"]) == 4 and d["financials"][0]["roe"] == 61.16   # 최근 4분기로 컷
+    asyncio.run(md.get_stock_detail("000660", client=c))                       # 캐시
+    assert c.calls == 1
+
+
 def test_no_client_returns_empty(monkeypatch):
     """키 없음(_client None) → 지수 None·밸류 {}. 네트워크 미접촉."""
     from backend.config import settings

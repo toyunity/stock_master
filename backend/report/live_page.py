@@ -37,6 +37,7 @@ __BASE_CSS__
 .hero .chg{font-size:14px;font-weight:700;margin:2px 0 0}
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
+.hero .fin{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
@@ -168,6 +169,7 @@ __BASE_CSS__
   <div class="chg flat" id="chg"></div>
   <div class="sig sig-flat" id="tm-headline"></div>
   <div class="note" id="walert"></div>
+  <div class="fin" id="fin" style="display:none"></div>
 </div>
 
 <div class="glance" id="glance"></div>
@@ -376,6 +378,24 @@ const CODE='__CODE__';
 let WATCH=__WATCH__; // 감시선 [{price,label}] — 서버 저장(/api/watch)에서 주입, 편집 시 가변
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
 const won=n=>n==null?'–':num(n)+'원';
+// ── 기업 체력(재무) + 밸류 — /api/financials/{code} 1회 로드(느리게 변해 폴링 불필요). ──
+async function loadFin(){
+  try{
+    const r=await fetch('/api/financials/'+CODE); if(!r.ok)return;
+    const d=await r.json(); const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
+    const bits=[];
+    if(v.per!=null)bits.push('PER '+v.per.toFixed(1));
+    if(v.pbr!=null)bits.push('PBR '+v.pbr.toFixed(1));
+    if(v.w52_pos!=null)bits.push('52주 '+Math.round(v.w52_pos)+'%');
+    if(f.roe!=null)bits.push('ROE '+f.roe.toFixed(0)+'%');
+    if(f.debt!=null)bits.push('부채 '+f.debt.toFixed(0)+'%');
+    if(!bits.length)return;
+    const el=document.getElementById('fin');
+    el.textContent='📊 '+bits.join('  ·  ')+(f.period?'  ('+f.period+' 기준)':'');
+    el.style.display='block';
+  }catch(e){}
+}
+loadFin();
 const shares=n=>n==null?'–':(n>0?'+':'')+num(n)+'주';
 const eok=n=>n==null?'–':(n>0?'+':'')+(n/1e8).toLocaleString('ko-KR',{maximumFractionDigits:1})+'억';
 const cls=n=>n>0?'up':(n<0?'down':'flat');

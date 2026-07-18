@@ -45,6 +45,30 @@ async def get_indices(client=None):
     return _idx_cache["data"]
 
 
+_DETAIL_TTL = 300.0
+_detail_cache: dict = {}   # code -> (ts, dict)
+
+
+async def get_stock_detail(code, client=None):
+    """단일 종목 상세 — {'valuation':{per,pbr,...}, 'financials':[분기...]}. 5분 캐시.
+    /live 상세용(재무 체력 + 밸류). 키없음/실패면 빈 dict."""
+    client = client or _client()
+    if client is None:
+        return {}
+    hit = _detail_cache.get(code)
+    if hit and time.time() - hit[0] < _DETAIL_TTL:
+        return hit[1]
+    val, fin = None, []
+    try:
+        val = await client.fundamentals(code)
+        fin = await client.financials(code)
+    except Exception:
+        return (hit[1] if hit else {})
+    data = {"valuation": val, "financials": fin[:4]}   # 최근 4분기
+    _detail_cache[code] = (time.time(), data)
+    return data
+
+
 async def get_fundamentals(codes, client=None):
     """{code: {per,pbr,eps,bps,w52_high,w52_low,w52_pos}} — 코드별 5분 캐시. 실패 코드는 생략."""
     client = client or _client()

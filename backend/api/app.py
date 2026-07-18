@@ -288,6 +288,14 @@ def create_app(settings=None) -> FastAPI:
         codes = userstore.get_kr_codes(_req_email(request, settings))
         return JSONResponse(await marketdata.get_fundamentals(codes))
 
+    @app.get("/api/financials/{code}")
+    async def financials_api(code: str):
+        """단일 종목 재무 체력(ROE·부채·매출성장) + 밸류 — /live 상세. 6자리 코드만."""
+        from backend.api import marketdata
+        if not _CODE_RE.match(code):
+            return Response(status_code=404)
+        return JSONResponse(await marketdata.get_stock_detail(code))
+
     @app.get("/api/widget")
     async def widget_api(request: Request):
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
