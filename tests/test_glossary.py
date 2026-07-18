@@ -31,3 +31,36 @@ def test_terms_in_excludes_substring_false_positive():
     assert "과매수" in keys
     assert "RSI" in keys
     assert "매수" not in keys   # 과매수의 부분문자열이라 제외돼야 함
+
+
+# ── 값 인식형 쉬운말 리더 (내일예상 고도화, 2026-07-18) ──
+from backend.education.glossary import (
+    read_per, read_pbr, read_w52_pos, read_roe, read_debt, read_bid_ratio, read_flow)
+
+
+def test_read_per_bands():
+    assert read_per(None) is None
+    assert "적자" in read_per(0)                 # <=0
+    assert "싼 편" in read_per(8)
+    assert "보통" in read_per(15)
+    assert "비싼 편" in read_per(31)
+    assert "매우 비쌈" in read_per(80)
+
+
+def test_read_w52_debt_flow():
+    assert "고점 부근" in read_w52_pos(85)
+    assert "저점 부근" in read_w52_pos(12)
+    assert "적은 편" in read_debt(36)            # 안정
+    assert "많은 편" in read_debt(180)
+    assert read_flow(None, None) is None
+    assert "쌍끌이" in read_flow(1000, 2000)
+    assert "동반 순매도" in read_flow(-500, -300)
+    assert "혼조" in read_flow(1000, -300)
+
+
+def test_read_roe_pbr_bidratio():
+    assert "잘 버는" in read_roe(61)
+    assert "약한" in read_roe(2)
+    assert read_pbr(0) is None
+    assert "순자산보다 싸게" in read_pbr(0.8)
+    assert "사자" in read_bid_ratio(60) and "팔자" in read_bid_ratio(40)

@@ -92,3 +92,86 @@ def terms_in(text: str):
     found = [t for t in found
              if not any(t.key != other and t.key in other for other in found_keys)]
     return found
+
+
+# ── 값 인식형 쉬운말 리더 — 지금 값을 초보 문장 한 줄로(내일예상 고도화). 순수 함수. ──
+from typing import Optional
+
+
+def _g(v) -> str:
+    return "%g" % v
+
+
+def read_per(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v <= 0:
+        return "PER — 적자거나 계산 불가라 PER로는 판단이 어려워요"
+    if v < 10:
+        return "PER %s — 이익 대비 싼 편이에요 (업종마다 달라요)" % _g(v)
+    if v < 20:
+        return "PER %s — 보통 수준이에요" % _g(v)
+    if v < 40:
+        return "PER %s — 이익의 %s배, 비싼 편이에요" % (_g(v), _g(v))
+    return "PER %s — 매우 비쌈(기대가 크게 반영)" % _g(v)
+
+
+def read_pbr(v) -> Optional[str]:
+    if v is None or v <= 0:
+        return None
+    if v < 1:
+        return "PBR %s — 순자산보다 싸게 거래돼요" % _g(v)
+    if v < 2:
+        return "PBR %s — 보통 수준" % _g(v)
+    return "PBR %s — 순자산의 %s배, 비싼 편" % (_g(v), _g(v))
+
+
+def read_w52_pos(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v >= 80:
+        return "52주 %s%% — 1년 고점 부근" % _g(v)
+    if v <= 20:
+        return "52주 %s%% — 1년 저점 부근" % _g(v)
+    return "52주 %s%% — 1년 범위 중간쯤" % _g(v)
+
+
+def read_roe(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v >= 15:
+        return "ROE %s%% — 자본 대비 잘 버는 편" % _g(v)
+    if v >= 5:
+        return "ROE %s%% — 보통" % _g(v)
+    return "ROE %s%% — 수익성 약한 편" % _g(v)
+
+
+def read_debt(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v < 50:
+        return "부채비율 %s%% — 빚 적은 편, 안정적" % _g(v)
+    if v < 150:
+        return "부채비율 %s%% — 보통 수준" % _g(v)
+    return "부채비율 %s%% — 빚 많은 편, 주의" % _g(v)
+
+
+def read_bid_ratio(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v >= 55:
+        return "매수세 %s%% — 사자(받침)가 더 두꺼움" % _g(v)
+    if v <= 45:
+        return "매수세 %s%% — 팔자(벽)가 더 두꺼움" % _g(v)
+    return "매수세 %s%% — 사자·팔자 팽팽" % _g(v)
+
+
+def read_flow(frgn_net, orgn_net) -> Optional[str]:
+    if frgn_net is None and orgn_net is None:
+        return None
+    f, o = frgn_net or 0, orgn_net or 0
+    if f > 0 and o > 0:
+        return "외국인·기관 쌍끌이 순매수 — 수급 받침"
+    if f < 0 and o < 0:
+        return "외국인·기관 동반 순매도 — 수급 부담"
+    return "외국인·기관 수급 혼조"
