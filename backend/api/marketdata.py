@@ -11,7 +11,7 @@ import time
 
 from backend.config import settings
 from backend.education import glossary
-from backend.signals import nextday
+from backend.signals import nextday, situation
 
 _IDX_TTL = 30.0            # 지수 30초
 _FUN_TTL = 300.0          # 밸류 5분(일 단위로만 바뀜)
@@ -84,9 +84,52 @@ async def get_stock_detail(code, client=None):
         fin = await client.financials(code)
     except Exception:
         return (hit[1] if hit else {})
+    has_adr = code in getattr(settings, "adr_map", {})
+    keys = ["per", "pbr", "w52", "roe", "debt", "flow", "bid_ratio", "index"]
+    if has_adr:
+        keys.append("adr")                             # ADR 개념은 ADR 종목에만
+    concepts = {k: glossary.concept(k) for k in keys if glossary.concept(k)}
     data = {"valuation": val, "financials": fin[:4],   # 최근 4분기
-            "explains": _explains(val, fin)}           # 값 인식형 쉬운말(순수)
+            "explains": _explains(val, fin),           # 값 인식형 쉬운말(순수)
+            "concepts": concepts, "has_adr": has_adr}   # 개념설명(ⓘ) + ADR 유무(패널 제어)
     _detail_cache[code] = (time.time(), data)
+    return data
+
+
+def _phase(has_adr) -> str:
+    """이 종목의 현재 장 단계 표시. KR은 프리장 없음 → 정규장 밖이면 '장 종료'.
+    ADR 종목만 밤사이 미국 정규장 중 'DR 거래 중'."""
+    from backend.flow import adr, market_status
+    if market_status.wallclock_open():
+        return "장중"
+    if has_adr and adr.us_market_open():
+        return "정규장 마감 · 나스닥 DR 거래 중"
+    return "장 종료"
+
+
+_READ_TTL = 60.0
+_read_cache: dict = {}   # code -> (ts, dict)
+
+
+async def get_stock_read(code, client=None):
+    """‌/live 종합 읽기 — 신호 1회 수집으로 내일예상(outlook)+오늘현황(situation)+phase+has_adr."""
+    has_adr0 = code in getattr(settings, "adr_map", {})
+    client = client or _client()
+    if client is None:
+        return {"outlook": None, "situation": None, "phase": _phase(has_adr0),
+                "has_adr": has_adr0}
+    hit = _read_cache.get(code)
+    if hit and time.time() - hit[0] < _READ_TTL:
+        return hit[1]
+    sig = await _gather_signals(code, client)
+    detail = await get_stock_detail(code, client)
+    val, fin = detail.get("valuation"), detail.get("financials")
+    has_adr = sig.get("has_adr", has_adr0)
+    o = (nextday.outlook(sig)
+         if any(sig.get(k) for k in ("us", "adr", "flow", "momentum")) else None)
+    data = {"outlook": o, "situation": situation.commentary(sig, val, fin),
+            "phase": _phase(has_adr), "has_adr": has_adr}
+    _read_cache[code] = (time.time(), data)
     return data
 
 

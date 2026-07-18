@@ -295,7 +295,7 @@ def create_app(settings=None) -> FastAPI:
         if not _CODE_RE.match(code):
             return Response(status_code=404)
         detail = await marketdata.get_stock_detail(code)
-        detail["outlook"] = await marketdata.get_outlook(code)   # 내일 예상(풀) 병합
+        detail.update(await marketdata.get_stock_read(code))   # outlook+situation+phase+has_adr
         return JSONResponse(detail)
 
     @app.get("/api/outlook")
