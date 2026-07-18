@@ -42,6 +42,14 @@ __BASE_CSS__
 .obbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2)}
 .obbid{background:#d32f2f}.obask{background:#1565c0}
 .obtxt{font-size:12px;color:var(--text-2);margin-top:3px;font-weight:600}
+ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);font-weight:500}
+.hero .nd{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--surface)}
+.nd .ndh{display:flex;align-items:baseline;gap:2px;flex-wrap:wrap}
+.nd .badge-nd{font-weight:800;font-size:14px}
+.nd.up .badge-nd{color:var(--up)}.nd.down .badge-nd{color:var(--down)}.nd.neutral .badge-nd{color:var(--text-2)}
+.nd .ndf{font-size:11.5px;color:var(--text-2)}
+.nd ul{margin:7px 0 0;padding-left:17px;font-size:12.5px;color:var(--text)}
+.nd .cau{margin-top:6px;font-size:11.5px;color:var(--text-2)}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
@@ -175,6 +183,7 @@ __BASE_CSS__
   <div class="note" id="walert"></div>
   <div class="fin" id="fin" style="display:none"></div>
   <div class="ob" id="ob" style="display:none"></div>
+  <div class="nd" id="nd" style="display:none"></div>
 </div>
 
 <div class="glance" id="glance"></div>
@@ -388,16 +397,31 @@ async function loadFin(){
   try{
     const r=await fetch('/api/financials/'+CODE); if(!r.ok)return;
     const d=await r.json(); const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
+    // 숫자 요약 + 지표마다 쉬운말(항상 병기)
     const bits=[];
     if(v.per!=null)bits.push('PER '+v.per.toFixed(1));
     if(v.pbr!=null)bits.push('PBR '+v.pbr.toFixed(1));
     if(v.w52_pos!=null)bits.push('52주 '+Math.round(v.w52_pos)+'%');
     if(f.roe!=null)bits.push('ROE '+f.roe.toFixed(0)+'%');
     if(f.debt!=null)bits.push('부채 '+f.debt.toFixed(0)+'%');
-    if(!bits.length)return;
-    const el=document.getElementById('fin');
-    el.textContent='📊 '+bits.join('  ·  ')+(f.period?'  ('+f.period+' 기준)':'');
-    el.style.display='block';
+    if(bits.length){
+      const ex=d.explains||{};
+      const reads=['per','w52','roe','debt','pbr'].map(k=>ex[k]).filter(Boolean);
+      let h='📊 '+bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
+      if(reads.length) h+='<ul class="finex">'+reads.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+      const el=document.getElementById('fin'); el.innerHTML=h; el.style.display='block';
+    }
+    // 🔮 내일 예상 카드 — 배지 + 근거 + 주의(fin 숫자 없어도 독립 표시)
+    const o=d.outlook, nd=document.getElementById('nd');
+    if(o&&o.direction){
+      const ko={up:'🔴 강세 우세',down:'🔵 약세 우세',neutral:'⚪ 중립'}[o.direction]||'';
+      nd.className='nd '+o.direction;
+      nd.innerHTML='<div class="ndh"><span class="badge-nd">🔮 내일 예상: '+ko+'</span>'
+        +'<span class="ndf"> · '+esc(o.framing)+'</span></div>'
+        +'<ul>'+(o.reasons||[]).map(x=>'<li>'+esc(x.text)+'</li>').join('')+'</ul>'
+        +'<div class="cau">⚠ '+esc(o.caution)+'</div>';
+      nd.style.display='block';
+    }
   }catch(e){}
 }
 loadFin();
