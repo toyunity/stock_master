@@ -54,6 +54,9 @@ h1 small{font-size:13px;color:var(--text-3);font-weight:600}
 .card.hold{border-left:4px solid var(--flat)}
 .name{font-size:17px;font-weight:800;color:var(--text);text-decoration:none;letter-spacing:-.01em}
 a.name:active{opacity:.6}
+.market{font-size:13px;margin:2px 0 10px;font-weight:700;letter-spacing:-.01em}
+.mx-up{color:#d32f2f}.mx-down{color:#1565c0}.mx-flat{color:var(--text-2)}
+.cval{font-size:12px;color:var(--text-2);font-weight:600}
 .conf{font-size:13px;color:var(--text-2);margin-top:6px}
 .chg{font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
 .chart{height:180px;margin:10px 0}
@@ -108,6 +111,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 <div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
  · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
+<div id="market" class="market" style="display:none"></div>
 <div class="card" id="semi" style="display:none">
   <b>🔬 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
   <div class="conf" id="semi-flow"></div>
@@ -153,6 +157,7 @@ function cardHtml(s){
   h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
   if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
+  h+='<span class="cval" data-code="'+esc(s.code)+'"></span>';   // 밸류지표(PER·PBR·52주) — loadFundamentals가 채움
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -245,6 +250,39 @@ async function loadPrices(){
   }catch(e){}
 }
 loadPrices(); setInterval(loadPrices, 12000);
+// ── 시장 지수(코스피·코스닥) 상단 컨텍스트 — /api/market(장외에도 캐시 직전값). 30초. ──
+async function loadMarket(){
+  try{
+    const r=await fetch('/api/market'); if(!r.ok)return;
+    const d=await r.json(); const el=document.getElementById('market');
+    function ix(o,label){
+      if(!o||o.price==null)return '';
+      const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
+      const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
+      return '<span class="mx-'+cls+'">'+label+' '+o.price.toLocaleString()+' '+ar+Math.abs(o.rate||0).toFixed(2)+'%</span>';
+    }
+    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥')].filter(Boolean);
+    if(parts.length){ el.innerHTML=parts.join(' &nbsp;·&nbsp; '); el.style.display='block'; }
+  }catch(e){}
+}
+loadMarket(); setInterval(loadMarket,30000);
+// ── 관심종목 밸류지표(PER·PBR·52주 위치) — /api/fundamentals(느리게 변해 5분). ──
+async function loadFundamentals(){
+  try{
+    const r=await fetch('/api/fundamentals'); if(!r.ok)return;
+    const d=await r.json();
+    for(const code in d){
+      const f=d[code]; if(!f)continue;
+      const bits=[];
+      if(f.per!=null)bits.push('PER '+f.per.toFixed(1));
+      if(f.pbr!=null)bits.push('PBR '+f.pbr.toFixed(1));
+      if(f.w52_pos!=null)bits.push('52주 '+Math.round(f.w52_pos)+'%');
+      if(!bits.length)continue;
+      document.querySelectorAll('.cval[data-code="'+code+'"]').forEach(function(el){ el.textContent=' · '+bits.join(' · '); });
+    }
+  }catch(e){}
+}
+loadFundamentals(); setInterval(loadFundamentals,300000);
 // ── 관심종목 편집(v2 2026-07-17): items 계약({items:[{code,market,shares,avg}]}) 전체 교체 POST.
 //    순서·삭제·보유는 아래 관리 리스트(별도 <script>)가 담당. 여기엔 공유 유틸 + 검색 담기만. ──
 const WATCH = D.stocks.map(s=>s.code);   // 검색 담기 버튼 표시용(KR 카드 코드)

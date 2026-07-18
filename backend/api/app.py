@@ -274,6 +274,20 @@ def create_app(settings=None) -> FastAPI:
         codes = userstore.get_kr_codes(_req_email(request, settings))
         return JSONResponse({"open": True, "prices": await fetch_live_prices(codes)})
 
+    @app.get("/api/market")
+    async def market_api():
+        """시장 지수(코스피·코스닥) — 대시보드 상단 컨텍스트. 장외에도 직전값(캐시). 키없음이면 {}."""
+        from backend.api import marketdata
+        return JSONResponse(await marketdata.get_indices() or {})
+
+    @app.get("/api/fundamentals")
+    async def fundamentals_api(request: Request):
+        """관심종목 밸류지표(PER/PBR/52주 위치) — 대시보드 카드 칩. 느리게 변해 별도 저빈도 조회."""
+        from backend.api import marketdata
+        from backend.flow import userstore
+        codes = userstore.get_kr_codes(_req_email(request, settings))
+        return JSONResponse(await marketdata.get_fundamentals(codes))
+
     @app.get("/api/widget")
     async def widget_api(request: Request):
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
