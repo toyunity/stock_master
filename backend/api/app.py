@@ -294,7 +294,17 @@ def create_app(settings=None) -> FastAPI:
         from backend.api import marketdata
         if not _CODE_RE.match(code):
             return Response(status_code=404)
-        return JSONResponse(await marketdata.get_stock_detail(code))
+        detail = await marketdata.get_stock_detail(code)
+        detail["outlook"] = await marketdata.get_outlook(code)   # 내일 예상(풀) 병합
+        return JSONResponse(detail)
+
+    @app.get("/api/outlook")
+    async def outlook_api(request: Request):
+        """관심종목 내일 예상(경량 배지) — 대시보드가 fetch. code→{direction,reason}."""
+        from backend.api import marketdata
+        from backend.flow import userstore
+        codes = userstore.get_kr_codes(_req_email(request, settings))
+        return JSONResponse(await marketdata.get_outlook_brief(codes))
 
     @app.get("/api/topview")
     async def topview_api():

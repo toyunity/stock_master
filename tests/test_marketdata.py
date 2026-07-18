@@ -84,6 +84,42 @@ def test_get_top_view_joins_names_and_caches():
     assert c.calls == 1
 
 
+def test_get_outlook_assembles_and_caches(monkeypatch):
+    from backend.api import marketdata as md
+    md._outlook_cache.clear()
+
+    async def fake_signals(code, client):
+        return {"session": "us_closed", "is_semi": True,
+                "us": {"sox_rate": 2.1, "nasdaq_rate": 1.0, "us_open": False},
+                "adr": {"overnight_rate": 2.0}, "flow": {"frgn_net": 1, "orgn_net": 1},
+                "momentum": {"rate": 1.0, "overheated": False}}
+    monkeypatch.setattr(md, "_gather_signals", fake_signals)
+
+    class C:
+        pass
+    c = C()
+    o = asyncio.run(md.get_outlook("000660", client=c))
+    assert o["direction"] == "up" and o["reasons"]
+    o2 = asyncio.run(md.get_outlook("000660", client=c))      # 60초 캐시
+    assert o2 is o
+
+
+def test_get_stock_detail_includes_explains():
+    """상세에 값 인식형 쉬운말(explains)이 붙는다 — 순수, 네트워크 없음."""
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class C:
+        async def fundamentals(self, code):
+            return {"per": 31.24, "pbr": 10.55, "w52_pos": 58.0}
+        async def financials(self, code):
+            return [{"period": "2026-03", "roe": 61.0, "debt": 36.0}]
+    d = asyncio.run(md.get_stock_detail("000660", client=C()))
+    assert "비싼 편" in d["explains"]["per"]
+    assert "잘 버는" in d["explains"]["roe"]
+    assert "적은 편" in d["explains"]["debt"]
+
+
 def test_get_asking_caches():
     from backend.api import marketdata as md
     md._ask_cache.clear()

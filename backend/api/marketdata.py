@@ -10,6 +10,8 @@ import asyncio
 import time
 
 from backend.config import settings
+from backend.education import glossary
+from backend.signals import nextday
 
 _IDX_TTL = 30.0            # 지수 30초
 _FUN_TTL = 300.0          # 밸류 5분(일 단위로만 바뀜)
@@ -82,9 +84,95 @@ async def get_stock_detail(code, client=None):
         fin = await client.financials(code)
     except Exception:
         return (hit[1] if hit else {})
-    data = {"valuation": val, "financials": fin[:4]}   # 최근 4분기
+    data = {"valuation": val, "financials": fin[:4],   # 최근 4분기
+            "explains": _explains(val, fin)}           # 값 인식형 쉬운말(순수)
     _detail_cache[code] = (time.time(), data)
     return data
+
+
+def _explains(val, fin) -> dict:
+    """valuation+financials → 지표 쉬운말 맵(값 없으면 키 생략). 순수·네트워크 없음."""
+    v = val or {}
+    f = (fin or [{}])[0] if fin else {}
+    out = {"per": glossary.read_per(v.get("per")),
+           "pbr": glossary.read_pbr(v.get("pbr")),
+           "w52": glossary.read_w52_pos(v.get("w52_pos")),
+           "roe": glossary.read_roe(f.get("roe")),
+           "debt": glossary.read_debt(f.get("debt"))}
+    return {k: x for k, x in out.items() if x}
+
+
+_OUTLOOK_TTL = 60.0
+_outlook_cache: dict = {}   # code -> (ts, dict)
+
+
+async def _gather_signals(code, client) -> dict:
+    """내일 예상 신호 수집 — 미국(반도체)·ADR 오버나잇·오늘 수급·모멘텀. 부분 실패 허용.
+    세션은 market_status/adr로 판정. 웹소켓 미사용(REST만)."""
+    from backend.flow import semi, adr, market_status
+    sig = {"us": None, "adr": None, "flow": None, "momentum": None}
+    sig["is_semi"] = (code in getattr(settings, "semi_kr", [])
+                      or code in getattr(settings, "adr_map", {}))
+    us_open = adr.us_market_open()
+    kr_open = market_status.wallclock_open()
+    sig["session"] = ("kr_open" if kr_open else "us_live" if us_open else "us_closed")
+    try:
+        ov = await semi.get_overview()
+        g = {x.get("sym"): x for x in (ov.get("us") or [])}
+        sig["us"] = {"sox_rate": (g.get("SOX") or {}).get("rate"),
+                     "nasdaq_rate": (g.get("SOXX") or {}).get("rate"),
+                     "us_open": ov.get("us_open")}
+    except Exception:
+        pass
+    try:
+        q = await adr.get_quote(client, code)
+        if q and q.get("usd") and q.get("base_usd"):
+            sig["adr"] = {"overnight_rate": (q["usd"] / q["base_usd"] - 1) * 100}
+    except Exception:
+        pass
+    try:
+        rows = await client.daily_investor(code)
+        if rows:
+            sig["flow"] = {"frgn_net": rows[0].get("frgn"), "orgn_net": rows[0].get("orgn")}
+    except Exception:
+        pass
+    try:
+        p = await client.price(code)
+        if p and p.get("rate") is not None:
+            sig["momentum"] = {"rate": p["rate"], "overheated": p["rate"] >= 10}
+    except Exception:
+        pass
+    return sig
+
+
+async def get_outlook(code, client=None):
+    """단일 종목 내일 예상(풀) — 신호 수집 후 규칙 엔진. 60초 캐시. 신호 전멸이면 None."""
+    client = client or _client()
+    if client is None:
+        return None
+    hit = _outlook_cache.get(code)
+    if hit and time.time() - hit[0] < _OUTLOOK_TTL:
+        return hit[1]
+    sig = await _gather_signals(code, client)
+    if not any(sig.get(k) for k in ("us", "adr", "flow", "momentum")):
+        return None
+    o = nextday.outlook(sig)
+    _outlook_cache[code] = (time.time(), o)
+    return o
+
+
+async def get_outlook_brief(codes, client=None):
+    """관심종목 경량 내일 예상 — code→{direction,reason}. get_outlook 캐시 공유."""
+    client = client or _client()
+    if client is None or not codes:
+        return {}
+    out = {}
+    for c in codes[:12]:
+        o = await get_outlook(c, client)
+        if o:
+            reason = o["reasons"][0]["text"] if o["reasons"] else o["framing"]
+            out[c] = {"direction": o["direction"], "reason": reason}
+    return out
 
 
 _TOPVIEW_TTL = 60.0
