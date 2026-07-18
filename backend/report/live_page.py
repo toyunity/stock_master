@@ -50,6 +50,14 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .nd .ndf{font-size:11.5px;color:var(--text-2)}
 .nd ul{margin:7px 0 0;padding-left:17px;font-size:12.5px;color:var(--text)}
 .nd .cau{margin-top:6px;font-size:11.5px;color:var(--text-2)}
+.hero .sit{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--surface)}
+.sit .sith{font-weight:800;font-size:14px;display:flex;align-items:center;flex-wrap:wrap}
+.sit .phase{font-size:11px;font-weight:700;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:1px 9px;margin-left:8px}
+.sit ul{margin:8px 0 0;padding-left:16px;font-size:13px;color:var(--text);display:flex;flex-direction:column;gap:4px}
+.sit .cau{margin-top:7px;font-size:11px;color:var(--text-2)}
+.finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
+.finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
+.finex .cexp.on{display:block}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
@@ -183,6 +191,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   <div class="note" id="walert"></div>
   <div class="fin" id="fin" style="display:none"></div>
   <div class="ob" id="ob" style="display:none"></div>
+  <div class="sit" id="sit" style="display:none"></div>
   <div class="nd" id="nd" style="display:none"></div>
 </div>
 
@@ -405,11 +414,28 @@ async function loadFin(){
     if(f.roe!=null)bits.push('ROE '+f.roe.toFixed(0)+'%');
     if(f.debt!=null)bits.push('부채 '+f.debt.toFixed(0)+'%');
     if(bits.length){
-      const ex=d.explains||{};
-      const reads=['per','w52','roe','debt','pbr'].map(k=>ex[k]).filter(Boolean);
+      const ex=d.explains||{}, co=d.concepts||{};
       let h='📊 '+bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
-      if(reads.length) h+='<ul class="finex">'+reads.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+      // 지표마다 쉬운말(항상) + ⓘ 탭하면 개념 설명 펼침
+      const rows=['per','w52','roe','debt','pbr'].filter(k=>ex[k]).map(function(k){
+        const c=co[k]; let li='<li>'+esc(ex[k]);
+        if(c) li+='<span class="qi" data-k="'+k+'">ⓘ</span>'
+          +'<div class="cexp" id="cexp-'+k+'"><b>'+esc(c.title)+'</b> — '+esc(c.body)+'</div>';
+        return li+'</li>';
+      });
+      if(rows.length) h+='<ul class="finex">'+rows.join('')+'</ul>';
       const el=document.getElementById('fin'); el.innerHTML=h; el.style.display='block';
+      el.querySelectorAll('.qi').forEach(function(q){ q.onclick=function(){
+        const e=document.getElementById('cexp-'+q.dataset.k); if(e)e.classList.toggle('on'); }; });
+    }
+    // 🧭 오늘 현황 — 서술 + 장 단계(phase는 항상, 프리장 없는 KR은 '장 종료')
+    const sit=d.situation||{}, sp=document.getElementById('sit');
+    if(d.phase){
+      let sh='<div class="sith">🧭 오늘 현황<span class="phase">'+esc(d.phase)+'</span></div>';
+      const ss=sit.sentences||[];
+      if(ss.length) sh+='<ul>'+ss.map(x=>'<li>'+esc(x)+'</li>').join('')
+        +'</ul><div class="cau">⚠ '+esc(sit.caution||'')+'</div>';
+      sp.innerHTML=sh; sp.style.display='block';
     }
     // 🔮 내일 예상 카드 — 배지 + 근거 + 주의(fin 숫자 없어도 독립 표시)
     const o=d.outlook, nd=document.getElementById('nd');
