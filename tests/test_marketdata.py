@@ -65,6 +65,25 @@ def test_get_stock_detail_assembles_and_caches():
     assert c.calls == 1
 
 
+def test_get_top_view_joins_names_and_caches():
+    from backend.api import marketdata as md
+    md._topview_cache["ts"], md._topview_cache["data"] = 0.0, None
+
+    class C:
+        def __init__(self):
+            self.calls = 0
+        async def top_view(self):
+            self.calls += 1
+            return ["005930", "000660"]
+
+    c = C()
+    d = asyncio.run(md.get_top_view(client=c))
+    assert [x["code"] for x in d] == ["005930", "000660"]
+    assert all(x.get("name") for x in d)               # 이름 조인(universe/하드코딩 폴백)
+    asyncio.run(md.get_top_view(client=c))             # 60초 캐시
+    assert c.calls == 1
+
+
 def test_get_asking_caches():
     from backend.api import marketdata as md
     md._ask_cache.clear()

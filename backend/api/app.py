@@ -296,6 +296,12 @@ def create_app(settings=None) -> FastAPI:
             return Response(status_code=404)
         return JSONResponse(await marketdata.get_stock_detail(code))
 
+    @app.get("/api/topview")
+    async def topview_api():
+        """조회상위(인기 종목) — 발굴. 스캐너가 fetch. 코드만 오는 걸 universe로 이름 조인."""
+        from backend.api import marketdata
+        return JSONResponse({"items": await marketdata.get_top_view()})
+
     @app.get("/api/asking/{code}")
     async def asking_api(code: str):
         """호가 사다리(매도벽·매수받침·매수세%) — /live REST 폴링(실시간 WS 세션 회피). 6자리만."""

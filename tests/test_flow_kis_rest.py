@@ -37,6 +37,17 @@ def test_parse_fundamentals_handles_missing_and_failure():
     assert f["w52_pos"] is None                                 # 52주 결측 → 위치 None
 
 
+def test_parse_top_view():
+    """hts-top-view(HHMCM000100C0) → 조회상위 코드 배열(순위순, 빈코드 제외). 실측: 코드만 옴."""
+    from backend.flow.kis import parse_top_view
+    js = {"rt_cd": "0", "output1": [
+        {"mrkt_div_cls_code": "J", "mksc_shrn_iscd": "005930"},
+        {"mrkt_div_cls_code": "J", "mksc_shrn_iscd": "000660"},
+        {"mrkt_div_cls_code": "J", "mksc_shrn_iscd": ""}]}
+    assert parse_top_view(js) == ["005930", "000660"]
+    assert parse_top_view({"rt_cd": "1"}) == []
+
+
 def test_parse_asking():
     """inquire-asking-price-exp-ccn(output1) → 호가 사다리 + 총잔량 + 매수세%. 실측 SK하이닉스."""
     from backend.flow.kis import parse_asking

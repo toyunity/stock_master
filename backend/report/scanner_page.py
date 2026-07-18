@@ -38,6 +38,7 @@ td a{font-weight:700;color:var(--text)}
 확정치는 다음 영업일 제공. <span id="asof"></span></div>
 <div id="err"></div>
 <div id="body">불러오는 중…</div>
+<div id="topview"></div>
 <div class="disc">__DISCLAIMER__ 스캐너의 종목 나열은 데이터 정렬 결과일 뿐 매수 추천이 아닙니다.</div>
 <script>
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
@@ -104,6 +105,19 @@ async function load(){
 }
 load();
 setInterval(load, 60000);
+// ── 인기 조회 상위(발굴) — /api/topview. #body와 분리된 컨테이너라 render()가 안 지운다. ──
+async function loadTopView(){
+  try{
+    const r=await fetch('/api/topview'); if(!r.ok)return;
+    const d=await r.json(); const items=(d&&d.items)||[];
+    const box=document.getElementById('topview');
+    if(!items.length){ box.innerHTML=''; return; }
+    box.innerHTML='<div class="panel"><h2>👀 인기 조회 상위</h2>'
+      +'<div class="fresh">HTS 기준 많이 본 종목 · 발굴용</div>'+tbl(items,[['종목',nameTd]],10)+'</div>';
+  }catch(e){}
+}
+loadTopView();
+setInterval(loadTopView, 60000);
 </script></div>__TABBAR__ __NAV_LOADER__</div></body></html>"""
 
 

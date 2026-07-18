@@ -252,6 +252,20 @@ def parse_fundamentals(js: dict) -> Optional[dict]:
             "w52_high": hi or None, "w52_low": lo or None, "w52_pos": pos}
 
 
+def parse_top_view(js: dict) -> list:
+    """hts-top-view(HHMCM000100C0) → 조회상위 종목코드 배열(순위순). 코드만 옴(이름 없음)
+    → 상위에서 universe로 이름 조인. 실패는 []."""
+    if js.get("rt_cd") != "0":
+        return []
+    rows = js.get("output1") or js.get("output") or []
+    out = []
+    for r in rows:
+        c = str(r.get("mksc_shrn_iscd", "")).strip()
+        if c:
+            out.append(c)
+    return out
+
+
 def parse_asking(js: dict) -> Optional[dict]:
     """inquire-asking-price-exp-ccn(output1) → {asks,bids(각 price/qty 사다리),total_ask,
     total_bid,bid_ratio}. 실시간 H0STASP0와 동일 데이터의 REST 스냅샷(WS 세션 회피)."""
@@ -442,6 +456,12 @@ class KisClient:
                              "FHKST01010100",
                              {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
         return parse_fundamentals(js)
+
+    async def top_view(self) -> list:
+        """조회상위(HTS 기준 많이 본 종목) 코드 배열 — 발굴용. 이름은 상위에서 조인."""
+        js = await self._get("/uapi/domestic-stock/v1/ranking/hts-top-view",
+                             "HHMCM000100C0", {})
+        return parse_top_view(js)
 
     async def asking_price(self, code: str) -> Optional[dict]:
         """호가 사다리 스냅샷(REST) — 실시간 H0STASP0 대신(1키1세션 회피). /live 폴링용."""

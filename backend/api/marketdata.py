@@ -87,6 +87,30 @@ async def get_stock_detail(code, client=None):
     return data
 
 
+_TOPVIEW_TTL = 60.0
+_topview_cache = {"ts": 0.0, "data": None}
+
+
+async def get_top_view(client=None):
+    """조회상위(인기) — [{code,name}] 상위 10. 60초 캐시. 코드→이름은 universe 조인."""
+    client = client or _client()
+    if client is None:
+        return []
+    if _topview_cache["data"] is not None and time.time() - _topview_cache["ts"] < _TOPVIEW_TTL:
+        return _topview_cache["data"]
+    try:
+        codes = await client.top_view()
+    except Exception:
+        return _topview_cache["data"] or []
+    from backend.market import universe as _universe
+    from backend.news.names import resolve_name
+    names = _universe.name_map(_universe.get_cached())
+    data = [{"code": c, "name": resolve_name(c, names)} for c in codes[:10]]
+    if data:
+        _topview_cache["ts"], _topview_cache["data"] = time.time(), data
+    return data
+
+
 async def get_fundamentals(codes, client=None):
     """{code: {per,pbr,eps,bps,w52_high,w52_low,w52_pos}} — 코드별 5분 캐시. 실패 코드는 생략."""
     client = client or _client()
