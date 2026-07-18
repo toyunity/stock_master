@@ -57,6 +57,8 @@ a.name:active{opacity:.6}
 .market{font-size:13px;margin:2px 0 10px;font-weight:700;letter-spacing:-.01em}
 .mx-up{color:#d32f2f}.mx-down{color:#1565c0}.mx-flat{color:var(--text-2)}
 .cval{font-size:12px;color:var(--text-2);font-weight:600}
+.cnd{font-size:12px;margin-top:2px;font-weight:700}
+.cnd.up{color:#d32f2f}.cnd.down{color:#1565c0}.cnd.neutral{color:var(--text-2)}
 .conf{font-size:13px;color:var(--text-2);margin-top:6px}
 .chg{font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
 .chart{height:180px;margin:10px 0}
@@ -158,6 +160,7 @@ function cardHtml(s){
   h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
   if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
   h+='<span class="cval" data-code="'+esc(s.code)+'"></span>';   // 밸류지표(PER·PBR·52주) — loadFundamentals가 채움
+  h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';      // 내일 예상 배지 — loadOutlook이 채움
   h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -283,6 +286,22 @@ async function loadFundamentals(){
   }catch(e){}
 }
 loadFundamentals(); setInterval(loadFundamentals,300000);
+// ── 내일 예상 배지 — /api/outlook(경량, code→{direction,reason}). 5분. ──
+async function loadOutlook(){
+  try{
+    const r=await fetch('/api/outlook'); if(!r.ok)return;
+    const d=await r.json();
+    for(const code in d){
+      const o=d[code]; if(!o||!o.direction)continue;
+      const ko={up:'🔴강세',down:'🔵약세',neutral:'⚪중립'}[o.direction]||'';
+      document.querySelectorAll('.cnd[data-code="'+code+'"]').forEach(function(el){
+        el.className='cnd '+o.direction;
+        el.textContent='🔮 내일 '+ko+(o.reason?' · '+o.reason:'');
+      });
+    }
+  }catch(e){}
+}
+loadOutlook(); setInterval(loadOutlook,300000);
 // ── 관심종목 편집(v2 2026-07-17): items 계약({items:[{code,market,shares,avg}]}) 전체 교체 POST.
 //    순서·삭제·보유는 아래 관리 리스트(별도 <script>)가 담당. 여기엔 공유 유틸 + 검색 담기만. ──
 const WATCH = D.stocks.map(s=>s.code);   // 검색 담기 버튼 표시용(KR 카드 코드)
