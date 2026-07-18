@@ -87,6 +87,39 @@ def test_refresh_after_sec_open_vs_closed():
     assert ms.refresh_after_sec(False, _kst(2026, 7, 17, 8, 0)) == 3600
 
 
+def test_parse_holidays_maps_open_days():
+    """chk-holiday(CTCA0903R) output → {YYYYMMDD: 개장여부}. 실응답 픽스처(2026-07 실측)."""
+    from backend.flow import market_status as ms
+    js = {"rt_cd": "0", "output": [
+        {"bass_dt": "20260718", "wday_dvsn_cd": "07", "opnd_yn": "N"},   # 토
+        {"bass_dt": "20260720", "wday_dvsn_cd": "02", "opnd_yn": "Y"},   # 월
+        {"bass_dt": "20260721", "wday_dvsn_cd": "03", "opnd_yn": "Y"},   # 화
+    ]}
+    hol = ms.parse_holidays(js)
+    assert hol == {"20260718": False, "20260720": True, "20260721": True}
+    assert ms.parse_holidays({"rt_cd": "1"}) == {}   # 실패 응답 → 빈 맵
+
+
+def test_next_open_sec_skips_holiday():
+    """개장일 달력이 있으면 공휴일을 건너뛴다 — 금 16시, 월(20일)이 휴장이면 화(21일) 09시."""
+    import datetime as _dt
+    from backend.flow import market_status as ms
+    open_days = {"20260720": False, "20260721": True}   # 월 휴장, 화 개장(가정)
+    now = _kst(2026, 7, 17, 16, 0)                       # 금요일 장 마감 후
+    sec = ms.next_open_sec(now, open_days=open_days)
+    target = now + _dt.timedelta(seconds=sec)
+    assert target.date() == _dt.date(2026, 7, 21) and target.hour == 9   # 화 09:00
+
+
+def test_next_open_sec_default_weekend_only_unchanged():
+    """open_days 없으면 기존 동작(주말만 스킵) 유지 — 금 16시 → 월 09시."""
+    import datetime as _dt
+    from backend.flow import market_status as ms
+    now = _kst(2026, 7, 17, 16, 0)
+    target = now + _dt.timedelta(seconds=ms.next_open_sec(now))
+    assert target.date() == _dt.date(2026, 7, 20) and target.hour == 9   # 월 09:00
+
+
 class _FakeClient:
     def __init__(self, td):
         self._td = td
@@ -112,6 +145,23 @@ def test_get_status_trading_day_open(monkeypatch):
     st = asyncio.run(
         ms.get_status(_FakeClient("2026-07-16"), now=now))
     assert st["open"] is True and st["refresh_after_sec"] == 600
+
+
+def test_get_status_holiday_calendar_demotes_open(monkeypatch):
+    """개장일 달력(chk-holiday)이 있으면, latest_trade_date가 '오늘'로 우겨도 휴장일이면 강등."""
+    from backend.flow import market_status as ms
+    monkeypatch.setattr(ms, "_cache", {"ts": 0.0, "trade_date": None, "wall": None})
+    monkeypatch.setattr(ms, "_hol_cache", {"ts": 0.0, "days": None})
+
+    class C:
+        async def latest_trade_date(self, code="005930"):
+            return "2026-07-20"                       # TR은 오늘을 거래일로 오判定
+        async def holidays(self, bass_dt):
+            return {"20260720": False}                # 달력: 월요일 휴장
+
+    now = _kst(2026, 7, 20, 10, 0)                    # 월 장중(달력상 휴장)
+    st = asyncio.run(ms.get_status(C(), now=now))
+    assert st["open"] is False                        # 달력이 휴장 → open 강등
 
 
 def test_get_status_refetches_on_open_boundary(monkeypatch):

@@ -377,6 +377,14 @@ class KisClient:
                               "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"})
         return parse_latest_trade_date(js)
 
+    async def holidays(self, bass_dt: str) -> dict:
+        """국내 개장일 달력 — {'YYYYMMDD': 개장여부}. bass_dt부터 수십일치(CTCA0903R)."""
+        from backend.flow import market_status
+        js = await self._get("/uapi/domestic-stock/v1/quotations/chk-holiday",
+                             "CTCA0903R",
+                             {"BASS_DT": bass_dt, "CTX_AREA_FK": "", "CTX_AREA_NK": ""})
+        return market_status.parse_holidays(js)
+
     async def investor_detail(self, code: str) -> Optional[dict]:
         """최신 확정일 기관 세부 분해. 장중엔 오늘 날짜가 rt_cd=2로 거부되므로 전일 폴백."""
         import datetime as dt
