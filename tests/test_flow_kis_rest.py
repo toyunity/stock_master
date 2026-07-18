@@ -11,6 +11,59 @@ from backend.flow.kis import (
 )
 
 
+def test_parse_fundamentals_from_inquire_price():
+    """inquire-price(FHKST01010100) output의 밸류 필드 → {per,pbr,eps,bps,52주,52주위치}.
+    필드는 우리가 이미 부르는 응답에 존재(2026-07-18 라이브 실측: SK하이닉스)."""
+    from backend.flow.kis import parse_fundamentals
+    js = {"rt_cd": "0", "output": {
+        "stck_prpr": "1842000", "per": "31.24", "pbr": "10.55",
+        "eps": "58955.00", "bps": "174539.00",
+        "w52_hgpr": "2987000", "w52_lwpr": "245000"}}
+    f = parse_fundamentals(js)
+    assert f["per"] == 31.24 and f["pbr"] == 10.55
+    assert f["eps"] == 58955.0 and f["bps"] == 174539.0
+    assert f["w52_high"] == 2987000 and f["w52_low"] == 245000
+    assert f["w52_pos"] == 58.2                       # (184.2-24.5)/(298.7-24.5)
+
+
+def test_parse_fundamentals_handles_missing_and_failure():
+    from backend.flow.kis import parse_fundamentals
+    assert parse_fundamentals({"rt_cd": "1"}) is None         # 실패 응답
+    # 적자(per/pbr 빈값)·52주 결측 → 해당 필드 None, 크래시 금지
+    f = parse_fundamentals({"rt_cd": "0", "output": {
+        "stck_prpr": "1000", "per": "", "pbr": "0.00", "eps": "-500.00"}})
+    assert f["per"] is None and f["pbr"] is None               # 빈값·0은 None
+    assert f["eps"] == -500.0                                   # 적자 EPS는 음수 유지
+    assert f["w52_pos"] is None                                 # 52주 결측 → 위치 None
+
+
+def test_parse_index():
+    """inquire-index-price(FHPUP02100000) → {price,change,rate,sign}. 실측 코스피(2026-07-18)."""
+    from backend.flow.kis import parse_index
+    js = {"rt_cd": "0", "output": {
+        "bstp_nmix_prpr": "6820.60", "bstp_nmix_prdy_vrss": "-463.81",
+        "prdy_vrss_sign": "5", "bstp_nmix_prdy_ctrt": "-6.37"}}
+    ix = parse_index(js)
+    assert ix == {"price": 6820.60, "change": -463.81, "rate": -6.37, "sign": "down"}
+    assert parse_index({"rt_cd": "1"}) is None
+
+
+def test_parse_financials():
+    """financial-ratio(FHKST66430300) → 최근 분기 배열 {period,roe,eps,debt,sales_growth}.
+    실측 SK하이닉스 [0](2026-03분기)."""
+    from backend.flow.kis import parse_financials
+    js = {"rt_cd": "0", "output": [
+        {"stac_yymm": "202603", "grs": "198.0700", "roe_val": "61.16",
+         "eps": "56066.00", "lblt_rate": "35.5600"},
+        {"stac_yymm": "202512", "grs": "150.0000", "roe_val": "40.00",
+         "eps": "40000.00", "lblt_rate": "40.0000"}]}
+    fs = parse_financials(js)
+    assert fs[0] == {"period": "2026-03", "roe": 61.16, "eps": 56066.0,
+                     "debt": 35.56, "sales_growth": 198.07}
+    assert len(fs) == 2 and fs[1]["period"] == "2025-12"
+    assert parse_financials({"rt_cd": "1"}) == []
+
+
 def test_parse_daily_investor():
     js = {"rt_cd": "0", "output": [
         {"stck_bsop_date": "20260709", "stck_clpr": "2186000",

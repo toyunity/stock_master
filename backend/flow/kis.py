@@ -232,6 +232,52 @@ def parse_price(js: dict) -> Optional[dict]:
             "acml_value": _i(o.get("acml_tr_pbmn"))}
 
 
+def parse_fundamentals(js: dict) -> Optional[dict]:
+    """FHKST01010100(주식현재가 시세) output의 밸류 지표 → {per,pbr,eps,bps,w52_high,
+    w52_low,w52_pos}. parse_price(시세 요약)와 같은 응답이지만 관심사가 달라 분리한다
+    (parse_price는 웹소켓 공백 폴백 전용). 빈값/0인 per·pbr은 None, 적자 eps는 음수 유지."""
+    if js.get("rt_cd") != "0":
+        return None
+    o = js.get("output") or {}
+
+    def _pos(v):                       # 빈문자/0 → None (per·pbr는 0이 무의미)
+        f = _f(v)
+        return f if f > 0 else None
+
+    price = _i(o.get("stck_prpr"))
+    hi, lo = _i(o.get("w52_hgpr")), _i(o.get("w52_lwpr"))
+    pos = round((price - lo) / (hi - lo) * 100, 1) if hi > lo and price else None
+    return {"per": _pos(o.get("per")), "pbr": _pos(o.get("pbr")),
+            "eps": _f(o.get("eps")) or None, "bps": _f(o.get("bps")) or None,
+            "w52_high": hi or None, "w52_low": lo or None, "w52_pos": pos}
+
+
+def parse_index(js: dict) -> Optional[dict]:
+    """inquire-index-price(FHPUP02100000) → {price,change,rate,sign}. 코스피/코스닥 지수."""
+    if js.get("rt_cd") != "0":
+        return None
+    o = js.get("output") or {}
+    return {"price": _f(o.get("bstp_nmix_prpr")),
+            "change": _f(o.get("bstp_nmix_prdy_vrss")),
+            "rate": _f(o.get("bstp_nmix_prdy_ctrt")),
+            "sign": _SIGN.get(str(o.get("prdy_vrss_sign", "")), "")}
+
+
+def parse_financials(js: dict) -> list:
+    """financial-ratio(FHKST66430300) output → 최근 분기 배열(신순). 초보용 핵심만:
+    period(YYYY-MM)·roe·eps·debt(부채비율)·sales_growth(매출성장률). 실패는 []."""
+    if js.get("rt_cd") != "0":
+        return []
+    out = []
+    for r in js.get("output") or []:
+        ym = str(r.get("stac_yymm", ""))
+        period = (ym[:4] + "-" + ym[4:6]) if len(ym) >= 6 else ym
+        out.append({"period": period, "roe": _f(r.get("roe_val")),
+                    "eps": _f(r.get("eps")), "debt": _f(r.get("lblt_rate")),
+                    "sales_growth": _f(r.get("grs"))})
+    return out
+
+
 def parse_latest_trade_date(js: dict):
     """FHKST01010400(일자별 시세) output 첫 행 stck_bsop_date → 'YYYY-MM-DD'.
 
@@ -366,6 +412,29 @@ class KisClient:
                              "FHKST01010100",
                              {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_price(js)
+
+    async def fundamentals(self, code: str) -> Optional[dict]:
+        """밸류 지표(PER/PBR/EPS/BPS/52주) — price()와 같은 TR이지만 관심사가 달라 분리 조회.
+        시세와 달리 일 단위로만 바뀌므로 상위에서 길게 캐시(대시보드/상세용)."""
+        js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-price",
+                             "FHKST01010100",
+                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+        return parse_fundamentals(js)
+
+    async def index(self, iscd: str = "0001") -> Optional[dict]:
+        """지수 시세 — 코스피(0001)/코스닥(1001)/코스피200(2001)."""
+        js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-index-price",
+                             "FHPUP02100000",
+                             {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd})
+        return parse_index(js)
+
+    async def financials(self, code: str) -> list:
+        """재무비율(최근 분기 신순) — ROE·EPS·부채비율·매출성장. 분기 갱신이라 길게 캐시."""
+        js = await self._get("/uapi/domestic-stock/v1/finance/financial-ratio",
+                             "FHKST66430300",
+                             {"FID_DIV_CLS_CODE": "0", "fid_cond_mrkt_div_code": "J",
+                              "fid_input_iscd": code})
+        return parse_financials(js)
 
     async def latest_trade_date(self, code: str = "005930"):
         """최신 거래일(YYYY-MM-DD) — 일자별 시세 첫 행. 위젯 장상태 판정용.
