@@ -65,6 +65,25 @@ def test_get_stock_detail_assembles_and_caches():
     assert c.calls == 1
 
 
+def test_get_asking_caches():
+    from backend.api import marketdata as md
+    md._ask_cache.clear()
+
+    class C:
+        def __init__(self):
+            self.calls = 0
+        async def asking_price(self, code):
+            self.calls += 1
+            return {"total_ask": 61953, "total_bid": 48666, "bid_ratio": 44.0,
+                    "asks": [], "bids": []}
+
+    c = C()
+    a = asyncio.run(md.get_asking("000660", client=c))
+    assert a["bid_ratio"] == 44.0 and a["total_ask"] == 61953
+    asyncio.run(md.get_asking("000660", client=c))     # 2초 캐시 → 재호출 없음
+    assert c.calls == 1
+
+
 def test_no_client_returns_empty(monkeypatch):
     """키 없음(_client None) → 지수 None·밸류 {}. 네트워크 미접촉."""
     from backend.config import settings

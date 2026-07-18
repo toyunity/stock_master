@@ -47,6 +47,24 @@ async def get_indices(client=None):
 
 _DETAIL_TTL = 300.0
 _detail_cache: dict = {}   # code -> (ts, dict)
+_ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)
+_ask_cache: dict = {}     # code -> (ts, dict|None)
+
+
+async def get_asking(code, client=None):
+    """호가 사다리 스냅샷 — 2초 캐시. 키없음/실패면 {}(‌/live가 조용히 생략)."""
+    client = client or _client()
+    if client is None:
+        return {}
+    hit = _ask_cache.get(code)
+    if hit and time.time() - hit[0] < _ASK_TTL:
+        return hit[1] or {}
+    try:
+        a = await client.asking_price(code)
+    except Exception:
+        return (hit[1] if hit else {}) or {}
+    _ask_cache[code] = (time.time(), a)
+    return a or {}
 
 
 async def get_stock_detail(code, client=None):

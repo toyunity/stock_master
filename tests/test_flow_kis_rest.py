@@ -37,6 +37,23 @@ def test_parse_fundamentals_handles_missing_and_failure():
     assert f["w52_pos"] is None                                 # 52주 결측 → 위치 None
 
 
+def test_parse_asking():
+    """inquire-asking-price-exp-ccn(output1) → 호가 사다리 + 총잔량 + 매수세%. 실측 SK하이닉스."""
+    from backend.flow.kis import parse_asking
+    o1 = {"askp1": "1842000", "askp_rsqn1": "30790",
+          "askp2": "1843000", "askp_rsqn2": "12016",
+          "askp3": "0", "askp_rsqn3": "0",              # 빈 레벨은 컷
+          "bidp1": "1841000", "bidp_rsqn1": "8624",
+          "bidp2": "1840000", "bidp_rsqn2": "18230",
+          "total_askp_rsqn": "61953", "total_bidp_rsqn": "48666"}
+    a = parse_asking({"rt_cd": "0", "output1": o1})
+    assert a["asks"][0] == {"price": 1842000, "qty": 30790}
+    assert len(a["asks"]) == 2 and len(a["bids"]) == 2      # 0가격 레벨 제외
+    assert a["total_ask"] == 61953 and a["total_bid"] == 48666
+    assert a["bid_ratio"] == 44.0                          # 48666/(61953+48666)
+    assert parse_asking({"rt_cd": "1"}) is None
+
+
 def test_parse_index():
     """inquire-index-price(FHPUP02100000) → {price,change,rate,sign}. 실측 코스피(2026-07-18)."""
     from backend.flow.kis import parse_index

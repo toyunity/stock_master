@@ -252,6 +252,28 @@ def parse_fundamentals(js: dict) -> Optional[dict]:
             "w52_high": hi or None, "w52_low": lo or None, "w52_pos": pos}
 
 
+def parse_asking(js: dict) -> Optional[dict]:
+    """inquire-asking-price-exp-ccn(output1) → {asks,bids(각 price/qty 사다리),total_ask,
+    total_bid,bid_ratio}. 실시간 H0STASP0와 동일 데이터의 REST 스냅샷(WS 세션 회피)."""
+    if js.get("rt_cd") != "0":
+        return None
+    o = js.get("output1") or {}
+
+    def ladder(pfx):
+        out = []
+        for i in range(1, 11):
+            p = _i(o.get("%sp%d" % (pfx, i)))
+            if p <= 0:
+                break                                 # 빈 상위 레벨에서 중단
+            out.append({"price": p, "qty": _i(o.get("%sp_rsqn%d" % (pfx, i)))})
+        return out
+
+    ta, tb = _i(o.get("total_askp_rsqn")), _i(o.get("total_bidp_rsqn"))
+    ratio = round(tb / (ta + tb) * 100, 1) if (ta + tb) > 0 else None
+    return {"asks": ladder("ask"), "bids": ladder("bid"),
+            "total_ask": ta, "total_bid": tb, "bid_ratio": ratio}
+
+
 def parse_index(js: dict) -> Optional[dict]:
     """inquire-index-price(FHPUP02100000) → {price,change,rate,sign}. 코스피/코스닥 지수."""
     if js.get("rt_cd") != "0":
@@ -420,6 +442,13 @@ class KisClient:
                              "FHKST01010100",
                              {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
         return parse_fundamentals(js)
+
+    async def asking_price(self, code: str) -> Optional[dict]:
+        """호가 사다리 스냅샷(REST) — 실시간 H0STASP0 대신(1키1세션 회피). /live 폴링용."""
+        js = await self._get("/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+                             "FHKST01010200",
+                             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
+        return parse_asking(js)
 
     async def index(self, iscd: str = "0001") -> Optional[dict]:
         """지수 시세 — 코스피(0001)/코스닥(1001)/코스피200(2001)."""

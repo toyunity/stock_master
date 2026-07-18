@@ -364,7 +364,9 @@ const flushDue = () => { const due = timers.filter(t => t.at <= now);
 
 let intervals = [];
 global.setInterval = (fn, ms) => { const iv = {fn, ms}; intervals.push(iv); return iv; };
-const runWatchdog = () => { const iv = intervals.find(i => i.ms < 10000); if (iv) iv.fn(); };
+// 워치독 발화 — 서브10초 인터벌을 모두 실행(SSE 워치독 + REST 폴러 공존 대응).
+// 폴러(pollOB 등)는 하니스에서 fetch 실패로 즉시 return하므로 무해, 워치독만 재접속시킨다.
+const runWatchdog = () => { intervals.filter(i => i.ms < 10000).forEach(iv => iv.fn()); };
 
 let esInstances = [];
 function MockES(url){ this.url = url; this.readyState = 0;

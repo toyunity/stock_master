@@ -38,6 +38,10 @@ __BASE_CSS__
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
 .hero .fin{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+.hero .ob{margin-top:8px}
+.obbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2)}
+.obbid{background:#d32f2f}.obask{background:#1565c0}
+.obtxt{font-size:12px;color:var(--text-2);margin-top:3px;font-weight:600}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
@@ -170,6 +174,7 @@ __BASE_CSS__
   <div class="sig sig-flat" id="tm-headline"></div>
   <div class="note" id="walert"></div>
   <div class="fin" id="fin" style="display:none"></div>
+  <div class="ob" id="ob" style="display:none"></div>
 </div>
 
 <div class="glance" id="glance"></div>
@@ -396,6 +401,20 @@ async function loadFin(){
   }catch(e){}
 }
 loadFin();
+// ── 호가(매도벽·매수받침) — /api/asking REST 스냅샷 5초 폴링(실시간 WS 세션 회피). ──
+async function pollOB(){
+  try{
+    const r=await fetch('/api/asking/'+CODE); if(!r.ok)return;
+    const a=await r.json(); const el=document.getElementById('ob');
+    if(!a||a.bid_ratio==null||(!a.total_ask&&!a.total_bid)){ el.style.display='none'; return; }
+    const br=a.bid_ratio, ar=Math.max(0,100-br);
+    el.innerHTML='<div class="obbar"><span class="obbid" style="width:'+br+'%"></span>'
+      +'<span class="obask" style="width:'+ar+'%"></span></div>'
+      +'<div class="obtxt">📖 매수세 '+br.toFixed(0)+'%  ·  매수 '+num(a.total_bid)+'  ·  매도 '+num(a.total_ask)+'</div>';
+    el.style.display='block';
+  }catch(e){}
+}
+pollOB(); setInterval(pollOB, 5000);
 const shares=n=>n==null?'–':(n>0?'+':'')+num(n)+'주';
 const eok=n=>n==null?'–':(n>0?'+':'')+(n/1e8).toLocaleString('ko-KR',{maximumFractionDigits:1})+'억';
 const cls=n=>n>0?'up':(n<0?'down':'flat');

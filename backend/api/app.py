@@ -296,6 +296,14 @@ def create_app(settings=None) -> FastAPI:
             return Response(status_code=404)
         return JSONResponse(await marketdata.get_stock_detail(code))
 
+    @app.get("/api/asking/{code}")
+    async def asking_api(code: str):
+        """호가 사다리(매도벽·매수받침·매수세%) — /live REST 폴링(실시간 WS 세션 회피). 6자리만."""
+        from backend.api import marketdata
+        if not _CODE_RE.match(code):
+            return Response(status_code=404)
+        return JSONResponse(await marketdata.get_asking(code))
+
     @app.get("/api/widget")
     async def widget_api(request: Request):
         """아이폰 위젯 시세 — 인증은 AuthGate(Bearer)가 이미 끝냄(핸들러 인증 코드 0줄).
