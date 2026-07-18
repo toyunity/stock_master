@@ -64,3 +64,16 @@ def test_read_roe_pbr_bidratio():
     assert read_pbr(0) is None
     assert "순자산보다 싸게" in read_pbr(0.8)
     assert "사자" in read_bid_ratio(60) and "팔자" in read_bid_ratio(40)
+
+
+# ── 지표 개념 설명(ⓘ 펼침용, 2026-07-18) ──
+from backend.education.glossary import concept
+
+
+def test_concept_returns_beginner_explanation():
+    per = concept("per")
+    assert per and "PER" in per["title"] and "순이익" in per["body"]
+    for k in ("pbr", "w52", "roe", "debt", "bid_ratio", "flow", "adr", "index"):
+        c = concept(k)
+        assert c and c["title"] and len(c["body"]) > 20   # 실제 설명 존재
+    assert concept("nope") is None
