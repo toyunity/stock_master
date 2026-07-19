@@ -55,6 +55,21 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .sit .phase{font-size:11px;font-weight:700;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:1px 9px;margin-left:8px}
 .sit ul{margin:8px 0 0;padding-left:16px;font-size:13px;color:var(--text);display:flex;flex-direction:column;gap:4px}
 .sit .cau{margin-top:7px;font-size:11px;color:var(--text-2)}
+/* 🎓 초보 가이드 카드 */
+.hero .guide{margin-top:11px;border:1.5px solid var(--primary);border-radius:14px;padding:13px 14px;background:var(--info-bg)}
+.guide .gh{font-weight:900;font-size:15px;color:var(--primary-ink);margin-bottom:4px;letter-spacing:-.02em}
+.guide .gsec{font-size:13px;color:var(--text);margin-top:9px;line-height:1.55}
+.guide .gl{display:block;font-size:10.5px;font-weight:800;color:var(--primary-ink);letter-spacing:.05em;margin-bottom:2px}
+.guide ul{margin:3px 0 0;padding-left:16px}.guide li{margin:2px 0}
+.guide .glesson{border-top:1px dashed var(--primary);padding-top:9px;margin-top:11px}
+.guide .glb{font-size:12px;color:var(--text-2);margin-top:2px;line-height:1.55}
+/* 자세히 보기(전문 패널 접기) */
+.advtoggle{width:100%;margin:16px 0 4px;min-height:48px;font-size:14px;font-weight:800;
+  border:1px dashed var(--border);background:var(--surface-2);color:var(--text-2);border-radius:var(--r);
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.advtoggle .ar{display:inline-block;transition:transform .2s}
+.advtoggle.on .ar{transform:rotate(180deg)}
+.advw{display:none}.advw.on{display:block}
 .finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
 .finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
 .finex .cexp.on{display:block}
@@ -193,6 +208,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   <div class="ob" id="ob" style="display:none"></div>
   <div class="sit" id="sit" style="display:none"></div>
   <div class="nd" id="nd" style="display:none"></div>
+  <div class="guide" id="guide" style="display:none"></div>
 </div>
 
 <div class="glance" id="glance"></div>
@@ -246,6 +262,8 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   </div>
 </details>
 
+<button class="advtoggle" id="advtoggle" type="button" onclick="toggleAdv()">📊 자세히 보기 (수급·파생 지표 · 중급) <span class="ar">▾</span></button>
+<div id="advanced" class="advw">
 <div class="sechd">📋 요약 · 지금 뭘 하나</div>
 <div class="panel">
   <h2>🧭 매매 타이밍 <span class="fresh" id="tm-fresh">· 참고용(추정)</span></h2>
@@ -391,6 +409,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   <summary><h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2></summary>
   <div class="tbl-wrap"><table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table></div>
 </details>
+</div><!-- /#advanced -->
 <div class="disc">__DISCLAIMER__ 실시간 수급의 외국인/기관 수치는 장중 <b>추정치(잠정)</b>이며
 확정치는 다음 영업일에 제공됩니다. 데이터 출처: 한국투자증권 오픈API(국내·해외 시세, 환율,
 신용잔고, 공매도)·금융투자협회(대차잔고)·네이버(폴백). 모든 표시 시각은 KST(Asia/Seoul) 기준.</div>
@@ -448,8 +467,24 @@ async function loadFin(){
         +'<div class="cau">⚠ '+esc(o.caution)+'</div>';
       nd.style.display='block';
     }
+    // 🎓 초보 가이드 카드 — 왜 움직였나 · 지금 볼 포인트 · 다음엔 · 오늘의 배움
+    const gd=d.guide, gc=document.getElementById('guide');
+    if(gd&&gd.why_moved){
+      let gh='<div class="gh">🎓 초보 가이드</div>'
+        +'<div class="gsec"><span class="gl">오늘 왜?</span>'+esc(gd.why_moved)+'</div>';
+      if(gd.points&&gd.points.length)
+        gh+='<div class="gsec"><span class="gl">지금 볼 포인트</span><ul>'
+          +gd.points.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
+      gh+='<div class="gsec"><span class="gl">다음엔?</span>'+esc(gd.next_action)+'</div>';
+      const ls=d.lesson;
+      if(ls&&ls.title) gh+='<div class="gsec glesson"><span class="gl">📚 오늘의 배움</span><b>'
+        +esc(ls.title)+'</b><div class="glb">'+esc(ls.body)+'</div></div>';
+      gc.innerHTML=gh; gc.style.display='block';
+    }
   }catch(e){}
 }
+function toggleAdv(){var a=document.getElementById('advanced'),b=document.getElementById('advtoggle');
+  if(!a)return; var on=a.classList.toggle('on'); if(b)b.classList.toggle('on',on);}
 loadFin();
 // ── 호가(매도벽·매수받침) — /api/asking REST 스냅샷 5초 폴링(실시간 WS 세션 회피). ──
 async function pollOB(){

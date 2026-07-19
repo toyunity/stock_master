@@ -20,3 +20,8 @@ LESSONS = (
     Lesson("초보자에겐 '관망'도 훌륭한 선택",
            "신호가 애매할 때 억지로 사고팔 필요는 없습니다. 시장을 지켜보며 공부하는 '관망' 기간 동안 잃지 않는 것만으로도 충분히 잘하고 있는 것입니다."),
 )
+
+
+def daily_lesson(seed: int) -> Lesson:
+    """seed(예: 연중 일자)로 매일 다른 레슨 1개를 결정적으로 고른다 — '오늘의 배움'."""
+    return LESSONS[seed % len(LESSONS)]

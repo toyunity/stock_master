@@ -11,7 +11,7 @@ import time
 
 from backend.config import settings
 from backend.education import glossary
-from backend.signals import nextday, situation
+from backend.signals import guide as guide_mod, nextday, situation
 
 _IDX_TTL = 30.0            # 지수 30초
 _FUN_TTL = 300.0          # 밸류 5분(일 단위로만 바뀜)
@@ -127,7 +127,12 @@ async def get_stock_read(code, client=None):
     has_adr = sig.get("has_adr", has_adr0)
     o = (nextday.outlook(sig)
          if any(sig.get(k) for k in ("us", "adr", "flow", "momentum")) else None)
+    from backend.education.lessons import daily_lesson
+    from backend.flow import kst
+    les = daily_lesson(kst.now().timetuple().tm_yday)
     data = {"outlook": o, "situation": situation.commentary(sig, val, fin),
+            "guide": guide_mod.guide(sig, val, fin),               # 초보 가이드(왜·포인트·다음)
+            "lesson": {"title": les.title, "body": les.body},      # 오늘의 배움
             "phase": _phase(has_adr), "has_adr": has_adr}
     _read_cache[code] = (time.time(), data)
     return data
