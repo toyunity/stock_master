@@ -12,8 +12,8 @@ Python 3.9 호환(마스터 실서버는 시스템 3.9) — 단순 문자열 상
 
 # ── PWA head: 라이트/다크 theme-color + 세이프에어리어 전제(viewport-fit은 각 페이지) ──
 PWA_HEAD = (
-    '<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">'
-    '<meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">'
+    '<meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">'
+    '<meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">'
     '<link rel="manifest" href="/manifest.json">'
     '<link rel="apple-touch-icon" href="/icons/icon-180.png">'
     '<meta name="apple-mobile-web-app-capable" content="yes">'
@@ -25,30 +25,33 @@ PWA_HEAD = (
 # ── 디자인 토큰 + 베이스 엘리먼트 + 공통 컴포넌트 ──
 BASE_CSS = """
 :root{
-  --bg:#eef1f7; --surface:#ffffff; --surface-2:#f3f5fa; --surface-3:#eaeef5;
-  --text:#131722; --text-2:#556072; --text-3:#8a94a6;
-  --border:#e3e8f0; --border-2:#eef1f6; --grid:#f0f2f7;
-  --primary:#1565c0; --primary-ink:#0d4a91;
-  --up:#e0322c; --down:#1565c0; --flat:#8a94a6;
-  --good:#1f9d57; --warn:#e08205; --info:#1565c0;
-  --up-bg:#fdecec; --down-bg:#e9f1fb; --good-bg:#e7f6ee; --warn-bg:#fdf1e0; --info-bg:#e9f1fb;
-  --shadow:0 1px 2px rgba(17,24,39,.04), 0 6px 20px rgba(17,24,39,.06);
-  --shadow-sm:0 1px 2px rgba(17,24,39,.05);
-  --r:12px; --r-lg:16px; --r-sm:9px; --r-pill:999px;
-  --disc-bg:#fdf6e3; --disc-bd:#f2e2b8; --disc-tx:#7a6320;
+  --bg:#f4f5fb; --surface:#ffffff; --surface-2:#f2f3fb; --surface-3:#e9ebf6;
+  --text:#0f1220; --text-2:#565f77; --text-3:#8b93a8;
+  --border:#e6e9f3; --border-2:#eef0f8; --grid:#eef0f8;
+  --primary:#6d5efc; --primary-ink:#5646e8;
+  --up:#f5384e; --down:#2f6bff; --flat:#8b93a8;
+  --good:#12b76a; --warn:#f79009; --info:#6d5efc;
+  --up-bg:#ffe9ec; --down-bg:#e7f0ff; --good-bg:#e4f7ee; --warn-bg:#fef2e0; --info-bg:#efebff;
+  --shadow:0 1px 2px rgba(20,22,40,.05), 0 10px 26px rgba(70,58,190,.08);
+  --shadow-sm:0 1px 2px rgba(20,22,40,.06);
+  --accent-glow:0 2px 12px rgba(109,94,252,.35);
+  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --r:14px; --r-lg:18px; --r-sm:10px; --r-pill:999px;
+  --disc-bg:#fbf5e6; --disc-bd:#f0e3bd; --disc-tx:#7a6320;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#0d1117; --surface:#161b22; --surface-2:#1b222c; --surface-3:#232c38;
-    --text:#e7edf5; --text-2:#9aa6b6; --text-3:#6b7789;
-    --border:#2a323d; --border-2:#20272f; --grid:#20262e;
-    --primary:#4c9aff; --primary-ink:#8bbcff;
-    --up:#ff5b52; --down:#4c9aff; --flat:#6b7789;
-    --good:#3fb959; --warn:#e8992e; --info:#4c9aff;
-    --up-bg:#2a1a1a; --down-bg:#141f2e; --good-bg:#14251b; --warn-bg:#2a2113; --info-bg:#141f2e;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
-    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
-    --disc-bg:#241f14; --disc-bd:#3a3320; --disc-tx:#d8c187;
+    --bg:#0b0d14; --surface:#151826; --surface-2:#1b1f30; --surface-3:#242a3d;
+    --text:#eef1f8; --text-2:#9aa2b8; --text-3:#6b7389;
+    --border:#262c3d; --border-2:#1e2231; --grid:#1e2231;
+    --primary:#8b7cff; --primary-ink:#a99bff;
+    --up:#ff5e6b; --down:#5b8bff; --flat:#6b7389;
+    --good:#34d399; --warn:#fbbf5c; --info:#8b7cff;
+    --up-bg:#2a1620; --down-bg:#14203a; --good-bg:#0f2a20; --warn-bg:#2a2113; --info-bg:#1c1836;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px rgba(0,0,0,.55);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.5);
+    --accent-glow:0 2px 14px rgba(139,124,255,.4);
+    --disc-bg:#221d13; --disc-bd:#3a3320; --disc-tx:#d8c187;
   }
 }
 *{box-sizing:border-box}
@@ -56,7 +59,7 @@ html{-webkit-text-size-adjust:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",
   "Segoe UI",sans-serif;
   max-width:760px;margin:0 auto;background:var(--bg);color:var(--text);
-  line-height:1.5;overflow-x:clip;
+  line-height:1.5;overflow-x:clip;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   padding:16px;
   padding-top:max(16px, env(safe-area-inset-top));
   padding-left:max(16px, env(safe-area-inset-left));
@@ -64,9 +67,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun 
   padding-bottom:max(24px, env(safe-area-inset-bottom));}
 a{color:var(--primary);text-decoration:none}
 a:active{opacity:.6}
-h1{font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
-h2{font-size:15px;font-weight:700;margin:0;letter-spacing:-.01em}
-.code{font-size:12px;color:var(--text-3);font-weight:500}
+h1{font-size:22px;font-weight:900;margin:0;letter-spacing:-.03em;color:var(--text)}
+h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
+.code{font-size:11.5px;color:var(--text-3);font-weight:600;font-family:var(--font-mono);
+  letter-spacing:0;font-variant-numeric:tabular-nums}
 .meta{font-size:12px;color:var(--text-3);line-height:1.55}
 
 /* 상단 뒤로가기 */
@@ -95,7 +99,7 @@ h2{font-size:15px;font-weight:700;margin:0;letter-spacing:-.01em}
 .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
 
 /* 가격 헤드라인 */
-.price{font-size:34px;font-weight:800;margin:10px 0 2px;letter-spacing:-.02em;
+.price{font-size:38px;font-weight:900;margin:10px 0 2px;letter-spacing:-.035em;
   font-variant-numeric:tabular-nums}
 .price.up{color:var(--up)} .price.down{color:var(--down)} .price.flat{color:var(--text)}
 
@@ -132,7 +136,7 @@ h2{font-size:15px;font-weight:700;margin:0;letter-spacing:-.01em}
   -webkit-tap-highlight-color:transparent;transition:background .12s,color .12s,border-color .12s}
 .tf:active{background:var(--surface-2)}
 .tf.on{background:var(--primary);color:#fff;border-color:var(--primary);
-  box-shadow:0 2px 8px rgba(21,101,192,.28)}
+  box-shadow:var(--accent-glow)}
 
 /* 테이블 */
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -166,12 +170,23 @@ details.inline summary::-webkit-details-marker{display:none}
 .disc b{color:var(--disc-tx)}
 
 /* refresh button */
-.refresh{min-height:40px;font-size:13px;font-weight:600;padding:0 16px;
+.refresh{min-height:40px;font-size:13px;font-weight:700;padding:0 18px;
   border:0;background:var(--primary);color:#fff;border-radius:var(--r);cursor:pointer;
-  -webkit-tap-highlight-color:transparent;box-shadow:0 2px 8px rgba(21,101,192,.25)}
+  -webkit-tap-highlight-color:transparent;box-shadow:var(--accent-glow)}
 .refresh:active{opacity:.85}
 
+/* 시그니처: 시장상태 펄스 닷 (장중=초록·야간/미국=인디고·장종료=회색) */
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--flat);
+  position:relative;flex:none}
+.pulse.live{background:var(--good)} .pulse.night{background:var(--primary)} .pulse.closed{background:var(--flat)}
+.pulse.live::after,.pulse.night::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:inherit;animation:pulsering 1.8s ease-out infinite}
+@keyframes pulsering{0%{transform:scale(1);opacity:.55}100%{transform:scale(2.6);opacity:0}}
+
 img,canvas{max-width:100%}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
 """
 
 # ── 차트 테마: CSS 토큰을 읽어 LightweightCharts 외관에 반영(스킴 전환 시 재적용) ──
@@ -194,7 +209,7 @@ try{if(typeof window!=='undefined'&&window.matchMedia)
 # 페이지 전환 로딩 바 — 내부 링크 클릭/이탈 시 상단 진행 바(전 페이지 공용).
 # bfcache 복귀(pageshow)에서 제거해 뒤로가기 잔상을 막는다.
 NAV_LOADER = """<style>#navload{position:fixed;top:0;left:0;height:3px;width:0;
-background:linear-gradient(90deg,var(--primary),#7bb4ff);z-index:9999;pointer-events:none;
+background:linear-gradient(90deg,var(--primary),#a99bff);z-index:9999;pointer-events:none;
 transition:width .5s ease;border-radius:0 2px 2px 0}
 #navload.on{width:85%}
 #navload.done{width:100%;opacity:0;transition:width .15s,opacity .3s .15s}</style>
@@ -229,11 +244,14 @@ body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
 #tabbar{position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;
   background:var(--surface);border-top:1px solid var(--border);
   padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -2px 14px rgba(17,24,39,.06)}
-#tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;min-height:54px;font-size:11px;font-weight:600;color:var(--text-3);
-  text-decoration:none;-webkit-tap-highlight-color:transparent}
-#tabbar a .ic{font-size:21px;line-height:1}
+#tabbar a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;min-height:54px;font-size:11px;font-weight:700;color:var(--text-3);
+  text-decoration:none;-webkit-tap-highlight-color:transparent;transition:color .15s}
+#tabbar a .ic{font-size:21px;line-height:1;transition:transform .15s}
 #tabbar a.on{color:var(--primary)}
+#tabbar a.on .ic{transform:translateY(-1px) scale(1.06)}
+#tabbar a.on::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--primary);box-shadow:var(--accent-glow)}
 #tabbar a:active{opacity:.6}
 </style>
 <nav id="tabbar">

@@ -57,8 +57,12 @@ a.name:active{opacity:.6}
 .market{font-size:13px;margin:2px 0 10px;font-weight:700;letter-spacing:-.01em}
 .mx-up{color:#d32f2f}.mx-down{color:#1565c0}.mx-flat{color:var(--text-2)}
 .cval{font-size:12px;color:var(--text-2);font-weight:600}
-.cnd{font-size:12px;margin-top:2px;font-weight:700}
-.cnd.up{color:#d32f2f}.cnd.down{color:#1565c0}.cnd.neutral{color:var(--text-2)}
+.cnd{font-size:12px;font-weight:800;margin-top:9px;padding:6px 11px;border-radius:var(--r-sm);
+  background:var(--surface-2);display:inline-block;line-height:1.4}
+.cnd:empty{display:none}
+.cnd.up{background:var(--up-bg);color:var(--up)}
+.cnd.down{background:var(--down-bg);color:var(--down)}
+.cnd.neutral{background:var(--surface-2);color:var(--text-2)}
 .conf{font-size:13px;color:var(--text-2);margin-top:6px}
 .chg{font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
 .chart{height:180px;margin:10px 0}
@@ -107,13 +111,72 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   border-radius:var(--r-sm);box-sizing:border-box;background:var(--surface-2);color:var(--text)}
 .mhe button{border:0;background:var(--primary);color:#fff;border-radius:var(--r-sm);
   font-size:13px;padding:0 12px;min-height:36px;cursor:pointer}
+
+/* ══ 새 "Signal" 아이덴티티 — 레이아웃 재구성 ══ */
+.apphead{position:sticky;top:0;z-index:50;margin:-16px -16px 4px;
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  background:color-mix(in srgb, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--border)}
+.ah-top{display:flex;align-items:center;gap:9px}
+.ah-brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:900;
+  letter-spacing:-.03em;color:var(--text)}
+.ah-mark{width:27px;height:27px;border-radius:9px;display:grid;place-items:center;color:#fff;
+  font-size:15px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a99bff);
+  box-shadow:var(--accent-glow)}
+.ah-state{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;
+  color:var(--text-2);background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-pill);padding:5px 11px}
+/* 지수 칩 스트립(#market) */
+.market{display:flex;gap:8px;margin:12px 0 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.market::-webkit-scrollbar{height:0}
+.mchip{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:8px 13px;box-shadow:var(--shadow-sm)}
+.mchip .ml{font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:.04em}
+.mchip .mv{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  margin-top:2px;display:flex;align-items:baseline;gap:6px}
+.mchip .mr{font-size:11.5px;font-weight:800}
+.mchip .mr.up{color:var(--up)} .mchip .mr.down{color:var(--down)} .mchip .mr.flat{color:var(--flat)}
+
+/* 섹션 라벨 */
+.sectlabel{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:800;
+  letter-spacing:.05em;color:var(--text-3);margin:20px 2px 9px}
+.sectlabel::after{content:"";flex:1;height:1px;background:var(--border)}
+
+/* 종목 카드 재구성 */
+.card{padding:15px 16px}
+.cardhd{display:flex;align-items:flex-start;gap:10px}
+.chinfo{min-width:0;flex:1}
+.chinfo .name{font-size:18px;font-weight:900;letter-spacing:-.02em;display:block;line-height:1.2}
+.chinfo .code{font-family:var(--font-mono);font-size:11px;margin-top:1px;display:inline-block}
+.chprice{text-align:right;flex:none;padding-top:1px}
+.chprice b{font-size:20px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  display:block;line-height:1.15}
+.chprice .chg{font-size:12.5px;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{display:inline-flex;align-items:center;font-size:11.5px;font-weight:800;line-height:1.4;
+  padding:4px 11px;border-radius:var(--r-pill);background:var(--surface-2);color:var(--text-2);
+  border:1px solid var(--border-2);white-space:nowrap}
+.chip:empty{display:none}
+.chip-buy{background:var(--info-bg);color:var(--primary-ink);border-color:transparent}
+.chip-sell{background:var(--up-bg);color:var(--up);border-color:transparent}
+.chip-hold{background:var(--surface-2);color:var(--text-2)}
+.chip-ok{background:var(--good-bg);color:var(--good);border-color:transparent}
+.chip.cnd.up{background:var(--up-bg);color:var(--up);border-color:transparent}
+.chip.cnd.down{background:var(--down-bg);color:var(--down);border-color:transparent}
+.chip.cnd.neutral{background:var(--surface-2);color:var(--text-2)}
 </style></head><body>
 <div id="app"><div id="app-scroll">
-<h1>📊 Stock Master <small>__DATE__</small></h1>
-<div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 모든 정보는 참고용(매매 권유 아님)
+<header class="apphead">
+  <div class="ah-top">
+    <span class="ah-brand"><span class="ah-mark">S</span> Stock Master</span>
+    <span class="ah-state"><span class="pulse" id="mkpulse"></span><span id="mktxt">시장</span></span>
+  </div>
+  <div id="market" class="market" style="display:none"></div>
+</header>
+<div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 참고용(매매 권유 아님)
  · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
-<div id="market" class="market" style="display:none"></div>
 <div class="card" id="semi" style="display:none">
   <b>🔬 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
   <div class="conf" id="semi-flow"></div>
@@ -127,6 +190,7 @@ __REFRESH__
   <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">
   <div id="results"></div>
 </div>
+<div class="sectlabel">관심종목 분석</div>
 <div id="cards"></div>
 <div class="disc">__DISCLAIMER__</div>
 <script>__LIB__</script>
@@ -156,15 +220,21 @@ function issuesHtml(s){
 }
 function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
-  h+='<span class="badge b-'+esc(s.action)+'">'+esc(s.action_ko)+'</span> ';
-  h+='<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+' 📡</a> <span class="code">'+esc(s.code)+'</span>';
-  if(s.close!=null) h+=' · <span class="cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</span>';
-  h+='<span class="cval" data-code="'+esc(s.code)+'"></span>';   // 밸류지표(PER·PBR·52주) — loadFundamentals가 채움
-  h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';      // 내일 예상 배지 — loadOutlook이 채움
-  h+='<div class="conf">신뢰도 '+stars(s.confidence)+(s.advice?' <span class="badge b-buy">검증됨</span>':'')+'</div>';
+  // 헤더 행: 이름/코드(좌) · 큰 가격/등락(우)
+  h+='<div class="cardhd"><div class="chinfo">'
+    +'<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>'
+    +'<span class="code">'+esc(s.code)+' 📡</span></div>';
+  if(s.close!=null) h+='<div class="chprice cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</div>';   // loadPrices가 갱신
+  h+='</div>';
+  // 칩 행: 액션 · 검증 · 밸류(PER·PBR·52주, loadFundamentals가 채움)
+  h+='<div class="chips"><span class="chip chip-'+esc(s.action)+'">'+esc(s.action_ko)+'</span>'
+    +(s.advice?'<span class="chip chip-ok">검증됨</span>':'')
+    +'<span class="chip cval" data-code="'+esc(s.code)+'"></span></div>';
+  h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';      // 내일 예상 — loadOutlook이 채움
+  h+='<div class="conf">신뢰도 '+stars(s.confidence)+'</div>';
+  if(s.candles&&s.candles.length) h+='<div class="chart" id="chart-'+esc(s.code)+'"></div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
-  if(s.candles&&s.candles.length) h+='<div class="chart" id="chart-'+esc(s.code)+'"></div>';
   h+=issuesHtml(s);
   return h+'</div>';
 }
@@ -262,13 +332,26 @@ async function loadMarket(){
       if(!o||o.price==null)return '';
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
       const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
-      return '<span class="mx-'+cls+'">'+label+' '+o.price.toLocaleString()+' '+ar+Math.abs(o.rate||0).toFixed(2)+'%</span>';
+      return '<div class="mchip"><div class="ml">'+label+'</div>'
+        +'<div class="mv">'+o.price.toLocaleString()
+        +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
     }
     const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥')].filter(Boolean);
-    if(parts.length){ el.innerHTML=parts.join(' &nbsp;·&nbsp; '); el.style.display='block'; }
+    if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
+// 시장상태 펄스(헤더 시그니처): KR 장중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색
+function marketPulse(){
+  const p=document.getElementById('mkpulse'), t=document.getElementById('mktxt'); if(!p)return;
+  const n=new Date(), day=n.getDay(), h=n.getHours(), hm=h*60+n.getMinutes();
+  let st,tx;
+  if(day>=1&&day<=5 && hm>=540 && hm<=930){ st='live'; tx='장중'; }
+  else if(h>=22 || h<6){ st='night'; tx='야간·미국장'; }
+  else { st='closed'; tx='장 마감'; }
+  p.className='pulse '+st; t.textContent=tx;
+}
+marketPulse(); setInterval(marketPulse,60000);
 // ── 관심종목 밸류지표(PER·PBR·52주 위치) — /api/fundamentals(느리게 변해 5분). ──
 async function loadFundamentals(){
   try{
@@ -281,7 +364,7 @@ async function loadFundamentals(){
       if(f.pbr!=null)bits.push('PBR '+f.pbr.toFixed(1));
       if(f.w52_pos!=null)bits.push('52주 '+Math.round(f.w52_pos)+'%');
       if(!bits.length)continue;
-      document.querySelectorAll('.cval[data-code="'+code+'"]').forEach(function(el){ el.textContent=' · '+bits.join(' · '); });
+      document.querySelectorAll('.cval[data-code="'+code+'"]').forEach(function(el){ el.textContent=bits.join(' · '); });
     }
   }catch(e){}
 }
