@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from html import escape
 
-from backend.report.dashboard import (_BASE_CSS, _DISCLAIMER, _NAV_LOADER,
-                                      _PWA_HEAD, _TABBAR)
+from backend.report.dashboard import (_BASE_CSS, _DISCLAIMER, _ICON_SPRITE,
+                                      _NAV_LOADER, _PWA_HEAD, _TABBAR)
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -28,6 +28,7 @@ td a{font-weight:700;color:var(--text)}
   padding:8px 0;min-height:40px;display:flex;align-items:center;list-style:none}
 #body details summary::-webkit-details-marker{display:none}
 </style></head><body>
+__ICONS__
 <div id="app"><div id="app-scroll">
 <div><a class="back" href="/">← 대시보드</a></div>
 <div class="hdr">
@@ -67,7 +68,7 @@ function render(D){
     ['기관 순매수',r=>'<td class="'+cls(r.orgn_value)+'">'+eok(r.orgn_value)+'</td>']];
   let h='';
   if(D.picks&&D.picks.length){
-    h+='<div class="panel"><h2>⭐ 오늘의 수급 특이 종목</h2>'
+    h+='<div class="panel"><h2><svg class="hic"><use href="#i-star"/></svg> 오늘의 수급 특이 종목</h2>'
       +'<div class="fresh">수급(외인·기관 순매수 상위) ∩ 모멘텀(거래대금·급등 상위) 교차</div>'
       +tbl(D.picks,[['종목',r=>'<td><a href="/live/'+esc(r.code)+'">'+esc(r.name)+' 📡</a>'
         +(r.reasons||[]).map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+'</td>'],
@@ -75,15 +76,15 @@ function render(D){
         ['외인',r=>'<td class="'+cls(r.frgn_value)+'">'+eok(r.frgn_value)+'</td>'],
         ['기관',r=>'<td class="'+cls(r.orgn_value)+'">'+eok(r.orgn_value)+'</td>']],15)+'</div>';
   }
-  h+='<div class="panel"><h2>🌏 외국인 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_buy,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2>🏦 기관 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_buy,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2>🌏 외국인 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_sell,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2>🏦 기관 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_sell,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2>💵 거래대금 상위</h2><div class="fresh">실시간 · ETF/ETN/스팩 제외</div>'
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_buy,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_buy,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_sell,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_sell,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-cash"/></svg> 거래대금 상위</h2><div class="fresh">실시간 · ETF/ETN/스팩 제외</div>'
     +tbl(S.value_top,[['종목',nameTd],['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
       ['거래대금',r=>'<td>'+eok(r.value).replace('+','')+'</td>'],
       ['거래량 전일比',r=>'<td>'+(r.vol_change!=null?r.vol_change.toFixed(0)+'%':'–')+'</td>']],10)+'</div>';
-  h+='<div class="panel"><h2>🚀 급등 상위</h2><div class="fresh">실시간 · 거래량 10만주 이상 · ETF/ETN/스팩 제외</div>'
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-rise"/></svg> 급등 상위</h2><div class="fresh">실시간 · 거래량 10만주 이상 · ETF/ETN/스팩 제외</div>'
     +tbl(S.gainers,[['종목',r=>'<td><a href="/live/'+esc(r.code)+'">'+esc(r.name)+' 📡</a>'
       +(r.limit_up?'<span class="chip">상한가</span>':'')+'</td>'],
       ['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
@@ -112,7 +113,7 @@ async function loadTopView(){
     const d=await r.json(); const items=(d&&d.items)||[];
     const box=document.getElementById('topview');
     if(!items.length){ box.innerHTML=''; return; }
-    box.innerHTML='<div class="panel"><h2>👀 인기 조회 상위</h2>'
+    box.innerHTML='<div class="panel"><h2><svg class="hic"><use href="#i-eye"/></svg> 인기 조회 상위</h2>'
       +'<div class="fresh">HTS 기준 많이 본 종목 · 발굴용</div>'+tbl(items,[['종목',nameTd]],10)+'</div>';
   }catch(e){}
 }
@@ -124,6 +125,7 @@ setInterval(loadTopView, 60000);
 def render_scanner_page() -> str:
     return (_TEMPLATE
             .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__ICONS__", _ICON_SPRITE)
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD)

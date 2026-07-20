@@ -87,6 +87,13 @@ h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
 .code{font-size:11.5px;color:var(--text-3);font-weight:600;font-family:var(--font-mono);
   letter-spacing:.01em;font-variant-numeric:tabular-nums}
 .meta{font-size:12px;color:var(--text-3);line-height:1.55}
+/* 본문 문장 속 숫자 — 한글은 sans, 숫자만 모노 계기(landmine: 요소 전체 모노 금지) */
+.n{font-family:var(--font-num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+/* 패널 헤더 아이콘 — 단색 스트로크(currentColor). 이모지 대신 일관 아이콘 시스템 */
+.hic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;color:var(--text-2)}
+h2 .hic{width:17px;height:17px;color:var(--text-2)}
+.sechd .hic{color:var(--text-3)}
 
 /* 상단 뒤로가기 — iris 길찾기 */
 .back{display:inline-flex;align-items:center;gap:4px;min-height:36px;
@@ -95,7 +102,7 @@ h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
 /* 카드/패널 — 계기 베이(플랫·크리스프 1px·타이트 반경) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:15px;margin:13px 0;box-shadow:var(--shadow)}
-.panel>h2{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
 /* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
 .fresh{display:block;font-size:11px;font-weight:500;color:var(--text-3);
@@ -229,10 +236,96 @@ function chartTheme(){return {
   rightPriceScale:{borderColor:_cv('--border')||'#e3e8f0'},
   timeScale:{borderColor:_cv('--border')||'#e3e8f0'}};}
 function registerChart(c){try{__CHARTS.push(c);}catch(e){}}
-function applyChartTheme(){try{__CHARTS.forEach(function(c){c.applyOptions(chartTheme());});}catch(e){}}
+// 시맨틱 series(캔들·베이스라인)를 스킴에 맞춰 재색상 — 라이트=진한 적/청, 다크=밝은 적/청.
+function _isDark(){try{return !!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);}catch(e){return false;}}
+function semUp(){return _isDark()?'#ff5b52':'#e5342f';}
+function semDown(){return _isDark()?'#4f8bff':'#1f66e0';}
+var __SEMSERIES=[];
+function applySemColor(o){try{var u=semUp(),d=semDown();
+  if(o.k==='candle')o.s.applyOptions({upColor:u,downColor:d,wickUpColor:u,wickDownColor:d});
+  else if(o.k==='baseline')o.s.applyOptions({topLineColor:u,bottomLineColor:d});}catch(e){}}
+function registerSemSeries(s,kind){try{var o={s:s,k:kind};__SEMSERIES.push(o);applySemColor(o);}catch(e){}}
+function applyChartTheme(){try{__CHARTS.forEach(function(c){c.applyOptions(chartTheme());});
+  __SEMSERIES.forEach(applySemColor);}catch(e){}}
 try{if(typeof window!=='undefined'&&window.matchMedia)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyChartTheme);}catch(e){}
 """
+
+# ── 아이콘 스프라이트: 단색 스트로크 SVG 심볼(currentColor 상속). 이모지 대체 —
+#    페이지 <body> 직후 1회 주입, 헤더에서 <svg class="hic"><use href="#i-…"/></svg>로 참조. ──
+ICON_SPRITE = (
+    '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>'
+    # 가격 차트 — 캔들 2개
+    '<symbol id="i-chart" viewBox="0 0 24 24"><line x1="7" y1="3" x2="7" y2="21"/>'
+    '<rect x="4.5" y="7" width="5" height="8" rx="1"/><line x1="16" y1="5" x2="16" y2="19"/>'
+    '<rect x="13.5" y="9" width="5" height="7" rx="1"/></symbol>'
+    # 감시선 — 타깃
+    '<symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/>'
+    '<circle cx="12" cy="12" r="2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/>'
+    '<line x1="12" y1="19.5" x2="12" y2="22.5"/></symbol>'
+    # 매매 타이밍 — 나침반
+    '<symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/>'
+    '<polygon points="16.5 7.5 13 13 7.5 16.5 11 11" fill="currentColor" stroke="none"/></symbol>'
+    # 투자자별 순매수 — 상하 대향 화살표(매수/매도 흐름)
+    '<symbol id="i-flows" viewBox="0 0 24 24"><path d="M7 18V6M7 6l-3 3M7 6l3 3"/>'
+    '<path d="M17 6v12M17 18l-3-3M17 18l3-3"/></symbol>'
+    # 프로그램매매 — 칩
+    '<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/>'
+    '<rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><line x1="10" y1="3" x2="10" y2="6"/>'
+    '<line x1="14" y1="3" x2="14" y2="6"/><line x1="10" y1="18" x2="10" y2="21"/>'
+    '<line x1="14" y1="18" x2="14" y2="21"/><line x1="3" y1="10" x2="6" y2="10"/>'
+    '<line x1="3" y1="14" x2="6" y2="14"/><line x1="18" y1="10" x2="21" y2="10"/>'
+    '<line x1="18" y1="14" x2="21" y2="14"/></symbol>'
+    # 일별 확정 — 달력
+    '<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/>'
+    '<line x1="4" y1="9.5" x2="20" y2="9.5"/><line x1="8.5" y1="3" x2="8.5" y2="6"/>'
+    '<line x1="15.5" y1="3" x2="15.5" y2="6"/></symbol>'
+    # 기관 세부 — 신전(기둥)
+    '<symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><line x1="4" y1="20" x2="20" y2="20"/>'
+    '<line x1="6" y1="9.5" x2="6" y2="18"/><line x1="10" y1="9.5" x2="10" y2="18"/>'
+    '<line x1="14" y1="9.5" x2="14" y2="18"/><line x1="18" y1="9.5" x2="18" y2="18"/></symbol>'
+    # 거래원 — 빌딩
+    '<symbol id="i-building" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/>'
+    '<line x1="9" y1="7" x2="9" y2="7.5"/><line x1="15" y1="7" x2="15" y2="7.5"/>'
+    '<line x1="9" y1="11" x2="9" y2="11.5"/><line x1="15" y1="11" x2="15" y2="11.5"/>'
+    '<line x1="10.5" y1="21" x2="10.5" y2="17" /><line x1="13.5" y1="21" x2="13.5" y2="17"/></symbol>'
+    # 대차잔고 — 빌린 물량(원 안 하향)
+    '<symbol id="i-borrow" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/>'
+    '<path d="M12 7v8M8.5 11.5L12 15l3.5-3.5"/></symbol>'
+    # 공매도 — 하락 추세 화살표
+    '<symbol id="i-short" viewBox="0 0 24 24"><path d="M3 7l6 6 4-3 8 8"/>'
+    '<path d="M21 18v-4.5h-4.5"/></symbol>'
+    # 신용융자 — 카드
+    '<symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/>'
+    '<line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="14.5" x2="11" y2="14.5"/></symbol>'
+    # ADR — 지구본
+    '<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/>'
+    '<line x1="3" y1="12" x2="21" y2="12"/>'
+    '<path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>'
+    # 거래소별 — 분기(shuffle)
+    '<symbol id="i-split" viewBox="0 0 24 24"><path d="M4 7h5l4 10h7"/><path d="M4 17h5l2-5"/>'
+    '<path d="M17 4l3 3-3 3"/></symbol>'
+    # 체결 규모 분포 — 막대
+    '<symbol id="i-bars" viewBox="0 0 24 24"><line x1="6" y1="20" x2="6" y2="13"/>'
+    '<line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="16"/>'
+    '<line x1="3" y1="20" x2="21" y2="20"/></symbol>'
+    # 실시간 체결 — 맥박선
+    '<symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>'
+    # 별(스캐너 특이)
+    '<symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 3.5 14.6 9 20.5 9.5 16 13.6 '
+    '17.4 19.5 12 16.2 6.6 19.5 8 13.6 3.5 9.5 9.4 9"/></symbol>'
+    # 현금(거래대금)
+    '<symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/>'
+    '<circle cx="12" cy="12" r="2.5"/><line x1="6" y1="9" x2="6" y2="9.5"/>'
+    '<line x1="18" y1="14.5" x2="18" y2="15"/></symbol>'
+    # 급등(상승 추세)
+    '<symbol id="i-rise" viewBox="0 0 24 24"><path d="M3 17l6-6 4 3 8-9"/>'
+    '<path d="M21 5v4.5h-4.5"/></symbol>'
+    # 인기 조회(눈)
+    '<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/>'
+    '<circle cx="12" cy="12" r="3"/></symbol>'
+    '</defs></svg>'
+)
 
 # 페이지 전환 로딩 바 — 내부 링크 클릭/이탈 시 상단 진행 바(전 페이지 공용).
 # bfcache 복귀(pageshow)에서 제거해 뒤로가기 잔상을 막는다.

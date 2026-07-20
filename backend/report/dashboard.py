@@ -23,6 +23,7 @@ from backend.report.theme import (  # noqa: E402
     BASE_CSS as _BASE_CSS,
     CHART_THEME_JS as _CHART_THEME_JS,
     DISCLAIMER as _DISCLAIMER,
+    ICON_SPRITE as _ICON_SPRITE,
     NAV_LOADER as _NAV_LOADER,
     PWA_HEAD as _PWA_HEAD,
     TABBAR as _TABBAR,
@@ -168,6 +169,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .chip.cnd.down{background:var(--down-bg);color:var(--down);border-color:transparent}
 .chip.cnd.neutral{background:var(--surface-2);color:var(--text-2)}
 </style></head><body>
+__ICONS__
 <div id="app"><div id="app-scroll">
 <header class="apphead">
   <div class="ah-top">
@@ -180,7 +182,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
  · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
 <div class="card" id="semi" style="display:none">
-  <b>🔬 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
+  <b><svg class="hic"><use href="#i-cpu"/></svg> 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
   <div class="conf" id="semi-flow"></div>
   <div class="semigrid" id="semi-us"></div>
   <div class="semigrid" id="semi-kr" style="margin-top:6px"></div>
@@ -252,6 +254,7 @@ D.stocks.forEach(s=>{
   registerChart(chart);
   const series=chart.addCandlestickSeries({upColor:'#e5342f',downColor:'#1f66e0',
     borderVisible:false,wickUpColor:'#e5342f',wickDownColor:'#1f66e0'});
+  registerSemSeries(series,'candle');   // 라이트/다크 전환 시 캔들 색 재적용
   series.setData(s.candles); chart.timeScale().fitContent();
 });
 const q=document.getElementById('q'), res=document.getElementById('results');
@@ -621,6 +624,7 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
     refresh = '<button class="refresh" onclick="location.reload()">🔄 새로고침</button>' if pwa else ""
     return (_TEMPLATE
             .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
             .replace("__DATE__", escape(date))
             .replace("__TABBAR__", _TABBAR if pwa else "")

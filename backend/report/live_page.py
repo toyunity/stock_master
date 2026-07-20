@@ -18,7 +18,8 @@ SSE(/api/live/{code}/stream)로 1초마다 전체 스냅샷을 받아 그린다(
 from html import escape
 
 from backend.report.dashboard import (_BASE_CSS, _CHART_THEME_JS, _DISCLAIMER,
-                                      _LIB_PATH, _NAV_LOADER, _PWA_HEAD, _TABBAR)
+                                      _ICON_SPRITE, _LIB_PATH, _NAV_LOADER,
+                                      _PWA_HEAD, _TABBAR)
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -65,6 +66,13 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .guide ul{margin:3px 0 0;padding-left:16px}.guide li{margin:2px 0}
 .guide .glesson{border-top:1px dashed var(--primary);padding-top:9px;margin-top:11px}
 .guide .glb{font-size:12px;color:var(--text-2);margin-top:2px;line-height:1.55}
+/* 히어로 코치 그룹 — 계기 리드아웃과 튜터 안내를 시각적으로 분리(내용 있을 때만 구분선) */
+.hero .coach{display:flex;flex-direction:column;gap:9px}
+.hero .coach .sit,.hero .coach .nd,.hero .coach .guide{margin-top:0}
+.hero .coach.on{margin-top:13px;padding-top:14px;border-top:1px dashed var(--border);position:relative}
+.hero .coach.on::before{content:"초보 도우미";position:absolute;top:-7px;left:0;
+  font-size:10px;font-weight:800;letter-spacing:.03em;color:var(--text-3);
+  background:var(--bg);padding-right:9px}
 /* 자세히 보기(전문 패널 접기) */
 .advtoggle{width:100%;margin:16px 0 4px;min-height:48px;font-size:14px;font-weight:800;
   border:1px dashed var(--border);background:var(--surface-2);color:var(--text-2);border-radius:var(--r);
@@ -245,6 +253,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .wl-actions{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
 .wl-status{font-size:12px;color:var(--text-3);font-weight:600}
 </style></head><body>
+__ICONS__
 <div id="app"><div id="app-scroll">
 <div class="hero">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
@@ -258,9 +267,11 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   <div class="note" id="walert"></div>
   <div class="fin" id="fin" style="display:none"></div>
   <div class="ob" id="ob" style="display:none"></div>
-  <div class="sit" id="sit" style="display:none"></div>
-  <div class="nd" id="nd" style="display:none"></div>
-  <div class="guide" id="guide" style="display:none"></div>
+  <div class="coach">
+    <div class="sit" id="sit" style="display:none"></div>
+    <div class="nd" id="nd" style="display:none"></div>
+    <div class="guide" id="guide" style="display:none"></div>
+  </div>
 </div>
 
 <div class="glance" id="glance"></div>
@@ -268,7 +279,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 <div class="note" id="note"></div>
 
 <div class="panel">
-  <h2>📈 가격 차트 <span class="fresh" id="pc-fresh">· 불러오는 중</span></h2>
+  <h2><svg class="hic"><use href="#i-chart"/></svg> 가격 차트 <span class="fresh" id="pc-fresh">· 불러오는 중</span></h2>
   <div class="tfrow">
     <button class="tf" data-tf="1m">1분</button>
     <button class="tf on" data-tf="5m">5분</button>
@@ -298,7 +309,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <details class="panel" id="wl-panel">
-  <summary><h2>🎯 감시선·예약매도선 설정</h2></summary>
+  <summary><h2><svg class="hic"><use href="#i-target"/></svg> 감시선·예약매도선 설정</h2></summary>
   <div class="meta" style="margin:2px 0 10px">차트에 표시할 수평선을 추가·편집합니다. 가격이 닿으면
   소리+화면 알림. 라벨은 자유(절대선/예약매도선/손절 등) — <b>실제 주문이 아니라 표시·알림용</b>.
   차트를 탭해도 그 가격에 선이 추가됩니다. 저장하면 다른 기기에도 반영됩니다.</div>
@@ -318,7 +329,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 <div id="advanced" class="advw">
 <div class="sechd">📋 요약 · 지금 뭘 하나</div>
 <div class="panel">
-  <h2>🧭 매매 타이밍 <span class="fresh" id="tm-fresh">· 참고용(추정)</span></h2>
+  <h2><svg class="hic"><use href="#i-compass"/></svg> 매매 타이밍 <span class="fresh" id="tm-fresh">· 참고용(추정)</span></h2>
   <div id="tm-comment" style="font-size:14px;margin:2px 0 6px"></div>
   <table id="tm-reasons"></table>
   <div class="meta" id="tm-note">20·60·120일선 배열(추세)과 수급을 결합한 <b>참고용 추정</b> —
@@ -326,7 +337,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel">
-  <h2>💰 투자자별 순매수 (장중 추정)</h2>
+  <h2><svg class="hic"><use href="#i-flows"/></svg> 투자자별 순매수 (장중 추정)</h2>
   <div class="fresh" id="est-fresh">잠정 · 갱신 대기 · 장중 추정치는 익일 확정과 다를 수 있음</div>
   <div id="est-bars" style="margin:8px 0 4px"></div>
   <div class="tbl-wrap"><table id="est-hist" style="margin-top:8px"></table></div>
@@ -337,7 +348,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel">
-  <h2>🤖 프로그램매매 <span class="fresh" id="pgm-fresh">· 실시간</span></h2>
+  <h2><svg class="hic"><use href="#i-cpu"/></svg> 프로그램매매 <span class="fresh" id="pgm-fresh">· 실시간</span></h2>
   <div class="grid3" style="margin-bottom:8px">
     <div><div class="lbl">순매수 수량</div><div class="val" id="pgm-qty">–</div></div>
     <div><div class="lbl">순매수 금액</div><div class="val" id="pgm-val">–</div></div>
@@ -347,18 +358,18 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 <div class="sechd">💰 수급 · 누가 사고파나</div>
 <details class="panel" open>
-  <summary><h2>📅 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2></summary>
+  <summary><h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2></summary>
   <div class="tbl-wrap"><table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table></div>
 </details>
 
 <details class="panel" open>
-  <summary><h2>🏛️ 기관 세부 수급 (연기금·투신·금융투자 …)</h2></summary>
+  <summary><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 세부 수급 (연기금·투신·금융투자 …)</h2></summary>
   <div class="fresh" id="dt-fresh">확정 · 기준일 대기 · 기관계를 주체별로 분해한 확정치</div>
   <div class="tbl-wrap"><table id="detail"></table></div>
 </details>
 
 <div class="panel">
-  <h2>🏦 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
+  <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
   <div class="tbl-wrap"><table id="mb-tbl"></table></div>
   <div class="sig" id="mb-sig"></div>
   <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
@@ -374,7 +385,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   </details>
 </div>
 <div class="panel dp">
-  <div class="dp-h"><h2>🩳 대차잔고</h2><span class="pill fixed" id="sb-pill">🕐 데이터 대기</span></div>
+  <div class="dp-h"><h2><svg class="hic"><use href="#i-borrow"/></svg> 대차잔고</h2><span class="pill fixed" id="sb-pill">🕐 데이터 대기</span></div>
   <div class="dp-key"><span class="dp-num" id="sb-qty">–</span><span class="sig" id="sb-sig"></span></div>
   <p class="dp-one">빌려간 주식(공매도 준비 물량). 늘면 매도 부담 ↑, 줄면 상환 신호.</p>
   <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">대차 20일</span><span class="sk-svg" id="sb-spark"></span></span></div>
@@ -401,7 +412,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel dp">
-  <div class="dp-h"><h2>🎯 공매도 일별 체결</h2><span class="pill fixed" id="ss-pill">🕐 데이터 대기</span></div>
+  <div class="dp-h"><h2><svg class="hic"><use href="#i-short"/></svg> 공매도 일별 체결</h2><span class="pill fixed" id="ss-pill">🕐 데이터 대기</span></div>
   <div class="dp-key"><span class="dp-num" id="ss-qty">–</span><span class="sig" id="ss-ratio-big"></span></div>
   <p class="dp-one">실제로 공매도로 쏜 물량. 비중 높으면 그날 매도 압력이 셌다는 뜻.</p>
   <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">공매도 20일</span><span class="sk-svg" id="ss-spark"></span></span></div>
@@ -429,7 +440,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel dp">
-  <div class="dp-h"><h2>💳 신용융자 잔고</h2><span class="pill fixed" id="cr-pill">🕐 데이터 대기</span></div>
+  <div class="dp-h"><h2><svg class="hic"><use href="#i-card"/></svg> 신용융자 잔고</h2><span class="pill fixed" id="cr-pill">🕐 데이터 대기</span></div>
   <div class="dp-key"><span class="dp-num" id="cr-qty">–</span><span class="sig" id="cr-sig"></span></div>
   <p class="dp-one">빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산) 연료 — 클수록 하락 가속.</p>
   <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">신용 20일</span><span class="sk-svg" id="cr-spark"></span></span></div>
@@ -458,7 +469,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 <div class="sechd">🌐 시세 · 해외·거래소·체결</div>
 <div class="panel">
-  <h2>🌐 ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
+  <h2><svg class="hic"><use href="#i-globe"/></svg> ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
   <div class="grid3">
     <div><div class="lbl" id="adr-usd-lbl">DR 가격($)</div><div class="val" id="adr-usd">–</div></div>
     <div><div class="lbl">환산가(원)</div><div class="val" id="adr-conv">–</div></div>
@@ -470,7 +481,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel">
-  <h2>🔀 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
+  <h2><svg class="hic"><use href="#i-split"/></svg> 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
   <div class="grid3">
     <div><div class="lbl">KRX(정규)</div><div class="val" id="xv-krx">–</div></div>
     <div><div class="lbl">NXT 합계</div><div class="val" id="xv-nxt">–</div></div>
@@ -485,7 +496,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <div class="panel">
-  <h2>📏 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
+  <h2><svg class="hic"><use href="#i-bars"/></svg> 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
   <div class="tfrow" id="sz-tabs">
     <button class="tf" data-ses="pre">장전</button>
     <button class="tf" data-ses="regular">정규장</button>
@@ -499,7 +510,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </div>
 
 <details class="panel" open>
-  <summary><h2>⚡ 실시간 체결 <span class="fresh">· 최근 30건</span></h2></summary>
+  <summary><h2><svg class="hic"><use href="#i-activity"/></svg> 실시간 체결 <span class="fresh">· 최근 30건</span></h2></summary>
   <div class="tbl-wrap"><table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table></div>
 </details>
 </div><!-- /#advanced -->
@@ -520,14 +531,14 @@ async function loadFin(){
     const d=await r.json(); const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
     // 숫자 요약 + 지표마다 쉬운말(항상 병기)
     const bits=[];
-    if(v.per!=null)bits.push('PER '+v.per.toFixed(1));
-    if(v.pbr!=null)bits.push('PBR '+v.pbr.toFixed(1));
-    if(v.w52_pos!=null)bits.push('52주 '+Math.round(v.w52_pos)+'%');
-    if(f.roe!=null)bits.push('ROE '+f.roe.toFixed(0)+'%');
-    if(f.debt!=null)bits.push('부채 '+f.debt.toFixed(0)+'%');
+    if(v.per!=null)bits.push('PER <span class="n">'+v.per.toFixed(1)+'</span>');
+    if(v.pbr!=null)bits.push('PBR <span class="n">'+v.pbr.toFixed(1)+'</span>');
+    if(v.w52_pos!=null)bits.push('52주 <span class="n">'+Math.round(v.w52_pos)+'%</span>');
+    if(f.roe!=null)bits.push('ROE <span class="n">'+f.roe.toFixed(0)+'%</span>');
+    if(f.debt!=null)bits.push('부채 <span class="n">'+f.debt.toFixed(0)+'%</span>');
     if(bits.length){
       const ex=d.explains||{}, co=d.concepts||{};
-      let h='📊 '+bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
+      let h='<svg class="hic" style="width:13px;height:13px;color:var(--text-3)"><use href="#i-bars"/></svg> '+bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
       // 지표마다 쉬운말(항상) + ⓘ 탭하면 개념 설명 펼침
       const rows=['per','w52','roe','debt','pbr'].filter(k=>ex[k]).map(function(k){
         const c=co[k]; let li='<li>'+esc(ex[k]);
@@ -574,6 +585,10 @@ async function loadFin(){
         +esc(ls.title)+'</b><div class="glb">'+esc(ls.body)+'</div></div>';
       gc.innerHTML=gh; gc.style.display='block';
     }
+    // 코치 그룹 구분선은 안내 카드가 실제로 뜰 때만(빈 구분선 방지)
+    var _coach=document.querySelector('.hero .coach');
+    if(_coach)_coach.classList.toggle('on',(sp&&sp.style.display==='block')
+      ||(nd&&nd.style.display==='block')||(gc&&gc.style.display==='block'));
   }catch(e){}
 }
 function toggleAdv(){var a=document.getElementById('advanced'),b=document.getElementById('advtoggle');
@@ -652,6 +667,7 @@ const series=chart.addBaselineSeries({baseValue:{type:'price',price:0},
   topLineColor:'#e5342f',topFillColor:'rgba(229,52,47,.15)',
   bottomLineColor:'#1f66e0',bottomFillColor:'rgba(31,102,224,.15)',lineWidth:2,
   autoscaleInfoProvider:()=>pgmRange?{priceRange:pgmRange}:null});
+registerSemSeries(series,'baseline');   // 라이트/다크 전환 시 선 색 재적용
 let KDATE=null, KTIME=null; // 서버가 준 KST 기준일/시각 — 클라이언트 시계 사용 금지(P0-3)
 function toTs(t,ds){
   // Lightweight Charts는 epoch을 UTC로 포맷 → KST 벽시계를 UTC epoch인 척 만들어
@@ -671,6 +687,7 @@ registerChart(pchart);
 const pseries=pchart.addCandlestickSeries({upColor:'#e5342f',downColor:'#1f66e0',
   borderVisible:false,wickUpColor:'#e5342f',wickDownColor:'#1f66e0',
   priceFormat:{type:'price',precision:0,minMove:1}});   // KRW는 정수 — 축 '.00' 제거(폭도 축소)
+registerSemSeries(pseries,'candle');   // 라이트/다크 전환 시 캔들 색 재적용(theme.py)
 // 이동평균선(20/60/120봉) — 켜고 끄기. addLineSeries 없는 node 하니스에선 가드로 생략.
 const MA_COLORS={5:'#9aa0a6',10:'#ec4899',20:'#f59e0b',60:'#22c55e',120:'#3b82f6'};
 let maOn={5:true,10:true,20:true,60:true,120:true};
@@ -1056,8 +1073,8 @@ function render(S){
     cg.textContent=(M.change!=null?sgn[M.sign]+won(Math.abs(M.change)):'')
       +(M.rate!=null?'  '+(M.rate>0?'+':(M.rate<0?'-':''))+Math.abs(M.rate).toFixed(2)+'%':'');
     cg.className='chg '+M.sign;
-    document.getElementById('pmeta').innerHTML='거래량 '+num(M.vol)+'주 · 거래대금 '+eok(M.value).replace('+','')
-      +' · 체결강도 '+(M.strength==null?'–':M.strength.toFixed(1))+' · 기준 '+esc(M.time||'')+' (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 거래대금 <span class="n">'+eok(M.value).replace('+','')
+      +'</span> · 체결강도 <span class="n">'+(M.strength==null?'–':M.strength.toFixed(1))+'</span> · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
     updateLiveCandle(M); // 실시간 봉 갱신 + 현재가 라인 + 다음 봉 카운트다운
   }
@@ -1471,6 +1488,7 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
     watch_js = json.dumps(watch, ensure_ascii=False).replace("</", "<\\/")
     return (_TEMPLATE
             .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
             .replace("__WATCH__", watch_js)
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
