@@ -168,6 +168,21 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .chip.cnd.up{background:var(--up-bg);color:var(--up);border-color:transparent}
 .chip.cnd.down{background:var(--down-bg);color:var(--down);border-color:transparent}
 .chip.cnd.neutral{background:var(--surface-2);color:var(--text-2)}
+/* ══ 지표 스트립 카드 포맷(2026-07-20) — 판정 태그 + 분할 계기 셀 ══ */
+.nrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.vtag{display:inline-flex;align-items:center;font-size:11px;font-weight:800;padding:2px 9px;
+  border-radius:var(--r-sm);letter-spacing:-.01em;white-space:nowrap;flex:none}
+.vtag-buy{background:var(--info-bg);color:var(--primary-ink)}
+.vtag-sell{background:var(--up-bg);color:var(--up)}
+.vtag-hold{background:var(--surface-2);color:var(--text-2)}
+.vtag-ok{background:var(--good-bg);color:var(--good)}
+.mstrip{display:flex;gap:1px;margin:13px 0 2px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.mc{flex:1;min-width:0;background:var(--surface-2);padding:8px 5px;text-align:center}
+.mk{font-size:9.5px;color:var(--text-3);font-weight:700;letter-spacing:.02em}
+.mv{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
+  margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em}
+.mv.star{font-family:inherit;font-size:12px;color:var(--warn);letter-spacing:.5px}
 </style></head><body>
 __ICONS__
 <div id="app"><div id="app-scroll">
@@ -224,18 +239,22 @@ function issuesHtml(s){
 }
 function cardHtml(s){
   let h='<div class="card '+esc(s.action)+'">';
-  // 헤더 행: 이름/코드(좌) · 큰 가격/등락(우)
+  // 헤더 행: 이름·판정 태그(좌) · 큰 가격/등락(우)
   h+='<div class="cardhd"><div class="chinfo">'
-    +'<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>'
+    +'<span class="nrow"><a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>'
+    +'<span class="vtag vtag-'+esc(s.action)+'">'+esc(s.action_ko)+'</span>'
+    +(s.advice?'<span class="vtag vtag-ok">검증</span>':'')+'</span>'
     +'<span class="code">'+esc(s.code)+' 📡</span></div>';
   if(s.close!=null) h+='<div class="chprice cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</div>';   // loadPrices가 갱신
   h+='</div>';
-  // 칩 행: 액션 · 검증 · 밸류(PER·PBR·52주, loadFundamentals가 채움)
-  h+='<div class="chips"><span class="chip chip-'+esc(s.action)+'">'+esc(s.action_ko)+'</span>'
-    +(s.advice?'<span class="chip chip-ok">검증됨</span>':'')
-    +'<span class="chip cval" data-code="'+esc(s.code)+'"></span></div>';
+  // 지표 스트립: PER·PBR·52주·신뢰도(계기 셀 — 앞 3개는 loadFundamentals가 채움)
+  h+='<div class="mstrip">'
+    +'<div class="mc"><div class="mk">PER</div><div class="mv" data-code="'+esc(s.code)+'" data-m="per">–</div></div>'
+    +'<div class="mc"><div class="mk">PBR</div><div class="mv" data-code="'+esc(s.code)+'" data-m="pbr">–</div></div>'
+    +'<div class="mc"><div class="mk">52주</div><div class="mv" data-code="'+esc(s.code)+'" data-m="w52">–</div></div>'
+    +'<div class="mc"><div class="mk">신뢰도</div><div class="mv star">'+stars(s.confidence)+'</div></div>'
+    +'</div>';
   h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';      // 내일 예상 — loadOutlook이 채움
-  h+='<div class="conf">신뢰도 '+stars(s.confidence)+'</div>';
   if(s.candles&&s.candles.length) h+='<div class="chart" id="chart-'+esc(s.code)+'"></div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -364,12 +383,10 @@ async function loadFundamentals(){
     const d=await r.json();
     for(const code in d){
       const f=d[code]; if(!f)continue;
-      const bits=[];
-      if(f.per!=null)bits.push('PER '+f.per.toFixed(1));
-      if(f.pbr!=null)bits.push('PBR '+f.pbr.toFixed(1));
-      if(f.w52_pos!=null)bits.push('52주 '+Math.round(f.w52_pos)+'%');
-      if(!bits.length)continue;
-      document.querySelectorAll('.cval[data-code="'+code+'"]').forEach(function(el){ el.textContent=bits.join(' · '); });
+      const set=function(m,v){document.querySelectorAll('.mv[data-code="'+code+'"][data-m="'+m+'"]').forEach(function(el){el.textContent=v;});};
+      if(f.per!=null)set('per',f.per.toFixed(1));
+      if(f.pbr!=null)set('pbr',f.pbr.toFixed(1));
+      if(f.w52_pos!=null)set('w52',Math.round(f.w52_pos)+'%');
     }
   }catch(e){}
 }
