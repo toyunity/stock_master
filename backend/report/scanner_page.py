@@ -27,6 +27,12 @@ td a{font-weight:700;color:var(--text)}
 #body details summary{font-size:12px;color:var(--primary);cursor:pointer;
   padding:8px 0;min-height:40px;display:flex;align-items:center;list-style:none}
 #body details summary::-webkit-details-marker{display:none}
+/* 순위 크기 데이터 막대 — 셀 뒤 비례 막대(우측 정렬 셀이라 오른쪽에서 자람) */
+.barcell{position:relative}
+.barcell .bar{position:absolute;right:6px;top:5px;bottom:5px;border-radius:3px;opacity:.20;
+  pointer-events:none;max-width:calc(100% - 12px)}
+.barcell .bar.up{background:var(--up)} .barcell .bar.down{background:var(--down)} .barcell .bar.flat{background:var(--flat)}
+.barcell .barv{position:relative}
 </style></head><body>
 __ICONS__
 <div id="app"><div id="app-scroll">
@@ -63,26 +69,39 @@ function tbl(rows,cols,limit){
 function render(D){
   document.getElementById('asof').textContent='조회 '+D.asof+' 기준';
   const S=D.sections;
-  const fitCols=[['종목',nameTd],['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
-    ['외인 순매수',r=>'<td class="'+cls(r.frgn_value)+'">'+eok(r.frgn_value)+'</td>'],
-    ['기관 순매수',r=>'<td class="'+cls(r.orgn_value)+'">'+eok(r.orgn_value)+'</td>']];
+  // 순위 크기를 눈으로 — 셀 뒤 비례 막대(상단=최대). 방향색(적/청)·거래대금은 무채색.
+  const maxAbs=(rows,key)=>Math.max(1,...rows.map(r=>Math.abs(r[key]!=null?r[key]:0)));
+  const barTd=(v,max)=>{ if(v==null)return '<td>–</td>';
+    const pct=max?Math.min(100,Math.abs(v)/max*100):0, c=cls(v);
+    return '<td class="barcell"><span class="bar '+c+'" style="width:'+pct.toFixed(0)+'%"></span>'
+      +'<span class="barv '+c+'">'+eok(v)+'</span></td>'; };
+  const valTd=(v,max)=>{ if(v==null)return '<td>–</td>';
+    const pct=max?Math.min(100,Math.abs(v)/max*100):0;
+    return '<td class="barcell"><span class="bar flat" style="width:'+pct.toFixed(0)+'%"></span>'
+      +'<span class="barv">'+eok(v).replace('+','')+'</span></td>'; };
+  // 수급(외인·기관 막대)을 이름 바로 뒤로 — 화면 안에 보이게(현재가/등락은 뒤로 스크롤).
+  const fitColsFor=rows=>{ const mF=maxAbs(rows,'frgn_value'), mO=maxAbs(rows,'orgn_value');
+    return [['종목',nameTd],
+      ['외인 순매수',r=>barTd(r.frgn_value,mF)],['기관 순매수',r=>barTd(r.orgn_value,mO)],
+      ['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd]]; };
   let h='';
   if(D.picks&&D.picks.length){
     h+='<div class="panel"><h2><svg class="hic"><use href="#i-star"/></svg> 오늘의 수급 특이 종목</h2>'
       +'<div class="fresh">수급(외인·기관 순매수 상위) ∩ 모멘텀(거래대금·급등 상위) 교차</div>'
       +tbl(D.picks,[['종목',r=>'<td><a href="/live/'+esc(r.code)+'">'+esc(r.name)+' 📡</a>'
         +(r.reasons||[]).map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+'</td>'],
-        ['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
-        ['외인',r=>'<td class="'+cls(r.frgn_value)+'">'+eok(r.frgn_value)+'</td>'],
-        ['기관',r=>'<td class="'+cls(r.orgn_value)+'">'+eok(r.orgn_value)+'</td>']],15)+'</div>';
+        ['외인',r=>barTd(r.frgn_value,maxAbs(D.picks,'frgn_value'))],
+        ['기관',r=>barTd(r.orgn_value,maxAbs(D.picks,'orgn_value'))],
+        ['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd]],15)+'</div>';
   }
-  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_buy,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_buy,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_sell,fitCols,10)+'</div>';
-  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_sell,fitCols,10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_buy,fitColsFor(S.frgn_buy),10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매수 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_buy,fitColsFor(S.orgn_buy),10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-globe"/></svg> 외국인 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.frgn_sell,fitColsFor(S.frgn_sell),10)+'</div>';
+  h+='<div class="panel"><h2><svg class="hic"><use href="#i-bank"/></svg> 기관 순매도 상위</h2><div class="fresh">가집계(잠정) · 금액 기준</div>'+tbl(S.orgn_sell,fitColsFor(S.orgn_sell),10)+'</div>';
   h+='<div class="panel"><h2><svg class="hic"><use href="#i-cash"/></svg> 거래대금 상위</h2><div class="fresh">실시간 · ETF/ETN/스팩 제외</div>'
-    +tbl(S.value_top,[['종목',nameTd],['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
-      ['거래대금',r=>'<td>'+eok(r.value).replace('+','')+'</td>'],
+    +tbl(S.value_top,[['종목',nameTd],
+      ['거래대금',r=>valTd(r.value,maxAbs(S.value_top,'value'))],
+      ['현재가',r=>'<td>'+num(r.price)+'</td>'],['등락',rateTd],
       ['거래량 전일比',r=>'<td>'+(r.vol_change!=null?r.vol_change.toFixed(0)+'%':'–')+'</td>']],10)+'</div>';
   h+='<div class="panel"><h2><svg class="hic"><use href="#i-rise"/></svg> 급등 상위</h2><div class="fresh">실시간 · 거래량 10만주 이상 · ETF/ETN/스팩 제외</div>'
     +tbl(S.gainers,[['종목',r=>'<td><a href="/live/'+esc(r.code)+'">'+esc(r.name)+' 📡</a>'
