@@ -327,7 +327,7 @@ __ICONS__
   <div class="mylines" id="mylines"></div>
 </div>
 
-<details class="sec">
+<details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-flows"/></svg> 수급 <span class="seccap">누가 사고파나</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="glance" id="glance"></div>
@@ -371,7 +371,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec">
+<details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-short"/></svg> 위험 지표 <span class="seccap">공매도·빚 · 며칠 전 확정</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="fixed-note"><span class="tag-fixed">🕐 확정</span> 하루~이틀 전 · 실시간 아님 · 떨어질 때 연료
@@ -465,7 +465,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec">
+<details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·거래소·체결 <span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="panel">
@@ -506,6 +506,12 @@ __ICONS__
       100주 초과 대금 비중↑ = 기관성, 1-10주 건수 비중↑ = 개인 중심. 시장이 얇은
       시간외 구간일수록 판별력이 높다. 투자자별 순매수 <b>확정치는 T+1 09:30 이후</b> 제공.</div>
     </div>
+  </div>
+</details>
+
+<details class="sec">
+  <summary><svg class="hic secic"><use href="#i-activity"/></svg> 실시간 체결 <span class="seccap">최근 30건 · 계속 갱신</span><span class="chev">▾</span></summary>
+  <div class="sec-body">
     <div class="panel">
       <h2><svg class="hic"><use href="#i-activity"/></svg> 실시간 체결 <span class="fresh">· 최근 30건</span></h2>
       <div class="tbl-wrap"><table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table></div>
@@ -513,7 +519,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" id="wl-panel">
+<details class="sec" id="wl-panel" open>
   <summary><svg class="hic secic"><use href="#i-target"/></svg> 감시선·알림 <span class="seccap">가격 도달 알림</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="meta" style="margin:2px 0 10px">차트에 표시할 수평선을 추가·편집합니다. 가격이 닿으면
@@ -532,7 +538,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec">
+<details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-compass"/></svg> 왜 움직였나 · 배우기 <span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="sit" id="sit" style="display:none"></div>
