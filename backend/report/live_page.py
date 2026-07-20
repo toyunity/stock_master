@@ -69,6 +69,15 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   cursor:pointer;-webkit-tap-highlight-color:transparent}
 .advtoggle .ar{display:inline-block;transition:transform .2s}
 .advtoggle.on .ar{transform:rotate(180deg)}
+/* 확정 밴드(대차·공매도·신용) — 하루~이틀 전 데이터임을 초보에게 명시 */
+.fixed-band{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.whyfixed{margin-left:auto}
+.whyfixed>summary{list-style:none;cursor:pointer;font-size:11.5px;font-weight:800;color:var(--primary);
+  background:var(--info-bg);border-radius:var(--r-sm);padding:3px 9px;min-height:32px;
+  display:inline-flex;align-items:center}
+.whyfixed>summary::-webkit-details-marker{display:none}
+.whyfixed-body{font-size:12.5px;color:var(--text-2);line-height:1.55;margin-top:8px;
+  background:var(--surface-2);border-radius:var(--r-sm);padding:9px 12px}
 .advw{display:none}.advw.on{display:block}
 .finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
 .finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
@@ -313,7 +322,14 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
   창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
 </div>
-<div class="sechd">⚠️ 위험 신호 · 떨어질 연료</div>
+<div class="sechd fixed-band">
+  <span><span class="tag-fixed">🕐 확정</span> 하루~이틀 전 · 실시간 아님 · 떨어질 때 연료</span>
+  <details class="whyfixed"><summary>왜 늦어요? ▾</summary>
+    <div class="whyfixed-body">장 마감 뒤 집계·정산돼서 다음 영업일(공매도·대차)~이틀 뒤(신용융자)에
+    확정돼요. 그래서 오늘이 아니라 며칠 전 날짜로 보이는 게 정상이에요. 지금 이 순간의 매수·매도
+    압력은 위의 <span class="tag-live">🟢 실시간</span> 수급·호가·체결에서 보세요.</div>
+  </details>
+</div>
 <div class="panel">
   <h2>🩳 대차잔고 (공매도 선행지표) <span class="fresh" id="sb-fresh">· 데이터 대기</span></h2>
   <div class="grid3">

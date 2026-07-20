@@ -183,6 +183,11 @@ details.inline summary::-webkit-details-marker{display:none}
   background:inherit;animation:pulsering 1.8s ease-out infinite}
 @keyframes pulsering{0%{transform:scale(1);opacity:.55}100%{transform:scale(2.6);opacity:0}}
 
+/* 실시간/확정 상태 태그(초보용 구분) */
+.tag-live,.tag-fixed{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;
+  border-radius:var(--r-pill);padding:2px 8px;vertical-align:middle;letter-spacing:0}
+.tag-live{background:var(--good-bg);color:var(--good)}
+.tag-fixed{background:var(--warn-bg);color:var(--warn)}
 img,canvas{max-width:100%}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}

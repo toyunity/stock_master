@@ -199,6 +199,11 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert "수급 유입" in texts["tm-comment"]
     assert int(filled["tm-reasons"]) > 0            # 근거 목록 렌더
     assert "참고용" in texts["tm-fresh"]
+    # 확정 밴드 · 태그(설계 2026-07-20)
+    page = html_p.read_text(encoding="utf-8")
+    assert "tag-fixed" in page and "tag-live" in page
+    assert "왜 늦어요" in page
+    assert "실시간 아님" in page
 
 
 def _parse_harness(stdout: str):
