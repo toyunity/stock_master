@@ -276,28 +276,32 @@ _PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-title" content="Stock Master">
 <style>
-:root{{--bg:#eef1f7;--surface:#fff;--surface-2:#f3f5fa;--text:#131722;--text-2:#556072;
---text-3:#8a94a6;--border:#e3e8f0;--primary:#1565c0;--up:#e0322c;--r:14px}}
-@media(prefers-color-scheme:dark){{:root{{--bg:#0d1117;--surface:#161b22;--surface-2:#1b222c;
---text:#e7edf5;--text-2:#9aa6b6;--text-3:#6b7789;--border:#2a323d;--primary:#4c9aff;--up:#ff5b52}}}}
+:root{{--bg:#eceef3;--surface:#fff;--surface-2:#f3f5f9;--text:#12151d;--text-2:#586074;
+--text-3:#8b93a4;--border:#e0e4ec;--primary:#6a4ff0;--up:#e5342f;--r:12px;
+--font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#0a0c12;--surface:#141824;--surface-2:#1a1f2e;
+--text:#e9ecf3;--text-2:#8b93a5;--text-3:#5f6879;--border:#252c3c;--primary:#9a86ff;--up:#ff5b52}}}}
 *{{box-sizing:border-box}}
 body{{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
 min-height:100vh;margin:0;background:var(--bg);color:var(--text);line-height:1.6;
 display:flex;align-items:center;justify-content:center;
 padding:32px max(20px,env(safe-area-inset-left)) max(32px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-right))}}
-.card{{background:var(--surface);border:1px solid var(--border);border-radius:20px;
-box-shadow:0 8px 30px rgba(17,24,39,.10);padding:32px 26px;width:100%;max-width:380px;text-align:center}}
-h1{{font-size:22px;font-weight:800;margin:0 0 6px;letter-spacing:-.01em}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+box-shadow:0 1px 2px rgba(18,21,29,.05),0 10px 30px rgba(18,21,29,.10);
+padding:34px 26px;width:100%;max-width:380px;text-align:center}}
+h1{{font-size:22px;font-weight:800;margin:0 0 6px;letter-spacing:-.03em}}
 p{{color:var(--text-2);font-size:14px;margin:8px 0}}
 .btn{{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:50px;max-width:100%;
 margin-top:18px;padding:0 26px;background:var(--primary);color:#fff;border:none;border-radius:var(--r);
-font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;
-box-shadow:0 4px 14px rgba(21,101,192,.30);-webkit-tap-highlight-color:transparent}}
+font-size:16px;font-weight:700;cursor:pointer;text-decoration:none;
+box-shadow:0 4px 14px rgba(106,79,240,.28);-webkit-tap-highlight-color:transparent}}
 .btn:active{{opacity:.85}}
 .btn.alt{{background:var(--surface-2);color:var(--text);box-shadow:none;border:1px solid var(--border);font-weight:500}}
-input{{font-size:28px;letter-spacing:10px;text-align:center;padding:14px 10px;width:220px;max-width:100%;
+input{{font-family:var(--font-mono);font-size:28px;letter-spacing:8px;text-align:center;
+padding:14px 10px;width:230px;max-width:100%;
 border:1px solid var(--border);border-radius:var(--r);margin-top:12px;background:var(--surface-2);
-color:var(--text);font-variant-numeric:tabular-nums}}
+color:var(--text);font-variant-numeric:tabular-nums;font-weight:700}}
+input:focus{{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(106,79,240,.18)}}
 .err{{color:var(--up);margin-top:12px;font-weight:600;font-size:14px}}
 .muted{{color:var(--text-3);font-size:13px;margin-top:24px}} .muted a{{color:var(--text-2)}}
 img.qr{{width:230px;height:230px;max-width:100%;image-rendering:pixelated;background:#fff;

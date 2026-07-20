@@ -12,8 +12,8 @@ Python 3.9 호환(마스터 실서버는 시스템 3.9) — 단순 문자열 상
 
 # ── PWA head: 라이트/다크 theme-color + 세이프에어리어 전제(viewport-fit은 각 페이지) ──
 PWA_HEAD = (
-    '<meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">'
-    '<meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">'
+    '<meta name="theme-color" content="#eceef3" media="(prefers-color-scheme: light)">'
+    '<meta name="theme-color" content="#0a0c12" media="(prefers-color-scheme: dark)">'
     '<link rel="manifest" href="/manifest.json">'
     '<link rel="apple-touch-icon" href="/icons/icon-180.png">'
     '<meta name="apple-mobile-web-app-capable" content="yes">'
@@ -24,33 +24,47 @@ PWA_HEAD = (
 
 # ── 디자인 토큰 + 베이스 엘리먼트 + 공통 컴포넌트 ──
 BASE_CSS = """
+/* ═══════════════════════════════════════════════════════════════════
+   Stock Master — "관제(Instrument)" 디자인 시스템
+   두 레지스터로 설계: (1) 계기(instrument) — 데이터는 모노 숫자·시맨틱 색·무채색 크롬,
+   (2) 튜터(tutor) — 안내/코칭은 sans·둥근 iris 강조·여백. 색은 곧 정보 —
+   빨강=상승/매수, 파랑=하락/매도, 초록=양호, 앰버=주의, 보라=공매도/대차/감시선.
+   iris(--primary)는 길찾기·코칭 표면에만(장식 금지).
+   ═══════════════════════════════════════════════════════════════════ */
 :root{
-  --bg:#f4f5fb; --surface:#ffffff; --surface-2:#f2f3fb; --surface-3:#e9ebf6;
-  --text:#0f1220; --text-2:#565f77; --text-3:#8b93a8;
-  --border:#e6e9f3; --border-2:#eef0f8; --grid:#eef0f8;
-  --primary:#6d5efc; --primary-ink:#5646e8;
-  --up:#f5384e; --down:#2f6bff; --flat:#8b93a8;
-  --good:#12b76a; --warn:#f79009; --info:#6d5efc;
-  --up-bg:#ffe9ec; --down-bg:#e7f0ff; --good-bg:#e4f7ee; --warn-bg:#fef2e0; --info-bg:#efebff;
-  --shadow:0 1px 2px rgba(20,22,40,.05), 0 10px 26px rgba(70,58,190,.08);
-  --shadow-sm:0 1px 2px rgba(20,22,40,.06);
-  --accent-glow:0 2px 12px rgba(109,94,252,.35);
-  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
-  --r:14px; --r-lg:18px; --r-sm:10px; --r-pill:999px;
-  --disc-bg:#fbf5e6; --disc-bd:#f0e3bd; --disc-tx:#7a6320;
+  /* 표면 — 차가운 계기판 무채색 */
+  --bg:#eceef3; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
+  --text:#12151d; --text-2:#586074; --text-3:#8b93a4;
+  --border:#e0e4ec; --border-2:#ebeef4; --grid:#eef0f6;
+  /* 브랜드 iris — 길찾기·코칭 전용 */
+  --primary:#6a4ff0; --primary-ink:#5238d8;
+  /* 시장 시맨틱 — 의미를 나르는 유일한 chroma. 상승=적/하락=청(한국식) */
+  --up:#e5342f; --down:#1f66e0; --flat:#8b93a4;
+  --good:#12a56a; --warn:#dc8400; --info:#6a4ff0;
+  --violet:#a855f7;   /* 데이터: 공매도·대차·감시선·외국계 창구 */
+  --up-bg:#fdeceb; --down-bg:#e9f0fd; --good-bg:#e3f6ee; --warn-bg:#fdf1de; --info-bg:#efebfe;
+  --shadow:0 1px 2px rgba(18,21,29,.05), 0 6px 18px rgba(18,21,29,.06);
+  --shadow-sm:0 1px 2px rgba(18,21,29,.05);
+  --accent-glow:0 1px 8px rgba(106,79,240,.28);
+  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
+  --font-num:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
+  --r:12px; --r-lg:16px; --r-sm:9px; --r-pill:999px;
+  --disc-bg:#fbf5e6; --disc-bd:#efe1bb; --disc-tx:#7a6320;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#0b0d14; --surface:#151826; --surface-2:#1b1f30; --surface-3:#242a3d;
-    --text:#eef1f8; --text-2:#9aa2b8; --text-3:#6b7389;
-    --border:#262c3d; --border-2:#1e2231; --grid:#1e2231;
-    --primary:#8b7cff; --primary-ink:#a99bff;
-    --up:#ff5e6b; --down:#5b8bff; --flat:#6b7389;
-    --good:#34d399; --warn:#fbbf5c; --info:#8b7cff;
-    --up-bg:#2a1620; --down-bg:#14203a; --good-bg:#0f2a20; --warn-bg:#2a2113; --info-bg:#1c1836;
-    --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px rgba(0,0,0,.55);
-    --shadow-sm:0 1px 2px rgba(0,0,0,.5);
-    --accent-glow:0 2px 14px rgba(139,124,255,.4);
+    /* 다크 = 터미널: 깊은 잉크-네이비(순흑 회피) */
+    --bg:#0a0c12; --surface:#141824; --surface-2:#1a1f2e; --surface-3:#232a3c;
+    --text:#e9ecf3; --text-2:#8b93a5; --text-3:#5f6879;
+    --border:#252c3c; --border-2:#1c2231; --grid:#1c2231;
+    --primary:#9a86ff; --primary-ink:#b3a4ff;
+    --up:#ff5b52; --down:#4f8bff; --flat:#5f6879;
+    --good:#2fcf8a; --warn:#f2a83a; --info:#9a86ff;
+    --violet:#c084fc;
+    --up-bg:#2a1512; --down-bg:#101d33; --good-bg:#0d2a1f; --warn-bg:#2a2113; --info-bg:#1a1636;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.5);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.45);
+    --accent-glow:0 1px 10px rgba(154,134,255,.30);
     --disc-bg:#221d13; --disc-bd:#3a3320; --disc-tx:#d8c187;
   }
 }
@@ -65,32 +79,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun 
   padding-left:max(16px, env(safe-area-inset-left));
   padding-right:max(16px, env(safe-area-inset-right));
   padding-bottom:max(24px, env(safe-area-inset-bottom));}
-a{color:var(--primary);text-decoration:none}
+a{color:var(--primary);text-decoration:none;font-weight:600}
 a:active{opacity:.6}
-h1{font-size:22px;font-weight:900;margin:0;letter-spacing:-.03em;color:var(--text)}
+h1{font-size:21px;font-weight:800;margin:0;letter-spacing:-.03em;color:var(--text)}
 h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
+/* 코드/티커/타임스탬프 — 계기 모노 유틸 */
 .code{font-size:11.5px;color:var(--text-3);font-weight:600;font-family:var(--font-mono);
-  letter-spacing:0;font-variant-numeric:tabular-nums}
+  letter-spacing:.01em;font-variant-numeric:tabular-nums}
 .meta{font-size:12px;color:var(--text-3);line-height:1.55}
 
-/* 상단 뒤로가기 */
+/* 상단 뒤로가기 — iris 길찾기 */
 .back{display:inline-flex;align-items:center;gap:4px;min-height:36px;
-  font-size:14px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+  font-size:14px;font-weight:700;color:var(--primary);margin-bottom:6px}
 
-/* 카드/패널 — 승격 */
+/* 카드/패널 — 계기 베이(플랫·크리스프 1px·타이트 반경) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:16px;margin:14px 0;box-shadow:var(--shadow)}
+  padding:15px;margin:13px 0;box-shadow:var(--shadow)}
 .panel>h2{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
-/* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션) */
-.fresh{display:block;font-size:11.5px;font-weight:500;color:var(--text-3);
-  margin:3px 0 12px;line-height:1.5}
+/* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
+.fresh{display:block;font-size:11px;font-weight:500;color:var(--text-3);
+  margin:3px 0 12px;line-height:1.5;font-variant-numeric:tabular-nums}
 .panel>h2 .fresh{flex-basis:100%;margin:4px 0 0}
 
-/* 배지(상태) */
-.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;
-  padding:3px 9px;border-radius:var(--r-pill);color:#fff;vertical-align:middle;
-  letter-spacing:.01em;white-space:nowrap;line-height:1.4}
+/* 배지(상태) — 모노 대문자 유틸 태그 */
+.badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;
+  padding:3px 9px;border-radius:var(--r-sm);color:#fff;vertical-align:middle;
+  letter-spacing:.02em;white-space:nowrap;line-height:1.4;
+  font-family:var(--font-mono);text-transform:uppercase}
 .b-live,.b-ok{background:var(--good)} .b-demo{background:var(--warn)}
 .b-off{background:var(--flat)} .b-warn{background:var(--warn)} .b-info{background:var(--info)}
 .b-buy{background:var(--primary)} .b-sell{background:var(--up)} .b-hold{background:var(--flat)}
@@ -98,27 +114,28 @@ h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
 /* 등락 색 — 한국식 상승=적/하락=청 */
 .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
 
-/* 가격 헤드라인 */
-.price{font-size:38px;font-weight:900;margin:10px 0 2px;letter-spacing:-.035em;
-  font-variant-numeric:tabular-nums}
+/* 가격 헤드라인 — 계기 모노 리드아웃(시그니처) */
+.price{font-family:var(--font-num);font-size:37px;font-weight:700;margin:10px 0 2px;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 .price.up{color:var(--up)} .price.down{color:var(--down)} .price.flat{color:var(--text)}
 
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
 .note:empty{display:none}
 
-/* 스탯 타일(3열) */
-.grid3{display:flex;gap:8px;text-align:center}
+/* 스탯 타일(3열) — 계기: 값은 모노, 라벨은 대문자 유틸 */
+.grid3{display:flex;gap:7px;text-align:center}
 .grid3>div{flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--border-2);
-  border-radius:var(--r);padding:11px 6px}
-.grid3 .lbl{font-size:11px;color:var(--text-3);margin-bottom:4px;font-weight:500}
-.grid3 .val{font-size:16px;font-weight:800;color:var(--text);
+  border-radius:var(--r-sm);padding:10px 6px}
+.grid3 .lbl{font-size:10px;color:var(--text-3);margin-bottom:4px;font-weight:600;
+  letter-spacing:.02em}
+.grid3 .val{font-family:var(--font-num);font-size:16px;font-weight:700;color:var(--text);
   font-variant-numeric:tabular-nums;letter-spacing:-.01em;word-break:keep-all}
 .grid3 .val.up{color:var(--up)} .grid3 .val.down{color:var(--down)} .grid3 .val.flat{color:var(--flat)}
 
 /* 시그널 콜아웃(판정) */
 .sig{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-top:10px;
-  padding:9px 12px;border-radius:var(--r);background:var(--surface-2);color:var(--text-2);
+  padding:9px 12px;border-radius:var(--r-sm);background:var(--surface-2);color:var(--text-2);
   border-left:3px solid var(--flat)}
 .sig:empty{display:none;padding:0;margin:0;border:0}
 .sig-good{background:var(--good-bg);color:var(--good);border-left-color:var(--good)}
@@ -128,24 +145,26 @@ h2{font-size:15px;font-weight:800;margin:0;letter-spacing:-.02em}
 .sig.up{background:var(--up-bg);color:var(--up);border-left-color:var(--up)}
 .sig.down{background:var(--down-bg);color:var(--down);border-left-color:var(--down)}
 
-/* 세그먼트/칩 버튼(타임프레임·세션 탭) — 44px 타겟 */
+/* 세그먼트/칩 버튼(타임프레임·세션 탭) — 44px 타겟. 활성=iris 길찾기 */
 .tfrow{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .tf{flex:0 0 auto;min-height:44px;display:inline-flex;align-items:center;justify-content:center;
-  font-size:13px;font-weight:600;padding:0 15px;border:1px solid var(--border);
-  background:var(--surface);color:var(--text-2);border-radius:var(--r);cursor:pointer;
+  font-size:13px;font-weight:700;padding:0 15px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text-2);border-radius:var(--r-sm);cursor:pointer;
   -webkit-tap-highlight-color:transparent;transition:background .12s,color .12s,border-color .12s}
 .tf:active{background:var(--surface-2)}
 .tf.on{background:var(--primary);color:#fff;border-color:var(--primary);
   box-shadow:var(--accent-glow)}
 
-/* 테이블 */
+/* 테이블 — 계기: 헤더는 대문자 유틸, 숫자셀은 모노 */
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{font-size:11px;color:var(--text-3);font-weight:600;text-align:right;padding:6px;
-  border-bottom:1px solid var(--border);white-space:nowrap}
+th{font-size:10px;color:var(--text-3);font-weight:700;text-align:right;padding:7px 6px;
+  border-bottom:1px solid var(--border);white-space:nowrap;letter-spacing:.03em}
 td{text-align:right;padding:8px 6px;border-bottom:1px solid var(--border-2);
-  font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
+  font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
 tr:last-child td{border-bottom:0}
-th:first-child,td:first-child{text-align:left}
+th:first-child{text-align:left}
+/* 첫 열(대개 종목명/날짜)은 한글이 섞이므로 sans 유지 */
+td:first-child{text-align:left;font-family:inherit}
 /* 넓은 표는 페이지가 아니라 표 내부에서 가로 스크롤 */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px;padding:0 2px}
 .tbl-wrap::-webkit-scrollbar{height:0}
@@ -154,28 +173,32 @@ th:first-child,td:first-child{text-align:left}
 details.panel summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
   min-height:36px;display:flex;align-items:center}
 details.panel summary::-webkit-details-marker{display:none}
-details.panel summary h2::before{content:'▸';color:var(--primary);margin-right:6px;
-  font-size:12px;transition:transform .15s}
-details.panel[open] summary h2::before{content:'▾'}
+details.panel summary h2::before{content:'+';color:var(--primary);margin-right:7px;
+  font-size:15px;font-weight:700;transition:transform .15s;font-family:var(--font-mono)}
+details.panel[open] summary h2::before{content:'−'}
 details.panel[open] summary{margin-bottom:10px}
 details.panel summary h2{margin:0}
 details.inline summary{cursor:pointer;color:var(--primary);font-size:12px;
-  font-weight:600;padding:8px 0;min-height:40px;display:flex;align-items:center}
+  font-weight:700;padding:8px 0;min-height:40px;display:flex;align-items:center}
 details.inline summary::-webkit-details-marker{display:none}
 
-/* 투자 유의 디스클레이머 */
+/* 투자 유의 디스클레이머 — 튜터 레지스터(따뜻·둥근) */
 .disc{font-size:12px;line-height:1.6;color:var(--disc-tx);background:var(--disc-bg);
-  border:1px solid var(--disc-bd);padding:12px 14px;border-radius:var(--r);
+  border:1px solid var(--disc-bd);padding:13px 15px;border-radius:var(--r);
   margin-top:20px;margin-bottom:8px}
 .disc b{color:var(--disc-tx)}
 
-/* refresh button */
+/* refresh button — iris 길찾기 */
 .refresh{min-height:40px;font-size:13px;font-weight:700;padding:0 18px;
-  border:0;background:var(--primary);color:#fff;border-radius:var(--r);cursor:pointer;
+  border:0;background:var(--primary);color:#fff;border-radius:var(--r-sm);cursor:pointer;
   -webkit-tap-highlight-color:transparent;box-shadow:var(--accent-glow)}
 .refresh:active{opacity:.85}
 
-/* 시그니처: 시장상태 펄스 닷 (장중=초록·야간/미국=인디고·장종료=회색) */
+/* 포커스 링(키보드 접근성) — iris */
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,
+.tf:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
+
+/* 시그니처: 시장상태 펄스 닷 (장중=초록·야간/미국=iris·장종료=회색) */
 .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--flat);
   position:relative;flex:none}
 .pulse.live{background:var(--good)} .pulse.night{background:var(--primary)} .pulse.closed{background:var(--flat)}
@@ -183,7 +206,7 @@ details.inline summary::-webkit-details-marker{display:none}
   background:inherit;animation:pulsering 1.8s ease-out infinite}
 @keyframes pulsering{0%{transform:scale(1);opacity:.55}100%{transform:scale(2.6);opacity:0}}
 
-/* 실시간/확정 상태 태그(초보용 구분) */
+/* 실시간/확정 상태 태그(초보용 구분) — 모노 유틸 */
 .tag-live,.tag-fixed{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;
   border-radius:var(--r-pill);padding:2px 8px;vertical-align:middle;letter-spacing:0}
 .tag-live{background:var(--good-bg);color:var(--good)}
@@ -213,8 +236,8 @@ try{if(typeof window!=='undefined'&&window.matchMedia)
 
 # 페이지 전환 로딩 바 — 내부 링크 클릭/이탈 시 상단 진행 바(전 페이지 공용).
 # bfcache 복귀(pageshow)에서 제거해 뒤로가기 잔상을 막는다.
-NAV_LOADER = """<style>#navload{position:fixed;top:0;left:0;height:3px;width:0;
-background:linear-gradient(90deg,var(--primary),#a99bff);z-index:9999;pointer-events:none;
+NAV_LOADER = """<style>#navload{position:fixed;top:0;left:0;height:2px;width:0;
+background:linear-gradient(90deg,var(--primary),#b3a4ff);z-index:9999;pointer-events:none;
 transition:width .5s ease;border-radius:0 2px 2px 0}
 #navload.on{width:85%}
 #navload.done{width:100%;opacity:0;transition:width .15s,opacity .3s .15s}</style>
@@ -247,16 +270,18 @@ window.addEventListener('pageshow',hide);
 TABBAR = """<style>
 body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
 #tabbar{position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;
-  background:var(--surface);border-top:1px solid var(--border);
-  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -2px 14px rgba(17,24,39,.06)}
+  background:color-mix(in srgb, var(--surface) 90%, transparent);
+  -webkit-backdrop-filter:saturate(160%) blur(12px);backdrop-filter:saturate(160%) blur(12px);
+  border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -1px 0 var(--border-2)}
 #tabbar a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:3px;min-height:54px;font-size:11px;font-weight:700;color:var(--text-3);
-  text-decoration:none;-webkit-tap-highlight-color:transparent;transition:color .15s}
-#tabbar a .ic{font-size:21px;line-height:1;transition:transform .15s}
+  text-decoration:none;-webkit-tap-highlight-color:transparent;transition:color .15s;letter-spacing:-.01em}
+#tabbar a .ic{font-size:20px;line-height:1;transition:transform .15s}
 #tabbar a.on{color:var(--primary)}
-#tabbar a.on .ic{transform:translateY(-1px) scale(1.06)}
+#tabbar a.on .ic{transform:translateY(-1px) scale(1.05)}
 #tabbar a.on::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
-  width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--primary);box-shadow:var(--accent-glow)}
+  width:22px;height:2px;border-radius:0 0 2px 2px;background:var(--primary);box-shadow:var(--accent-glow)}
 #tabbar a:active{opacity:.6}
 </style>
 <nav id="tabbar">

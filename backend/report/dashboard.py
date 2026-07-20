@@ -47,7 +47,7 @@ h1 small{font-size:13px;color:var(--text-3);font-weight:600}
 .srow{padding:11px 4px;border-bottom:1px solid var(--border-2);font-size:14px;
   display:flex;justify-content:space-between;gap:8px;align-items:center}
 .srow:last-child{border-bottom:0}
-.spx{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.spx{font-family:var(--font-num);font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .card{position:relative;overflow:hidden}
 .card.buy{border-left:4px solid var(--primary)}
 .card.sell{border-left:4px solid var(--up)}
@@ -55,7 +55,7 @@ h1 small{font-size:13px;color:var(--text-3);font-weight:600}
 .name{font-size:17px;font-weight:800;color:var(--text);text-decoration:none;letter-spacing:-.01em}
 a.name:active{opacity:.6}
 .market{font-size:13px;margin:2px 0 10px;font-weight:700;letter-spacing:-.01em}
-.mx-up{color:#d32f2f}.mx-down{color:#1565c0}.mx-flat{color:var(--text-2)}
+.mx-up{color:var(--up)}.mx-down{color:var(--down)}.mx-flat{color:var(--text-2)}
 .cval{font-size:12px;color:var(--text-2);font-weight:600}
 .cnd{font-size:12px;font-weight:800;margin-top:9px;padding:6px 11px;border-radius:var(--r-sm);
   background:var(--surface-2);display:inline-block;line-height:1.4}
@@ -64,7 +64,7 @@ a.name:active{opacity:.6}
 .cnd.down{background:var(--down-bg);color:var(--down)}
 .cnd.neutral{background:var(--surface-2);color:var(--text-2)}
 .conf{font-size:13px;color:var(--text-2);margin-top:6px}
-.chg{font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
+.chg{font-family:var(--font-num);font-weight:700;font-variant-numeric:tabular-nums} .chg.up{color:var(--up)} .chg.down{color:var(--down)}
 .chart{height:180px;margin:10px 0}
 ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(--text)}
 .bt{font-size:12px;color:var(--primary-ink);margin-top:8px;background:var(--info-bg);
@@ -78,8 +78,8 @@ ul{margin:8px 0 0 0;padding-left:18px} li{font-size:14px;margin:3px 0;color:var(
   padding:10px 6px;text-align:center;min-width:0}
 .scard .nm{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;margin-bottom:3px}
-.scard .px{font-size:14px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
-.scard .rt{font-size:12px;font-weight:700}
+.scard .px{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.scard .rt{font-family:var(--font-num);font-size:12px;font-weight:700}
 .rt.up{color:var(--up)}.rt.down{color:var(--down)}.rt.flat{color:var(--flat)}
 #semi>b{font-size:14px}
 button.wadd{border:1px solid var(--border);background:var(--surface-2);
@@ -100,7 +100,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mtag{font-size:10px;font-weight:700;color:var(--text-3);border:1px solid var(--border);
   border-radius:var(--r-sm);padding:0 4px;vertical-align:middle}
-.mpx{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mpx{font-family:var(--font-num);font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .mctl{display:flex;gap:4px}
 .mctl button{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);
   border-radius:var(--r-sm);font-size:13px;min-width:30px;min-height:30px;padding:0;cursor:pointer}
@@ -121,9 +121,9 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .ah-top{display:flex;align-items:center;gap:9px}
 .ah-brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:900;
   letter-spacing:-.03em;color:var(--text)}
-.ah-mark{width:27px;height:27px;border-radius:9px;display:grid;place-items:center;color:#fff;
-  font-size:15px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a99bff);
-  box-shadow:var(--accent-glow)}
+.ah-mark{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;color:#fff;
+  font-size:15px;font-weight:900;font-family:var(--font-mono);
+  background:linear-gradient(135deg,var(--primary),#b3a4ff);box-shadow:var(--accent-glow)}
 .ah-state{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;
   color:var(--text-2);background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r-pill);padding:5px 11px}
@@ -133,15 +133,17 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .mchip{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
   padding:8px 13px;box-shadow:var(--shadow-sm)}
 .mchip .ml{font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:.04em}
-.mchip .mv{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  margin-top:2px;display:flex;align-items:baseline;gap:6px}
-.mchip .mr{font-size:11.5px;font-weight:800}
+.mchip .mv{font-family:var(--font-num);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em;margin-top:2px;display:flex;align-items:baseline;gap:6px}
+.mchip .mr{font-family:var(--font-num);font-size:11.5px;font-weight:700}
 .mchip .mr.up{color:var(--up)} .mchip .mr.down{color:var(--down)} .mchip .mr.flat{color:var(--flat)}
 
-/* 섹션 라벨 */
-.sectlabel{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:800;
-  letter-spacing:.05em;color:var(--text-3);margin:20px 2px 9px}
-.sectlabel::after{content:"";flex:1;height:1px;background:var(--border)}
+/* 섹션 라벨 — 시그니처: 틱마크 축(axis) 룰(가격 눈금자 모티프) */
+.sectlabel{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;
+  letter-spacing:.02em;color:var(--text-2);margin:22px 2px 9px}
+.sectlabel::after{content:"";flex:1;height:7px;align-self:flex-end;
+  border-bottom:1px solid var(--border);
+  background-image:repeating-linear-gradient(90deg,var(--border) 0 1px,transparent 1px 8px)}
 
 /* 종목 카드 재구성 */
 .card{padding:15px 16px}
@@ -150,9 +152,9 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .chinfo .name{font-size:18px;font-weight:900;letter-spacing:-.02em;display:block;line-height:1.2}
 .chinfo .code{font-family:var(--font-mono);font-size:11px;margin-top:1px;display:inline-block}
 .chprice{text-align:right;flex:none;padding-top:1px}
-.chprice b{font-size:20px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
-  display:block;line-height:1.15}
-.chprice .chg{font-size:12.5px;font-weight:800}
+.chprice b{font-family:var(--font-num);font-size:20px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;display:block;line-height:1.15}
+.chprice .chg{font-family:var(--font-num);font-size:12.5px;font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
 .chip{display:inline-flex;align-items:center;font-size:11.5px;font-weight:800;line-height:1.4;
   padding:4px 11px;border-radius:var(--r-pill);background:var(--surface-2);color:var(--text-2);
@@ -248,8 +250,8 @@ D.stocks.forEach(s=>{
     rightPriceScale:{borderColor:_t.rightPriceScale.borderColor},
     timeScale:{borderColor:_t.timeScale.borderColor}});
   registerChart(chart);
-  const series=chart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
-    borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0'});
+  const series=chart.addCandlestickSeries({upColor:'#e5342f',downColor:'#1f66e0',
+    borderVisible:false,wickUpColor:'#e5342f',wickDownColor:'#1f66e0'});
   series.setData(s.candles); chart.timeScale().fitContent();
 });
 const q=document.getElementById('q'), res=document.getElementById('results');

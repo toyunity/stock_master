@@ -28,31 +28,33 @@ __PWA_HEAD__
 __BASE_CSS__
 /* ── /live 고유 스타일 ── */
 .hero{background:var(--bg);margin:0 -16px 4px;
-  padding:6px 16px 10px;
+  padding:8px 16px 12px;
   padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
   border-bottom:1px solid var(--border)}
 .hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
-.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.01em}
-.hero .price{font-size:30px;margin:4px 0 0;font-weight:800;letter-spacing:-.5px}
-.hero .chg{font-size:14px;font-weight:700;margin:2px 0 0}
+.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
+.hero .price{font-family:var(--font-num);font-size:34px;margin:6px 0 0;font-weight:700;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
+.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
+  font-variant-numeric:tabular-nums}
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
 .hero .fin{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
 .hero .ob{margin-top:8px}
 .obbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2)}
-.obbid{background:#d32f2f}.obask{background:#1565c0}
+.obbid{background:var(--up)}.obask{background:var(--down)}
 .obtxt{font-size:12px;color:var(--text-2);margin-top:3px;font-weight:600}
 ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);font-weight:500}
-.hero .nd{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--surface)}
+.hero .nd{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--surface)}
 .nd .ndh{display:flex;align-items:baseline;gap:2px;flex-wrap:wrap}
 .nd .badge-nd{font-weight:800;font-size:14px}
 .nd.up .badge-nd{color:var(--up)}.nd.down .badge-nd{color:var(--down)}.nd.neutral .badge-nd{color:var(--text-2)}
 .nd .ndf{font-size:11.5px;color:var(--text-2)}
 .nd ul{margin:7px 0 0;padding-left:17px;font-size:12.5px;color:var(--text)}
 .nd .cau{margin-top:6px;font-size:11.5px;color:var(--text-2)}
-.hero .sit{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--surface)}
+.hero .sit{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--surface)}
 .sit .sith{font-weight:800;font-size:14px;display:flex;align-items:center;flex-wrap:wrap}
-.sit .phase{font-size:11px;font-weight:700;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:1px 9px;margin-left:8px}
+.sit .phase{font-size:11px;font-weight:700;color:var(--text-2);border:1px solid var(--border);border-radius:999px;padding:1px 9px;margin-left:8px}
 .sit ul{margin:8px 0 0;padding-left:16px;font-size:13px;color:var(--text);display:flex;flex-direction:column;gap:4px}
 .sit .cau{margin-top:7px;font-size:11px;color:var(--text-2)}
 /* 🎓 초보 가이드 카드 */
@@ -85,7 +87,8 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   white-space:nowrap;display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:3px 9px}
 .pill.fixed{background:var(--warn-bg);color:var(--warn)}
 .dp-key{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
-.dp-num{font-size:26px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.dp-num{font-family:var(--font-num);font-size:26px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
 .dp-one{font-size:13px;color:var(--text-2);font-weight:600;line-height:1.5;margin:0 0 10px}
 .dp-foot{display:flex;align-items:center;justify-content:flex-end}
 .det>summary.a-more{list-style:none;cursor:pointer;font-size:12px;font-weight:800;color:var(--primary);
@@ -95,17 +98,17 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .det>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
 .det[open]>summary.a-more{background:var(--primary);color:#fff}
 .det-body{margin-top:10px;display:grid;gap:10px}
-/* L3 전문가 지표 */
-.pro{margin-top:2px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--info-bg)}
+/* L3 전문가 지표 — 계기(무채색 surface, 값은 모노) */
+.pro{margin-top:2px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-2)}
 .pro>summary{list-style:none;cursor:pointer;padding:8px 11px;font-size:12px;font-weight:800;
-  color:var(--primary-ink);display:flex;align-items:center;-webkit-tap-highlight-color:transparent}
+  color:var(--text-2);display:flex;align-items:center;-webkit-tap-highlight-color:transparent}
 .pro>summary::-webkit-details-marker{display:none}
 .pro>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
 .pro-body{padding:0 11px 11px;display:grid;gap:9px}
 .pro-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
-.pro-cell{background:var(--surface);border-radius:var(--r-sm);padding:7px 9px;text-align:center}
-.pro-cell .pl{font-size:9.5px;color:var(--text-3);font-weight:800}
-.pro-cell .pv{font-size:13px;font-weight:900;margin-top:1px;font-variant-numeric:tabular-nums}
+.pro-cell{background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r-sm);padding:7px 9px;text-align:center}
+.pro-cell .pl{font-size:9.5px;color:var(--text-3);font-weight:700;letter-spacing:.02em}
+.pro-cell .pv{font-family:var(--font-num);font-size:13px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
 .pro-verdict{font-size:12px;font-weight:800;border-radius:var(--r-sm);padding:7px 10px;line-height:1.45;
   background:var(--warn-bg);color:var(--warn)}
 .pro-verdict.flat{background:var(--surface-2);color:var(--text-2)}
@@ -113,7 +116,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .pro-verdict.info{background:var(--info-bg);color:var(--primary-ink)}
 .pro-basis{font-size:11px;color:var(--text-3);font-weight:700}
 .advw{display:none}.advw.on{display:block}
-.finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
+.finex li .qi{cursor:pointer;color:var(--primary);font-weight:800;margin-left:6px;user-select:none}
 .finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
 .finex .cexp.on{display:block}
 #pmeta{margin-top:8px}
@@ -157,7 +160,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .ss-btn{min-height:36px;padding:0 13px;border-radius:var(--r-pill);border:1px solid var(--border);
   background:var(--surface);color:var(--text-3);font-size:12px;font-weight:800;cursor:pointer;
   -webkit-tap-highlight-color:transparent;margin-left:4px}
-.ss-btn.on{background:#a855f7;border-color:#a855f7;color:#fff}
+.ss-btn.on{background:var(--violet);border-color:var(--violet);color:#fff}
 .ss-btn:disabled,.ss-btn.na{opacity:.32;cursor:not-allowed}
 .fit-btn{min-height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--border);
   background:var(--surface);color:var(--text-2);font-size:12px;font-weight:700;cursor:pointer;
@@ -175,11 +178,17 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .szbar{height:14px;border-radius:4px;min-width:2px;flex:0 0 auto}
 .szbuy{background:var(--up)} .szsell{background:var(--down)}
 .szval{color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
-.fgn{color:#a855f7;font-weight:700}
+.fgn{color:var(--violet);font-weight:700}
 #mb-tbl th:nth-child(3),#mb-tbl td:nth-child(3){text-align:left}
-/* 섹션 구분 헤더 — 단일 스크롤에서 그룹을 라벨로만 구분(숨기지 않음) */
-.sechd{font-size:12.5px;font-weight:800;color:var(--text-3);letter-spacing:.04em;
-  margin:26px 2px 0;padding-top:16px;border-top:1px solid var(--border)}
+/* 한글 텍스트 셀(창구명·구분)은 모노 상속 해제 — 숫자 정렬 근거가 없고 한글은 sans가 낫다 */
+#mb-tbl td:nth-child(3),#tape td:nth-child(4){font-family:inherit}
+/* 섹션 구분 헤더 — 시그니처: 라벨 + 틱마크 축(axis) 룰(가격 눈금자 모티프) */
+.sechd{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;color:var(--text-2);
+  letter-spacing:.01em;margin:28px 2px 4px;padding-top:6px}
+.sechd::after{content:"";flex:1;height:7px;align-self:flex-end;
+  border-bottom:1px solid var(--border);
+  background-image:repeating-linear-gradient(90deg,var(--border) 0 1px,transparent 1px 8px)}
+.sechd.fixed-band::after{display:none}
 /* 인라인 스파크라인 */
 .sparkwrap{display:flex;align-items:center;gap:10px;margin:12px 0 2px}
 .sparkwrap .sk-cap{font-size:11px;font-weight:600;color:var(--text-3);white-space:nowrap;flex:0 0 auto}
@@ -194,16 +203,16 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .dv-track::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border)}
 .dv-bar{position:absolute;top:2px;bottom:2px;border-radius:3px;min-width:1px;transition:width .3s}
 .dv-buy{background:var(--up)} .dv-sell{background:var(--down)}
-.dv-val{width:82px;flex:0 0 auto;text-align:right;font-size:12.5px;font-weight:800;
-  font-variant-numeric:tabular-nums}
-/* 2분할 비중 바 */
+.dv-val{width:82px;flex:0 0 auto;text-align:right;font-family:var(--font-num);font-size:12.5px;
+  font-weight:700;font-variant-numeric:tabular-nums}
+/* 2분할 비중 바 — KRX vs NXT(방향 없는 범주) → 무채색 스틸 + 보라 */
 .pb{margin:12px 0 2px}
-.pb-track{display:flex;height:20px;border-radius:6px;overflow:hidden;background:var(--surface-2)}
-.pb-a{background:var(--primary)} .pb-b{background:#a855f7}
+.pb-track{display:flex;height:18px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.pb-a{background:var(--flat)} .pb-b{background:var(--violet)}
 .pb-lg{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;
   color:var(--text-2);font-weight:600}
 .pb-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
-.pb-da{background:var(--primary)} .pb-db{background:#a855f7}
+.pb-da{background:var(--flat)} .pb-db{background:var(--violet)}
 /* 한눈 요약 스트립 */
 .glance{display:flex;gap:8px;overflow-x:auto;margin:12px 0 2px;padding-bottom:2px;
   -webkit-overflow-scrolling:touch}
@@ -212,15 +221,15 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .gl{flex:0 0 auto;min-width:86px;background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r);padding:9px 13px;box-shadow:var(--shadow-sm)}
 .gl-lb{font-size:10.5px;color:var(--text-3);font-weight:700;white-space:nowrap;letter-spacing:.01em}
-.gl-vl{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:3px;
-  white-space:nowrap;letter-spacing:-.01em}
+.gl-vl{font-family:var(--font-num);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;
+  margin-top:3px;white-space:nowrap;letter-spacing:-.01em}
 .gl-vl.up{color:var(--up)} .gl-vl.down{color:var(--down)} .gl-vl.flat{color:var(--text)}
 /* 감시선 편집기 + 내 라인 칩 */
 .mylines{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .myline{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
   padding:5px 11px;border-radius:var(--r-pill);background:var(--surface-2);
   border:1px solid var(--border-2);color:var(--text-2);font-variant-numeric:tabular-nums}
-.myline .dot{width:8px;height:8px;border-radius:50%;background:#a855f7;flex:0 0 auto}
+.myline .dot{width:8px;height:8px;border-radius:50%;background:var(--violet);flex:0 0 auto}
 .myline.add{color:var(--primary);cursor:pointer;border:1px dashed var(--border);background:transparent}
 .wl-preset{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px}
 .wl-chip{min-height:34px;padding:0 13px;border-radius:var(--r-pill);border:1px dashed var(--border);
@@ -640,8 +649,8 @@ registerChart(chart);
 // 범위만 잡혀 플랫라인으로 보이던 사고 방지. null이면 기본 오토스케일.
 let pgmRange=null;
 const series=chart.addBaselineSeries({baseValue:{type:'price',price:0},
-  topLineColor:'#c62828',topFillColor:'rgba(198,40,40,.15)',
-  bottomLineColor:'#1565c0',bottomFillColor:'rgba(21,101,192,.15)',lineWidth:2,
+  topLineColor:'#e5342f',topFillColor:'rgba(229,52,47,.15)',
+  bottomLineColor:'#1f66e0',bottomFillColor:'rgba(31,102,224,.15)',lineWidth:2,
   autoscaleInfoProvider:()=>pgmRange?{priceRange:pgmRange}:null});
 let KDATE=null, KTIME=null; // 서버가 준 KST 기준일/시각 — 클라이언트 시계 사용 금지(P0-3)
 function toTs(t,ds){
@@ -659,8 +668,8 @@ const pchart=LightweightCharts.createChart(document.getElementById('pchart'),{au
   rightPriceScale:{borderColor:_pt2.rightPriceScale.borderColor},
   timeScale:{borderColor:_pt2.timeScale.borderColor,timeVisible:true,secondsVisible:false}});
 registerChart(pchart);
-const pseries=pchart.addCandlestickSeries({upColor:'#c62828',downColor:'#1565c0',
-  borderVisible:false,wickUpColor:'#c62828',wickDownColor:'#1565c0',
+const pseries=pchart.addCandlestickSeries({upColor:'#e5342f',downColor:'#1f66e0',
+  borderVisible:false,wickUpColor:'#e5342f',wickDownColor:'#1f66e0',
   priceFormat:{type:'price',precision:0,minMove:1}});   // KRW는 정수 — 축 '.00' 제거(폭도 축소)
 // 이동평균선(20/60/120봉) — 켜고 끄기. addLineSeries 없는 node 하니스에선 가드로 생략.
 const MA_COLORS={5:'#9aa0a6',10:'#ec4899',20:'#f59e0b',60:'#22c55e',120:'#3b82f6'};
@@ -730,7 +739,7 @@ function bucketMin(m,n){return m>=540?m-((m-540)%n):m-(m%n);} // 백엔드 aggre
 function updateLiveCandle(M){
   if(M.price==null||!pseries.update)return;   // 하니스(update 없음)·미체결 가드
   var price=M.price;
-  var _col=(M.sign==='up'?'#e0322c':(M.sign==='down'?'#1565c0':'#8a94a6'));
+  var _col=(M.sign==='up'?'#e5342f':(M.sign==='down'?'#1f66e0':'#8a94a6'));
   if(nowLine){try{nowLine.applyOptions({price:price,color:_col});}catch(e){}}
   try{pseries.applyOptions({priceLineColor:_col,priceLineWidth:2});}catch(e){}   // 현재가 축 태그 방향색
   var ce=document.getElementById('pc-count');
@@ -814,7 +823,7 @@ async function loadCandles(fit){
     // 거래량 히스토그램(상승=적/하락=청 반투명). 일봉은 vol 0이라 비어 보임(분봉에서 의미).
     if(volSeries){volSeries.setData(d.candles.map(function(c){return {
       time:tf==='1d'?c.t:toTs(c.t,d.date), value:c.vol||0,
-      color:(c.close>=c.open?'rgba(224,50,44,.45)':'rgba(21,101,192,.45)')};}));}
+      color:(c.close>=c.open?'rgba(229,52,47,.5)':'rgba(31,102,224,.5)')};}));}
     lastVol=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 최근 봉 거래량(라벨은 renderSS)
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
     // 짧은 봉(5분 79개 등)엔 120봉 표본이 없어 선이 안 그려짐 → 버튼 비활성+안내(무반응 오해 방지).
