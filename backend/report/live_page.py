@@ -108,6 +108,9 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .pro-cell .pv{font-size:13px;font-weight:900;margin-top:1px;font-variant-numeric:tabular-nums}
 .pro-verdict{font-size:12px;font-weight:800;border-radius:var(--r-sm);padding:7px 10px;line-height:1.45;
   background:var(--warn-bg);color:var(--warn)}
+.pro-verdict.flat{background:var(--surface-2);color:var(--text-2)}
+.pro-verdict.good{background:var(--good-bg);color:var(--good)}
+.pro-verdict.info{background:var(--info-bg);color:var(--primary-ink)}
 .pro-basis{font-size:11px;color:var(--text-3);font-weight:700}
 .advw{display:none}.advw.on{display:block}
 .finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
@@ -1269,7 +1272,9 @@ function render(S){
     document.getElementById('cr-pro-flow').textContent=(cl.new!=null?num(cl.new):'–')+' / '+(cl.rdmp!=null?num(cl.rdmp):'–');
     const _cpq=CR.rows.length>1?CR.rows[CR.rows.length-2].qty:null;
     document.getElementById('cr-pro-rate').textContent=(_cpq?((cl.qty-_cpq)/_cpq*100).toFixed(1)+'%':'–');
-    document.getElementById('cr-pro-verdict').textContent=csig?csig.text:'판정 대기';
+    const _cpv=document.getElementById('cr-pro-verdict');
+    _cpv.textContent=csig?csig.text:'판정 대기';
+    _cpv.className='pro-verdict '+(csig?csig.tone:'flat');   // 상환=good(청)/경계=warn(적)/중립=flat
     document.getElementById('cr-pro-basis').textContent='deal_date 기준 · 결제 반영 T+2';
   }else{
     document.getElementById('cr-pill').textContent='🕐 데이터 대기';
