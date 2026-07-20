@@ -95,6 +95,20 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .det>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
 .det[open]>summary.a-more{background:var(--primary);color:#fff}
 .det-body{margin-top:10px;display:grid;gap:10px}
+/* L3 전문가 지표 */
+.pro{margin-top:2px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--info-bg)}
+.pro>summary{list-style:none;cursor:pointer;padding:8px 11px;font-size:12px;font-weight:800;
+  color:var(--primary-ink);display:flex;align-items:center;-webkit-tap-highlight-color:transparent}
+.pro>summary::-webkit-details-marker{display:none}
+.pro>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
+.pro-body{padding:0 11px 11px;display:grid;gap:9px}
+.pro-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.pro-cell{background:var(--surface);border-radius:var(--r-sm);padding:7px 9px;text-align:center}
+.pro-cell .pl{font-size:9.5px;color:var(--text-3);font-weight:800}
+.pro-cell .pv{font-size:13px;font-weight:900;margin-top:1px;font-variant-numeric:tabular-nums}
+.pro-verdict{font-size:12px;font-weight:800;border-radius:var(--r-sm);padding:7px 10px;line-height:1.45;
+  background:var(--warn-bg);color:var(--warn)}
+.pro-basis{font-size:11px;color:var(--text-3);font-weight:700}
 .advw{display:none}.advw.on{display:block}
 .finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
 .finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
@@ -362,6 +376,14 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
       <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
         <div class="tbl-wrap"><table id="sb-hist" style="margin-top:6px"></table></div></details>
       <div class="meta" id="sb-note">대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시).</div>
+      <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+        <div class="pro-body">
+          <div class="pro-grid">
+            <div class="pro-cell"><div class="pl">체결−상환(순증)</div><div class="pv" id="sb-pro-flow">–</div></div>
+            <div class="pro-cell"><div class="pl">잔고 증감률</div><div class="pv" id="sb-pro-rate">–</div></div>
+            <div class="pro-cell"><div class="pl">소스</div><div class="pv" id="sb-pro-src">–</div></div>
+          </div>
+        </div></details>
     </div>
   </details>
 </div>
@@ -381,6 +403,15 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
       <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
         <div class="tbl-wrap"><table id="ss-hist" style="margin-top:6px"></table></div></details>
       <div class="meta">위 대차잔고가 '빌린 물량'이라면 이것은 '실제로 쏜 물량'(T+1 확정). 비중 = 그날 전체 거래량 중 공매도 비율.</div>
+      <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+        <div class="pro-body">
+          <div class="pro-grid">
+            <div class="pro-cell"><div class="pl">거래대금</div><div class="pv" id="ss-pro-value">–</div></div>
+            <div class="pro-cell"><div class="pl">비중</div><div class="pv" id="ss-pro-ratio">–</div></div>
+            <div class="pro-cell"><div class="pl">20일 평균</div><div class="pv" id="ss-pro-avg">–</div></div>
+          </div>
+          <div class="pro-verdict" id="ss-pro-verdict"></div>
+        </div></details>
     </div>
   </details>
 </div>
@@ -400,6 +431,16 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
       <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
         <div class="tbl-wrap"><table id="cr-hist" style="margin-top:6px"></table></div></details>
       <div class="meta" id="cr-note">신용융자 = 빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산)로 쏟아진다. 금액은 주수×종가 환산(≈).</div>
+      <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+        <div class="pro-body">
+          <div class="pro-grid">
+            <div class="pro-cell"><div class="pl">잔고비율</div><div class="pv" id="cr-pro-ratio">–</div></div>
+            <div class="pro-cell"><div class="pl">신규/상환</div><div class="pv" id="cr-pro-flow">–</div></div>
+            <div class="pro-cell"><div class="pl">증감률</div><div class="pv" id="cr-pro-rate">–</div></div>
+          </div>
+          <div class="pro-verdict" id="cr-pro-verdict"></div>
+          <div class="pro-basis" id="cr-pro-basis"></div>
+        </div></details>
     </div>
   </details>
 </div>
@@ -1121,6 +1162,11 @@ function render(S){
       +'</td><td>'+jo(r.value)+'</td>'
       +(mixed?'<td>'+esc(srcShort[r.src]||r.src)+'</td>':'')+'</tr>').join('');
     document.getElementById('sb-note').textContent='대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시). 늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호.'+(last.src==='seibro'?' ※ 예탁결제원 폴백 수치 — 협회 통계와 집계 범위가 달라요.':'');
+    const _net=(last.contract!=null&&last.repay!=null)?last.contract-last.repay:null;
+    document.getElementById('sb-pro-flow').textContent=_net==null?'–':(_net>0?'순증 +':'순증 ')+shares(_net);
+    const _prevq=SB.rows.length>1?SB.rows[SB.rows.length-2].qty:null;
+    document.getElementById('sb-pro-rate').textContent=(_prevq?((last.qty-_prevq)/_prevq*100).toFixed(1)+'%':'–');
+    document.getElementById('sb-pro-src').textContent=(srcKo[last.src]||last.src);
   }else{
     document.getElementById('sb-pill').textContent='🕐 데이터 대기';
     document.getElementById('sb-fresh').textContent='· 데이터 없음';
@@ -1180,6 +1226,15 @@ function render(S){
     document.getElementById('ss-hist').innerHTML='<tr><th>날짜</th><th>공매도(주)</th><th>비중</th><th>종가</th></tr>'
       +SS.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
       +'</td><td>'+(r.ratio||0).toFixed(2)+'%</td><td>'+won(r.close)+'</td></tr>').join('');
+    document.getElementById('ss-pro-value').textContent=eok(sl.value).replace('+','');
+    document.getElementById('ss-pro-ratio').textContent=(sl.ratio||0).toFixed(2)+'%';
+    const _avg=SS.rows.reduce((a,r)=>a+(r.ratio||0),0)/SS.rows.length;
+    document.getElementById('ss-pro-avg').textContent=_avg.toFixed(2)+'%';
+    const _hot=(sl.ratio||0)>_avg;
+    const pv=document.getElementById('ss-pro-verdict');
+    pv.textContent=_hot?('비중이 20일 평균('+_avg.toFixed(1)+'%)을 웃돎 — 공매도 과열 구간')
+      :('비중이 20일 평균('+_avg.toFixed(1)+'%) 이하 — 평시');
+    pv.className='pro-verdict'+(_hot?'':' flat');
   }else{
     document.getElementById('ss-pill').textContent='🕐 데이터 대기';
     document.getElementById('ss-fresh').textContent='· 데이터 없음 — 조회 실패 또는 미공시. 자동 재시도 중';
@@ -1210,6 +1265,12 @@ function render(S){
       +CR.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
       +'</td><td class="'+(r.chg==null?'flat':cls(r.chg))+'">'+(r.chg==null?'–':shares(r.chg))
       +'</td><td>'+jo(r.value)+'</td></tr>').join('');
+    document.getElementById('cr-pro-ratio').textContent=(cl.ratio||0).toFixed(2)+'%';
+    document.getElementById('cr-pro-flow').textContent=(cl.new!=null?num(cl.new):'–')+' / '+(cl.rdmp!=null?num(cl.rdmp):'–');
+    const _cpq=CR.rows.length>1?CR.rows[CR.rows.length-2].qty:null;
+    document.getElementById('cr-pro-rate').textContent=(_cpq?((cl.qty-_cpq)/_cpq*100).toFixed(1)+'%':'–');
+    document.getElementById('cr-pro-verdict').textContent=csig?csig.text:'판정 대기';
+    document.getElementById('cr-pro-basis').textContent='deal_date 기준 · 결제 반영 T+2';
   }else{
     document.getElementById('cr-pill').textContent='🕐 데이터 대기';
     document.getElementById('cr-fresh').textContent='· 데이터 없음 — 조회 실패 또는 미공시. 자동 재시도 중';

@@ -48,6 +48,7 @@ for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qt
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
+                  'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
                   'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
                   'tm-headline','tm-comment','tm-fresh'])
@@ -100,7 +101,8 @@ def _full_snapshot():
         {"date": "2026-07-09", "qty": 14420269, "value": 31522708034000,
          "chg": None, "src": "kofia"},
         {"date": "2026-07-10", "qty": 14140221, "value": 30825681780000,
-         "chg": -280048, "src": "kofia"}],
+         "chg": -280048, "src": "kofia",
+         "contract": 420000, "repay": 700048}],
         "asof": "2026-07-10", "source": "kofia",
         "updated": "2026-07-13T09:00:00"})
     s.set_adr({"sym": "SKHYV", "usd": 168.01, "base_usd": 149.0, "fx": 1505.2,
@@ -211,6 +213,12 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert "tag-fixed" in page and "tag-live" in page
     assert "왜 늦어요" in page
     assert "실시간 아님" in page
+    # L3 전문가 지표(설계 2026-07-20) — 실데이터
+    assert "🔬 전문가 지표" in html_p.read_text(encoding="utf-8")
+    assert "순증" in texts["sb-pro-flow"]                     # 체결-상환
+    assert "억" in texts["ss-pro-value"] or "–" != texts["ss-pro-value"]
+    assert "평균" in texts["ss-pro-verdict"]                  # 20일 평균 대비 문구
+    assert texts["cr-pro-verdict"] and texts["cr-pro-flow"]   # 정밀판정·신규/상환
 
 
 def _parse_harness(stdout: str):
