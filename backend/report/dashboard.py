@@ -193,23 +193,29 @@ __ICONS__
   </div>
   <div id="market" class="market" style="display:none"></div>
 </header>
-<div class="sub">관심종목 분석 · 뉴스/공시 · 차트 — 참고용(매매 권유 아님)
- · <a href="/scanner">🔍 수급 스캐너</a></div>
+<div class="sub">참고용(매매 권유 아님) · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
-<div class="card" id="semi" style="display:none">
-  <b><svg class="hic"><use href="#i-cpu"/></svg> 반도체 동향 (메모리 중심)</b> <span class="meta" id="semi-fresh"></span>
-  <div class="conf" id="semi-flow"></div>
-  <div class="semigrid" id="semi-us"></div>
-  <div class="semigrid" id="semi-kr" style="margin-top:6px"></div>
-  <div class="meta" style="margin-top:6px">미국: KIS 해외시세(계정에 따라 15분 지연) ·
-  국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
-</div>
-<div class="manage" id="manage"></div>
-<div class="search">
-  <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">
-  <div id="results"></div>
-</div>
-<div class="sectlabel">관심종목 분석</div>
+<details class="sec" id="semi" open style="display:none">
+  <summary><svg class="hic secic"><use href="#i-cpu"/></svg> 반도체 동향 <span class="seccap" id="semi-fresh"></span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="conf" id="semi-flow"></div>
+    <div class="semigrid" id="semi-us"></div>
+    <div class="semigrid" id="semi-kr" style="margin-top:6px"></div>
+    <div class="meta" style="margin-top:6px">미국: KIS 해외시세(계정에 따라 15분 지연) ·
+    국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
+  </div>
+</details>
+<details class="sec" open>
+  <summary><svg class="hic secic"><use href="#i-target"/></svg> 관심종목 관리 <span class="seccap">검색·추가·순서·보유</span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="manage" id="manage"></div>
+    <div class="search">
+      <input id="q" placeholder="🔎 종목 검색 (이름/코드, 예: 하이닉스) — 조회용">
+      <div id="results"></div>
+    </div>
+  </div>
+</details>
+<div class="grouphd"><svg class="hic secic"><use href="#i-chart"/></svg> 관심종목 분석 <span class="seccap">차트·뉴스·공시</span></div>
 <div id="cards"></div>
 <div class="disc">__DISCLAIMER__</div>
 <script>__LIB__</script>

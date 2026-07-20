@@ -189,6 +189,34 @@ details.inline summary{cursor:pointer;color:var(--primary);font-size:12px;
   font-weight:700;padding:8px 0;min-height:40px;display:flex;align-items:center}
 details.inline summary::-webkit-details-marker{display:none}
 
+/* 그룹 섹션(요약우선 IA 공용) — 아이콘 헤더 + 펼침 본문. 전 페이지 재사용 */
+details.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
+details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
+  padding:15px 16px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
+  letter-spacing:-.02em;min-height:54px;color:var(--text)}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+.secic{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;color:var(--primary)}
+.seccap{font-size:11.5px;font-weight:500;color:var(--text-3);letter-spacing:0}
+.chev{margin-left:auto;color:var(--text-3);font-size:12px;font-weight:700;transition:transform .2s}
+details.sec[open]>summary .chev{transform:rotate(180deg)}
+details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
+.sec-body{padding:2px 15px 15px}
+/* 섹션 내부 패널은 카드 크롬 제거 → 하위구획(하이라인 구분)으로 평평하게(.card는 유지) */
+.sec-body>.panel,.sec-body>.panel.dp{background:transparent;border:0;box-shadow:none;
+  border-radius:0;padding:16px 0;margin:0;border-top:1px solid var(--border-2)}
+.sec-body>.panel:first-child{border-top:0}
+/* 섹션 안 검색/관리 박스도 평평하게(카드는 유지) */
+.sec-body>.search,.sec-body>.manage{background:transparent;border:0;box-shadow:none;
+  border-radius:0;padding:0;margin:0}
+.sec-body>.search{padding-bottom:2px} .sec-body>.manage{margin-top:10px}
+/* 플랫 그룹 헤더 — 카드 목록 앞(컨테이너 없이 .sec 헤더와 같은 톤) */
+.grouphd{display:flex;align-items:center;gap:9px;margin:22px 2px 11px;font-size:15px;
+  font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.grouphd .seccap{font-weight:500}
+
 /* 투자 유의 디스클레이머 — 튜터 레지스터(따뜻·둥근) */
 .disc{font-size:12px;line-height:1.6;color:var(--disc-tx);background:var(--disc-bg);
   border:1px solid var(--disc-bd);padding:13px 15px;border-radius:var(--r);
