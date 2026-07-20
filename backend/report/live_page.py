@@ -78,6 +78,23 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .whyfixed>summary::-webkit-details-marker{display:none}
 .whyfixed-body{font-size:12.5px;color:var(--text-2);line-height:1.55;margin-top:8px;
   background:var(--surface-2);border-radius:var(--r-sm);padding:9px 12px}
+/* 지연 데이터 초보 카드 */
+.dp .dp-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.dp .dp-h h2{font-size:16px}
+.pill{font-family:var(--font-mono,ui-monospace,Menlo,monospace);font-size:11px;font-weight:700;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:3px 9px}
+.pill.fixed{background:var(--warn-bg);color:var(--warn)}
+.dp-key{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
+.dp-num{font-size:26px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.dp-one{font-size:13px;color:var(--text-2);font-weight:600;line-height:1.5;margin:0 0 10px}
+.dp-foot{display:flex;align-items:center;justify-content:flex-end}
+.det>summary.a-more{list-style:none;cursor:pointer;font-size:12px;font-weight:800;color:var(--primary);
+  background:var(--info-bg);border-radius:var(--r-sm);padding:5px 11px;min-height:34px;
+  display:inline-flex;align-items:center;-webkit-tap-highlight-color:transparent}
+.det>summary::-webkit-details-marker{display:none}
+.det>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
+.det[open]>summary.a-more{background:var(--primary);color:#fff}
+.det-body{margin-top:10px;display:grid;gap:10px}
 .advw{display:none}.advw.on{display:block}
 .finex li .qi{cursor:pointer;color:#5b9be0;font-weight:800;margin-left:6px;user-select:none}
 .finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
@@ -330,54 +347,61 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
     압력은 위의 <span class="tag-live">🟢 실시간</span> 수급·호가·체결에서 보세요.</div>
   </details>
 </div>
-<div class="panel">
-  <h2>🩳 대차잔고 (공매도 선행지표) <span class="fresh" id="sb-fresh">· 데이터 대기</span></h2>
-  <div class="grid3">
-    <div><div class="lbl">잔고 주수</div><div class="val" id="sb-qty">–</div></div>
-    <div><div class="lbl">전일 대비</div><div class="val" id="sb-chg">–</div></div>
-    <div><div class="lbl">잔고 금액</div><div class="val" id="sb-val">–</div></div>
-  </div>
-  <div class="sparkwrap"><span class="sk-cap">대차 20일</span><span class="sk-svg" id="sb-spark"></span></div>
-  <div class="sig" id="sb-sig"></div>
-  <details class="inline" style="margin-top:8px">
-    <summary>최근 20거래일 추이</summary>
-    <div class="tbl-wrap"><table id="sb-hist" style="margin-top:6px"></table></div>
+<div class="panel dp">
+  <div class="dp-h"><h2>🩳 대차잔고</h2><span class="pill fixed" id="sb-pill">🕐 데이터 대기</span></div>
+  <div class="dp-key"><span class="dp-num" id="sb-qty">–</span><span class="sig" id="sb-sig"></span></div>
+  <p class="dp-one">빌려간 주식(공매도 준비 물량). 늘면 매도 부담 ↑, 줄면 상환 신호.</p>
+  <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">대차 20일</span><span class="sk-svg" id="sb-spark"></span></span></div>
+  <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+    <div class="det-body">
+      <div class="grid3">
+        <div><div class="lbl">전일 대비</div><div class="val" id="sb-chg">–</div></div>
+        <div><div class="lbl">잔고 금액</div><div class="val" id="sb-val">–</div></div>
+        <div><div class="lbl">출처</div><div class="val meta" id="sb-fresh">·</div></div>
+      </div>
+      <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+        <div class="tbl-wrap"><table id="sb-hist" style="margin-top:6px"></table></div></details>
+      <div class="meta" id="sb-note">대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시).</div>
+    </div>
   </details>
-  <div class="meta" id="sb-note">대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시).
-  늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호로 읽는다.</div>
 </div>
 
-<div class="panel">
-  <h2>🎯 공매도 일별 체결 <span class="fresh" id="ss-fresh">· 데이터 대기</span></h2>
-  <div class="grid3">
-    <div><div class="lbl">공매도 체결</div><div class="val" id="ss-qty">–</div></div>
-    <div><div class="lbl">거래량 비중</div><div class="val" id="ss-ratio">–</div></div>
-    <div><div class="lbl">대차잔고 대비</div><div class="val" id="ss-vs">–</div></div>
-  </div>
-  <div class="sparkwrap"><span class="sk-cap">공매도 20일</span><span class="sk-svg" id="ss-spark"></span></div>
-  <details class="inline" style="margin-top:8px">
-    <summary>최근 20거래일 추이</summary>
-    <div class="tbl-wrap"><table id="ss-hist" style="margin-top:6px"></table></div>
+<div class="panel dp">
+  <div class="dp-h"><h2>🎯 공매도 일별 체결</h2><span class="pill fixed" id="ss-pill">🕐 데이터 대기</span></div>
+  <div class="dp-key"><span class="dp-num" id="ss-qty">–</span><span class="sig" id="ss-ratio-big"></span></div>
+  <p class="dp-one">실제로 공매도로 쏜 물량. 비중 높으면 그날 매도 압력이 셌다는 뜻.</p>
+  <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">공매도 20일</span><span class="sk-svg" id="ss-spark"></span></span></div>
+  <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+    <div class="det-body">
+      <div class="grid3">
+        <div><div class="lbl">거래량 비중</div><div class="val" id="ss-ratio">–</div></div>
+        <div><div class="lbl">대차잔고 대비</div><div class="val" id="ss-vs">–</div></div>
+        <div><div class="lbl">출처</div><div class="val meta" id="ss-fresh">·</div></div>
+      </div>
+      <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+        <div class="tbl-wrap"><table id="ss-hist" style="margin-top:6px"></table></div></details>
+      <div class="meta">위 대차잔고가 '빌린 물량'이라면 이것은 '실제로 쏜 물량'(T+1 확정). 비중 = 그날 전체 거래량 중 공매도 비율.</div>
+    </div>
   </details>
-  <div class="meta" id="ss-note">위 대차잔고가 '빌린 물량'이라면 이것은 '실제로 쏜 물량'(T+1 확정).
-  비중 = 그날 전체 거래량 중 공매도 비율.</div>
 </div>
 
-<div class="panel">
-  <h2>💳 신용융자 잔고 (반대매매 연료) <span class="fresh" id="cr-fresh">· 데이터 대기</span></h2>
-  <div class="grid3">
-    <div><div class="lbl">잔고 주수</div><div class="val" id="cr-qty">–</div></div>
-    <div><div class="lbl">전일 대비</div><div class="val" id="cr-chg">–</div></div>
-    <div><div class="lbl">잔고 금액≈</div><div class="val" id="cr-val">–</div></div>
-  </div>
-  <div class="sparkwrap"><span class="sk-cap">신용 20일</span><span class="sk-svg" id="cr-spark"></span></div>
-  <div class="sig" id="cr-sig"></div>
-  <details class="inline" style="margin-top:8px">
-    <summary>최근 20거래일 추이</summary>
-    <div class="tbl-wrap"><table id="cr-hist" style="margin-top:6px"></table></div>
+<div class="panel dp">
+  <div class="dp-h"><h2>💳 신용융자 잔고</h2><span class="pill fixed" id="cr-pill">🕐 데이터 대기</span></div>
+  <div class="dp-key"><span class="dp-num" id="cr-qty">–</span><span class="sig" id="cr-sig"></span></div>
+  <p class="dp-one">빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산) 연료 — 클수록 하락 가속.</p>
+  <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">신용 20일</span><span class="sk-svg" id="cr-spark"></span></span></div>
+  <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+    <div class="det-body">
+      <div class="grid3">
+        <div><div class="lbl">전일 대비</div><div class="val" id="cr-chg">–</div></div>
+        <div><div class="lbl">잔고 금액≈</div><div class="val" id="cr-val">–</div></div>
+        <div><div class="lbl">출처</div><div class="val meta" id="cr-fresh">·</div></div>
+      </div>
+      <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+        <div class="tbl-wrap"><table id="cr-hist" style="margin-top:6px"></table></div></details>
+      <div class="meta" id="cr-note">신용융자 = 빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산)로 쏟아진다. 금액은 주수×종가 환산(≈).</div>
+    </div>
   </details>
-  <div class="meta" id="cr-note">신용융자 = 빚내서 산 주식. 급락하면 증거금 부족분이 다음 날 아침
-  반대매매(강제청산)로 쏟아진다 — 잔고가 클수록 하락 가속 연료. 금액은 주수×종가 환산(≈).</div>
 </div>
 <div class="sechd">🌐 시세 · 해외·거래소·체결</div>
 <div class="panel">
@@ -1063,13 +1087,17 @@ function render(S){
   // ── 대차잔고 패널: 최신 잔고·증감(증가=적색/감소=청색)·판정 시그널·20일 추이 ──
   const jo=n=>n==null?'–':(Math.abs(n)>=1e12?(n/1e12).toLocaleString('ko-KR',{maximumFractionDigits:1})+'조':eok(n).replace('+',''));
   const srcKo={kofia:'금융투자협회',seibro:'예탁결제원(SEIBro)',demo:'데모(시뮬레이션)'};
+  const _dow='일월화수목금토';
+  const fmtD=iso=>{const p=(iso||'').split('-');if(p.length!==3)return iso||'';
+    const dt=new Date(+p[0],+p[1]-1,+p[2]);return (+p[1])+'/'+(+p[2])+'('+_dow[dt.getDay()]+')';};
   if(SB.rows.length){
     const last=SB.rows[SB.rows.length-1];
     // 협회·예탁원은 집계 범위가 달라 절대치가 다르다 — 혼합 시 행별 출처 표기
     const srcShort={kofia:'협회',seibro:'예탁원',demo:'데모'};
     const mixed=new Set(SB.rows.map(r=>r.src)).size>1;
-    document.getElementById('sb-fresh').textContent='확정 · '+last.date+' 기준 · T+1 공시 · 출처 '
-      +(srcKo[last.src]||last.src)+(mixed?' · ⚠ 기간 내 출처 혼합(추이 표의 출처 열 참조)':'');
+    document.getElementById('sb-pill').textContent='🕐 '+fmtD(last.date)+' 기준 · T+1';
+    document.getElementById('sb-fresh').textContent='출처 '+(srcKo[last.src]||last.src)
+      +(mixed?' · ⚠ 기간 내 출처 혼합':'');
     document.getElementById('sb-qty').textContent=num(last.qty)+'주';
     const sc=document.getElementById('sb-chg');
     sc.textContent=last.chg==null?'–':shares(last.chg);
@@ -1094,6 +1122,7 @@ function render(S){
       +(mixed?'<td>'+esc(srcShort[r.src]||r.src)+'</td>':'')+'</tr>').join('');
     document.getElementById('sb-note').textContent='대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시). 늘어나면 공매도 대기 물량 증가, 줄어들면 상환(숏 청산) 신호.'+(last.src==='seibro'?' ※ 예탁결제원 폴백 수치 — 협회 통계와 집계 범위가 달라요.':'');
   }else{
+    document.getElementById('sb-pill').textContent='🕐 데이터 대기';
     document.getElementById('sb-fresh').textContent='· 데이터 없음';
     for(const id of ['sb-qty','sb-chg','sb-val']){
       const el=document.getElementById(id); el.textContent='–'; el.className='val';
@@ -1137,7 +1166,10 @@ function render(S){
   SS_ROWS=SS.rows; renderSS();   // 공매도 거래량 차트 오버레이(일봉·토글 시)
   if(SS.rows.length){
     const sl=SS.rows[SS.rows.length-1];
-    document.getElementById('ss-fresh').textContent='확정 · 기준일: '+sl.date+' · T+1 공시 · 출처 KIS';
+    document.getElementById('ss-pill').textContent='🕐 '+fmtD(sl.date)+' 기준 · T+1';
+    document.getElementById('ss-fresh').textContent='출처 KIS';
+    document.getElementById('ss-ratio-big').textContent='비중 '+(sl.ratio||0).toFixed(1)+'%';
+    document.getElementById('ss-ratio-big').className='sig sig-'+((sl.ratio||0)>=5?'warn':'flat');
     document.getElementById('ss-qty').textContent=num(sl.qty)+'주';
     document.getElementById('ss-ratio').textContent=(sl.ratio||0).toFixed(2)+'%';
     const borrow=SB.rows.length?SB.rows[SB.rows.length-1].qty:null;
@@ -1149,6 +1181,7 @@ function render(S){
       +SS.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
       +'</td><td>'+(r.ratio||0).toFixed(2)+'%</td><td>'+won(r.close)+'</td></tr>').join('');
   }else{
+    document.getElementById('ss-pill').textContent='🕐 데이터 대기';
     document.getElementById('ss-fresh').textContent='· 데이터 없음 — 조회 실패 또는 미공시. 자동 재시도 중';
     for(const id of ['ss-qty','ss-ratio','ss-vs']){
       const el=document.getElementById(id); el.textContent='–'; el.className='val';
@@ -1160,7 +1193,8 @@ function render(S){
   const CR=S.credit||{rows:[]};
   if(CR.rows.length){
     const cl=CR.rows[CR.rows.length-1];
-    document.getElementById('cr-fresh').textContent='확정 · 기준일: '+cl.date+' · 결제 반영 실질 T+2 · 출처 KIS';
+    document.getElementById('cr-pill').textContent='🕐 '+fmtD(cl.date)+' 기준 · T+2';
+    document.getElementById('cr-fresh').textContent='출처 KIS · 결제 반영';
     document.getElementById('cr-qty').textContent=num(cl.qty)+'주 ('+(cl.ratio||0).toFixed(2)+'%)';
     const cc=document.getElementById('cr-chg');
     cc.textContent=cl.chg==null?'–':shares(cl.chg);
@@ -1177,6 +1211,7 @@ function render(S){
       +'</td><td class="'+(r.chg==null?'flat':cls(r.chg))+'">'+(r.chg==null?'–':shares(r.chg))
       +'</td><td>'+jo(r.value)+'</td></tr>').join('');
   }else{
+    document.getElementById('cr-pill').textContent='🕐 데이터 대기';
     document.getElementById('cr-fresh').textContent='· 데이터 없음 — 조회 실패 또는 미공시. 자동 재시도 중';
     for(const id of ['cr-qty','cr-chg','cr-val']){
       const el=document.getElementById(id); el.textContent='–'; el.className='val';

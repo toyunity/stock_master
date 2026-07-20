@@ -47,6 +47,7 @@ for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qt
                   'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl','tm-reasons'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
+                  'sb-pill','ss-pill','cr-pill',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
                   'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
                   'tm-headline','tm-comment','tm-fresh'])
@@ -186,11 +187,17 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # ADR 괴리율(P1-4): 168.01×10×1505.2=2,528,887 vs 2,254,000 → +12.20%
     assert "+12.20%" in texts["adr-sig"] and "프리미엄" in texts["adr-sig"]
     assert "전일 종가 기준" in texts["adr-fresh"]  # 미국 장마감 라벨
-    # 공매도(P1-6): T+1 기준일 라벨 + 대차잔고 옆 비교
-    assert "기준일: 2026-07-10" in texts["ss-fresh"]
-    # 신용잔고(P1-5): T+2 라벨 + 판정
-    assert "기준일: 2026-07-10" in texts["cr-fresh"] and "T+2" in texts["cr-fresh"]
+    # 신용잔고(P1-5): 출처 문구 존재 + 판정(타이밍은 이제 cr-pill)
+    assert texts["cr-fresh"]
     assert texts["cr-sig"].startswith("판정:")
+    # 타이밍 알약(설계 2026-07-20) — 지연이 알약으로 명시
+    assert "T+1" in texts["sb-pill"] and "7/10" in texts["sb-pill"]
+    assert "T+1" in texts["ss-pill"] and "7/10" in texts["ss-pill"]
+    assert "T+2" in texts["cr-pill"] and "7/10" in texts["cr-pill"]
+    # 초보 1줄이 페이지에 존재
+    page = html_p.read_text(encoding="utf-8")
+    assert "빌려간 주식(공매도 준비 물량)" in page
+    assert "빚내서 산 주식" in page and "반대매매" in page
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
     assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
