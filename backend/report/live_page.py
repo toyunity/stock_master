@@ -386,17 +386,17 @@ __ICONS__
       <div class="dp-key"><span class="dp-num" id="sb-qty">–</span><span class="sig" id="sb-sig"></span></div>
       <p class="dp-one">빌려간 주식(공매도 준비 물량). 늘면 매도 부담 ↑, 줄면 상환 신호.</p>
       <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">대차 20일</span><span class="sk-svg" id="sb-spark"></span></span></div>
-      <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+      <details class="det" open><summary class="a-more">ⓘ 자세히 ▾</summary>
         <div class="det-body">
           <div class="grid3">
             <div><div class="lbl">전일 대비</div><div class="val" id="sb-chg">–</div></div>
             <div><div class="lbl">잔고 금액</div><div class="val" id="sb-val">–</div></div>
             <div><div class="lbl">출처</div><div class="val meta" id="sb-fresh">·</div></div>
           </div>
-          <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+          <details class="inline" style="margin-top:8px" open><summary>최근 20거래일 추이</summary>
             <div class="tbl-wrap"><table id="sb-hist" style="margin-top:6px"></table></div></details>
           <div class="meta" id="sb-note">대차잔고 = 공매도 등을 위해 빌려간 뒤 아직 갚지 않은 주식 수(T+1 공시).</div>
-          <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+          <details class="pro" open><summary>🔬 전문가 지표 ▾</summary>
             <div class="pro-body">
               <div class="pro-grid">
                 <div class="pro-cell"><div class="pl">체결−상환(순증)</div><div class="pv" id="sb-pro-flow">–</div></div>
@@ -412,17 +412,17 @@ __ICONS__
       <div class="dp-key"><span class="dp-num" id="ss-qty">–</span><span class="sig" id="ss-ratio-big"></span></div>
       <p class="dp-one">실제로 공매도로 쏜 물량. 비중 높으면 그날 매도 압력이 셌다는 뜻.</p>
       <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">공매도 20일</span><span class="sk-svg" id="ss-spark"></span></span></div>
-      <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+      <details class="det" open><summary class="a-more">ⓘ 자세히 ▾</summary>
         <div class="det-body">
           <div class="grid3">
             <div><div class="lbl">거래량 비중</div><div class="val" id="ss-ratio">–</div></div>
             <div><div class="lbl">대차잔고 대비</div><div class="val" id="ss-vs">–</div></div>
             <div><div class="lbl">출처</div><div class="val meta" id="ss-fresh">·</div></div>
           </div>
-          <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+          <details class="inline" style="margin-top:8px" open><summary>최근 20거래일 추이</summary>
             <div class="tbl-wrap"><table id="ss-hist" style="margin-top:6px"></table></div></details>
           <div class="meta">위 대차잔고가 '빌린 물량'이라면 이것은 '실제로 쏜 물량'(T+1 확정). 비중 = 그날 전체 거래량 중 공매도 비율.</div>
-          <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+          <details class="pro" open><summary>🔬 전문가 지표 ▾</summary>
             <div class="pro-body">
               <div class="pro-grid">
                 <div class="pro-cell"><div class="pl">거래대금</div><div class="pv" id="ss-pro-value">–</div></div>
@@ -439,17 +439,17 @@ __ICONS__
       <div class="dp-key"><span class="dp-num" id="cr-qty">–</span><span class="sig" id="cr-sig"></span></div>
       <p class="dp-one">빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산) 연료 — 클수록 하락 가속.</p>
       <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">신용 20일</span><span class="sk-svg" id="cr-spark"></span></span></div>
-      <details class="det"><summary class="a-more">ⓘ 자세히 ▾</summary>
+      <details class="det" open><summary class="a-more">ⓘ 자세히 ▾</summary>
         <div class="det-body">
           <div class="grid3">
             <div><div class="lbl">전일 대비</div><div class="val" id="cr-chg">–</div></div>
             <div><div class="lbl">잔고 금액≈</div><div class="val" id="cr-val">–</div></div>
             <div><div class="lbl">출처</div><div class="val meta" id="cr-fresh">·</div></div>
           </div>
-          <details class="inline" style="margin-top:8px"><summary>최근 20거래일 추이</summary>
+          <details class="inline" style="margin-top:8px" open><summary>최근 20거래일 추이</summary>
             <div class="tbl-wrap"><table id="cr-hist" style="margin-top:6px"></table></div></details>
           <div class="meta" id="cr-note">신용융자 = 빚내서 산 주식. 급락하면 다음 날 아침 반대매매(강제청산)로 쏟아진다. 금액은 주수×종가 환산(≈).</div>
-          <details class="pro"><summary>🔬 전문가 지표 ▾</summary>
+          <details class="pro" open><summary>🔬 전문가 지표 ▾</summary>
             <div class="pro-body">
               <div class="pro-grid">
                 <div class="pro-cell"><div class="pl">잔고비율</div><div class="pv" id="cr-pro-ratio">–</div></div>
