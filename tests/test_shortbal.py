@@ -37,7 +37,8 @@ def _run(coro, timeout=10.0):
 
 def test_parse_kofia_extracts_target_row():
     got = shortbal.parse_kofia(_KOFIA_JS, "000660")
-    assert got == {"qty": 14140221, "value": 30825681780000}
+    assert got == {"qty": 14140221, "value": 30825681780000,
+                   "contract": 200821, "repay": 480869}
 
 
 def test_parse_kofia_missing_code_returns_none():
@@ -248,3 +249,20 @@ def test_partial_backfill_preserved_on_midway_failure(tmp_path, monkeypatch):
     d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
     assert len(d["rows"]) == 5  # 실패 전까지 수집분 보존
     assert all(r["src"] == "kofia" for r in d["rows"])
+
+
+def test_parse_kofia_returns_contract_and_repay():
+    """TMPV3 체결·TMPV4 상환을 추가 반환(L3 순증=체결-상환용). 기존 qty/value 불변."""
+    from backend.flow.shortbal import parse_kofia
+    js = {"ds1": [{"TMPV2": "000660", "TMPV3": "420000", "TMPV4": "300000",
+                   "TMPV5": "14140221", "TMPV6": "30825681780000"}]}
+    got = parse_kofia(js, "000660")
+    assert got == {"qty": 14140221, "value": 30825681780000,
+                   "contract": 420000, "repay": 300000}
+
+
+def test_parse_kofia_missing_flow_fields_default_zero():
+    from backend.flow.shortbal import parse_kofia
+    js = {"ds1": [{"TMPV2": "000660", "TMPV5": "100", "TMPV6": "200"}]}
+    got = parse_kofia(js, "000660")
+    assert got["contract"] == 0 and got["repay"] == 0

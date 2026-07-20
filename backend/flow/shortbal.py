@@ -52,7 +52,9 @@ def parse_kofia(js: dict, code: str) -> Optional[dict]:
     for r in js.get("ds1") or []:
         if str(r.get("TMPV2", "")) == code:
             return {"qty": int(r.get("TMPV5") or 0),
-                    "value": int(r.get("TMPV6") or 0)}
+                    "value": int(r.get("TMPV6") or 0),
+                    "contract": int(r.get("TMPV3") or 0),   # 신규 대차 체결
+                    "repay": int(r.get("TMPV4") or 0)}      # 상환
     return None
 
 
@@ -173,7 +175,9 @@ async def _fetch_kofia(cli, code: str, need_dates: list,
             raise  # 한 행도 못 얻었으면 SEIBro 폴백으로
         if found:
             rows.append({"date": d.isoformat(), "qty": found["qty"],
-                         "value": found["value"], "src": "kofia"})
+                         "value": found["value"], "src": "kofia",
+                         "contract": found.get("contract"),
+                         "repay": found.get("repay")})
             misses = 0
         else:
             misses += 1
