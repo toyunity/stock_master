@@ -118,6 +118,24 @@ def test_subscribe_error_detection():
     assert subscribe_error({"header": {"tr_id": "PINGPONG"}}) is None
 
 
+def test_invalid_approval_detection():
+    # 승인키 만료(OPSP0011)는 캐시 폐기·재발급 대상, 좀비(OPSP8996 ALREADY)는 대기만 — 구분해야 한다.
+    from backend.flow.kis import is_invalid_approval
+    assert is_invalid_approval("OPSP0011 invalid approval : 9c394f31-...") is True
+    assert is_invalid_approval("OPSP8996 ALREADY IN USE appkey") is False
+    assert is_invalid_approval(None) is False
+    assert is_invalid_approval("") is False
+
+
+def test_reset_approval_clears_memory_cache():
+    # 무효 승인키 폐기 → 다음 approval_key()가 재발급하도록 메모리 캐시를 비운다.
+    from backend.flow.kis import KisClient
+    c = KisClient("appkey", "appsecret", "/tmp")
+    c._approval = "STALE-9c394f31"
+    c.reset_approval()
+    assert c._approval is None
+
+
 def test_build_subscribe_roundtrip():
     msg = json.loads(build_subscribe("KEY123", "H0STPGM0", "000660"))
     assert msg["header"]["approval_key"] == "KEY123"

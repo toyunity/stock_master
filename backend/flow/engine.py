@@ -317,8 +317,12 @@ class FlowEngine:
                         kind, payload = parsed
                         if kind == "json":
                             err = kis.subscribe_error(payload)
-                            if err:  # 좀비 세션(ALREADY 등) — 길게 물러나 재시도
+                            if err:  # 구독 거부 — 길게 물러나 재시도
                                 backoff = max(backoff, 30)
+                                # 승인키 만료(OPSP0011)면 캐시 폐기 → 다음 재접속서 재발급.
+                                # (좀비 ALREADY는 새 승인키로 안 나으므로 대기만)
+                                if kis.is_invalid_approval(err):
+                                    client.reset_approval()
                                 raise RuntimeError(f"구독 거부: {err}")
                             continue
                         if kind != "data":

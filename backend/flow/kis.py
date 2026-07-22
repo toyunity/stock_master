@@ -118,6 +118,17 @@ def subscribe_error(obj: dict) -> Optional[str]:
     return f"{body.get('msg_cd', '')} {body.get('msg1', '')}".strip()
 
 
+def is_invalid_approval(err: Optional[str]) -> bool:
+    """구독 거부가 '승인키 무효'(OPSP0011)인가 — 좀비 세션(ALREADY/OPSP8996)과 구분한다.
+
+    승인키(approval_key)는 커넥션 수명 동안만 메모리 보관되는데, KIS는 일정 시간(≈1일) 뒤
+    이를 무효화하고 rt_cd=9 OPSP0011 'invalid approval'을 반환한다(실측 2026-07-22 — 캐시된
+    무효 키로 3898회 재접속 실패). 이 경우엔 캐시를 비워 재발급해야 복구되고, 좀비 세션은
+    새 승인키로 낫지 않으므로 대기만 한다."""
+    e = (err or "").lower()
+    return "opsp0011" in e or "invalid approval" in e
+
+
 def build_subscribe(approval_key: str, tr_id: str, code: str, on: bool = True) -> str:
     """웹소켓 구독(tr_type=1)/해지(0) 메시지."""
     return json.dumps({
@@ -407,6 +418,13 @@ class KisClient:
             raise RuntimeError(f"KIS approval_key 발급 실패: {js}")
         self._approval = key
         return key
+
+    def reset_approval(self) -> None:
+        """무효 승인키(OPSP0011)를 폐기 — 다음 approval_key()가 /oauth2/Approval로 재발급한다.
+
+        승인키는 파일 캐시가 아니라 메모리(self._approval)에만 있어, 만료 시 이 리셋이 유일한
+        재발급 경로다. WS 재접속 루프가 OPSP0011을 만나면 호출한다(engine._ws_loop)."""
+        self._approval = None
 
     def _client_factory(self):
         import httpx
