@@ -1,0 +1,21 @@
+{
+  "왜곡경고": {
+    "move_pct": 2.0,
+    "after_share_pct": 0.05,
+    "text": "유동성 부족 — 가격 왜곡 가능성(표본 극소)",
+    "tone": "warn"
+  },
+  "유의미변동_거래동반": {
+    "move_pct": 2.0,
+    "after_share_pct": 5.0,
+    "text": "시간외 유의미한 변동 — 거래량 동반",
+    "tone": "info"
+  },
+  "변동미미": {
+    "move_pct": 0.2,
+    "after_share_pct": 5.0,
+    "text": "시간외 변동 미미",
+    "tone": "flat"
+  },
+  "결측": null
+}

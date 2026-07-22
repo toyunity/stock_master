@@ -1,0 +1,11 @@
+{
+  "module": "backend.flow.shortbal",
+  "func": "short_signal",
+  "cases": [
+    {"name": "건강한상승_숏이탈", "input": {"price_rate": 1.5, "chg_qty": -500}},
+    {"name": "상승중숏축적_경계", "input": {"price_rate": 1.5, "chg_qty": 500}},
+    {"name": "하락베팅강화_경계", "input": {"price_rate": -1.2, "chg_qty": 500}},
+    {"name": "숏커버링구간", "input": {"price_rate": -1.2, "chg_qty": -500}},
+    {"name": "결측", "input": {"price_rate": null, "chg_qty": 500}}
+  ]
+}

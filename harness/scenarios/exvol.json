@@ -1,0 +1,14 @@
+{
+  "module": "backend.flow.exvol",
+  "func": "distortion",
+  "cases": [
+    {"name": "왜곡경고", "input": {"nxt_after_price": 1020, "krx_close": 1000,
+      "after_vol": 50, "total_vol": 100000}},
+    {"name": "유의미변동_거래동반", "input": {"nxt_after_price": 1020, "krx_close": 1000,
+      "after_vol": 5000, "total_vol": 100000}},
+    {"name": "변동미미", "input": {"nxt_after_price": 1002, "krx_close": 1000,
+      "after_vol": 5000, "total_vol": 100000}},
+    {"name": "결측", "input": {"nxt_after_price": null, "krx_close": 1000,
+      "after_vol": 5000, "total_vol": 100000}}
+  ]
+}

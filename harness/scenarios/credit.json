@@ -1,0 +1,15 @@
+{
+  "module": "backend.flow.credit",
+  "func": "credit_signal",
+  "cases": [
+    {"name": "표본부족", "input": {"rows": [{"qty": 100, "close": 1000}]}},
+    {"name": "하락속신용증가_경계", "input": {"rows": [
+      {"qty": 100, "close": 1000}, {"qty": 102, "close": 980}]}},
+    {"name": "상승속신용확대", "input": {"rows": [
+      {"qty": 100, "close": 1000}, {"qty": 102, "close": 1020}]}},
+    {"name": "신용상환_완화", "input": {"rows": [
+      {"qty": 100, "close": 1000}, {"qty": 98, "close": 1005}]}},
+    {"name": "중립", "input": {"rows": [
+      {"qty": 100, "close": 1000}, {"qty": 100, "close": 1005}]}}
+  ]
+}
