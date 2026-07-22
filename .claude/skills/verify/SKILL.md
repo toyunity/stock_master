@@ -51,4 +51,6 @@ curl -s "http://127.0.0.1:8001/api/candles/000660?tf=5m"
 
 ## 뒷정리
 
-`pkill -f "backend.cli serve --port 8001"` — 8000(마스터)은 건드리지 않는다.
+하네스(`python -m harness ...`)는 spawn한 데모서버·크롬을 PID로 자동 정리하므로 별도
+pkill이 필요 없다. 수동 기동한 검증 서버가 있으면 그 프로세스만 직접 종료한다(8000 실서버는
+절대 건드리지 않는다).

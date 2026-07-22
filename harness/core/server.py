@@ -26,6 +26,10 @@ def _child_env() -> dict:
     env = dict(os.environ)
     env["SM_FLOW_MODE"] = "demo"
     env["SM_AUTH_ENABLED"] = "false"
+    # KIS 미접촉 보장: 키를 비우면 marketdata._client()가 None → asking/financials 등
+    # 모든 KIS REST 경로가 차단된다(demo 시드만 사용, 토큰 발급/알림톡 없음)
+    env["SM_KIS_APP_KEY"] = ""
+    env["SM_KIS_APP_SECRET"] = ""
     return env
 
 

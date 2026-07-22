@@ -30,6 +30,10 @@ def test_forces_demo_env(monkeypatch):
     """부모 env가 live/auth=true라도 데모/인증off로 덮어써 spawn한다."""
     monkeypatch.setenv("SM_FLOW_MODE", "live")
     monkeypatch.setenv("SM_AUTH_ENABLED", "true")
+    monkeypatch.setenv("SM_KIS_APP_KEY", "REALKEY")
+    monkeypatch.setenv("SM_KIS_APP_SECRET", "REALSECRET")
     env = server._child_env()
     assert env["SM_FLOW_MODE"] == "demo"
     assert env["SM_AUTH_ENABLED"] == "false"
+    assert env["SM_KIS_APP_KEY"] == ""
+    assert env["SM_KIS_APP_SECRET"] == ""
