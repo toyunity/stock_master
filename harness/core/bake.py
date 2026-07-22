@@ -10,6 +10,11 @@ import httpx
 _FETCH_PATHS = ("/api/candles/%s?tf=5m", "/api/asking/%s", "/api/financials/%s")
 
 
+def _js_safe(s: str) -> str:
+    # <script> 조기 종료 방지: JSON 문자열 안의 </ 를 <\/ 로 이스케이프(JS·JSON 동등)
+    return s.replace("</", "<\\/")
+
+
 def _sse_snapshot(base: str, code: str) -> str:
     # 몇 초 SSE를 받아 마지막 완전한 data 라인을 취한다(첫 이벤트는 시드 전 빈 상태)
     p = subprocess.run(
@@ -34,7 +39,7 @@ def bake_live(base: str, code: str = "000660", expand: bool = True) -> str:
     page = httpx.get(base + "/live/%s" % code, timeout=10).text
     snap = _sse_snapshot(base, code)
     fetch_map = {p % code: _get(base, p % code) for p in _FETCH_PATHS}
-    fmap_js = ",".join("%s:%s" % (json.dumps(k), v if v != "null" else "null")
+    fmap_js = ",".join("%s:%s" % (json.dumps(k), _js_safe(v))
                        for k, v in fetch_map.items())
     stub = (
         "<script>window.__SNAP__=%s;window.__FMAP__={%s};"
@@ -48,7 +53,7 @@ def bake_live(base: str, code: str = "000660", expand: bool = True) -> str:
         "json:function(){return Promise.resolve(d);}});}}"
         "return Promise.resolve({ok:false,status:404,"
         "json:function(){return Promise.resolve({});}});};</script>"
-    ) % (snap, fmap_js)
+    ) % (_js_safe(snap), fmap_js)
     if expand:
         stub += ("<script>setTimeout(function(){"
                  "document.querySelectorAll('details.sec,details.det,details.pro')"
