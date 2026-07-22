@@ -36,9 +36,10 @@ def chrome(port: Optional[int] = None) -> Iterator[str]:
     if not exe:
         raise RuntimeError("헤드리스 크롬을 찾지 못함")
     port = port or ports.free_port()
+    user_data_dir = "/tmp/harness-chrome-%d" % port
     proc = subprocess.Popen(
         [exe, "--headless=new", "--disable-gpu", "--no-first-run",
-         "--remote-debugging-port=%d" % port, "--user-data-dir=/tmp/harness-chrome-%d" % port,
+         "--remote-debugging-port=%d" % port, "--user-data-dir=" + user_data_dir,
          "about:blank"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = "http://127.0.0.1:%d" % port
@@ -51,6 +52,7 @@ def chrome(port: Optional[int] = None) -> Iterator[str]:
             proc.wait(timeout=6)
         except subprocess.TimeoutExpired:
             proc.kill()
+        shutil.rmtree(user_data_dir, ignore_errors=True)
 
 
 def _wait_cdp(base: str, timeout: float = 15.0) -> None:
@@ -68,8 +70,9 @@ def _wait_cdp(base: str, timeout: float = 15.0) -> None:
 async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> dict:
     async with httpx.AsyncClient() as c:
         tgt = (await c.put(cdp_base + "/json/new?about:blank")).json()
-    ws_url, tid = tgt["webSocketDebuggerUrl"], tgt["id"]
+    tid = tgt.get("id")
     try:
+        ws_url = tgt["webSocketDebuggerUrl"]
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
             i = [0]
 
@@ -79,7 +82,8 @@ async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> di
                 await ws.send(json.dumps({"id": mid, "method": method,
                                           "params": params or {}}))
                 while True:
-                    msg = json.loads(await ws.recv())
+                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                    msg = json.loads(raw)
                     if msg.get("id") == mid:
                         if "error" in msg:
                             raise RuntimeError(method + ": " + str(msg["error"]))
@@ -108,8 +112,9 @@ async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> di
                 f.write(base64.b64decode(img["data"]))
             return metrics
     finally:
-        async with httpx.AsyncClient() as c:
-            await c.get(cdp_base + "/json/close/" + tid)
+        if tid:
+            async with httpx.AsyncClient() as c:
+                await c.get(cdp_base + "/json/close/" + tid)
 
 
 def shot(cdp_base: str, url: str, out_path: str, scheme: str) -> dict:
