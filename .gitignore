@@ -9,3 +9,5 @@ docs/report-daily.html
 docs/dashboard-test.html
 *.egg-info/
 docs/glossary.html
+harness/artifacts/*
+!harness/artifacts/.gitkeep

@@ -36,6 +36,19 @@ curl -s "http://127.0.0.1:8001/api/candles/000660?tf=5m"
   구동해 실데이터 응답을 캡처한다(웹소켓은 건드리지 않음):
   `adr.get_quote(c, code)` / `credit.get_history(c, code)` / `shortsale.get_history(c, code)`.
 
+## 하네스(권장 · scratchpad 대체)
+
+시각/테스트/판정/운영 검증은 이제 repo에 커밋된 하네스로 재현한다:
+
+```bash
+.venv/bin/python -m harness verify   # 5화면 라이트/다크 샷 + 오버플로 검출
+.venv/bin/python -m harness test     # pytest + node 스모크
+.venv/bin/python -m harness eval     # 판정 {text,tone} 골든 회귀
+.venv/bin/python -m harness ops --no-public  # 8000 읽기전용 점검
+```
+
+데모서버·크롬은 하네스가 PID로 자동 정리한다(8000 미접촉).
+
 ## 뒷정리
 
 `pkill -f "backend.cli serve --port 8001"` — 8000(마스터)은 건드리지 않는다.
