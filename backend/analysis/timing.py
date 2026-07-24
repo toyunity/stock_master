@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 _OVERHEAT_RSI = 75.0
+_WORD = {"inflow": "순매수", "outflow": "순매도"}
 
 
 def _net(row: dict) -> float:
@@ -29,9 +30,11 @@ def summarize_flows(daily: List[dict], estimate_rows: List[dict],
     confirmed = "inflow" if net5 > 0 else "outflow" if net5 < 0 else "neutral"
     # 연속일수: 가장 최근일과 같은 부호가 이어지는 일수
     streak = 0
+    recent = None                                  # streak 자신의 방향
     if nets:
         sign = (nets[-1] > 0) - (nets[-1] < 0)
         if sign:
+            recent = "inflow" if sign > 0 else "outflow"
             for n in reversed(nets):
                 if (n > 0) - (n < 0) == sign:
                     streak += 1
@@ -53,14 +56,23 @@ def summarize_flows(daily: List[dict], estimate_rows: List[dict],
         direction = "neutral"                      # 상충 → 완충
 
     reasons = []
-    if confirmed != "neutral":
-        word = "순매수" if confirmed == "inflow" else "순매도"
-        reasons.append(f"외인·기관 {streak}일 연속 {word}" if streak >= 2
-                       else f"외인·기관 최근 {word} 우위")
-    if today and confirmed != "neutral" and today != confirmed:
+    # 연속일수에 붙는 단어는 streak 자신(recent)의 방향에서 온다. 5일 합계
+    # (confirmed) 부호를 붙이면 최근 3일이 모두 순매수인 구간에 '3일 연속 순매도'가
+    # 찍힌다(2026-07-23 SK하이닉스 실사고). 둘이 엇갈리면 전환 구간으로 함께 알린다.
+    # 이때 화면이 말하는 기준선(base)도 streak 쪽으로 옮긴다 — 기준이 어긋난 채
+    # '오늘 잠정은 반대 방향'을 붙이면, 잠정이 streak과 같은 방향인데도 반대라고
+    # 말하는 두 번째 모순이 생긴다(리뷰 지적).
+    base = recent if (streak >= 2 and recent) else confirmed
+    if streak >= 2 and recent:
+        reasons.append(f"외인·기관 {streak}일 연속 {_WORD[recent]}")
+        if confirmed != "neutral" and confirmed != recent:
+            reasons.append(f"5일 합계는 {_WORD[confirmed]} — 방향 전환 구간(중립 처리)")
+    elif confirmed != "neutral":
+        reasons.append(f"외인·기관 최근 {_WORD[confirmed]} 우위")
+    if today and base != "neutral" and today != base:
         reasons.append("오늘 잠정은 반대 방향 — 상충(중립 처리)")
     elif today:
-        reasons.append("오늘 잠정도 " + ("순매수" if today == "inflow" else "순매도"))
+        reasons.append(f"오늘 잠정도 {_WORD[today]}")
     if program_net:
         reasons.append("프로그램 순매수" if program_net > 0 else "프로그램 순매도")
 

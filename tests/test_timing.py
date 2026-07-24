@@ -48,6 +48,34 @@ def test_summarize_flows_empty_is_neutral():
     assert summarize_flows([], [], program_net=None)["dir"] == "neutral"
 
 
+def test_streak_word_follows_streak_not_five_day_sum():
+    """연속일수와 순매수/순매도 단어가 어긋나면 안 된다(2026-07-23 실사고).
+
+    streak은 '최근일 부호'로 세는데 단어는 '5일 합계 부호'로 골라, 최근 3일이
+    모두 순매수인 날 화면에 '외인·기관 3일 연속 순매도'가 떴다(SK하이닉스 실측).
+    """
+    from backend.analysis.timing import summarize_flows
+    daily = [  # 실측: 5일 합은 −54.7만주(7/16 대량 유출), 최근 3일은 순매수
+        {"date": "2026-07-16", "frgn": -469637, "orgn": -628785},
+        {"date": "2026-07-20", "frgn": +331597, "orgn": -527040},
+        {"date": "2026-07-21", "frgn": -237417, "orgn": +366154},
+        {"date": "2026-07-22", "frgn": +640418, "orgn": -564978},
+        {"date": "2026-07-23", "frgn": +689696, "orgn": -147399},
+    ]
+    s = summarize_flows(daily, [{"frgn": 559000, "orgn": -14000}], program_net=1)
+    assert s["streak"] == 3
+    # 부분 문자열이 아니라 전체 목록을 읽어서 검증한다 — 줄끼리 어긋나면 안 된다.
+    # 오늘 잠정(+545,000주)은 순매수이므로 '반대 방향'이라고 말해선 안 되고,
+    # 중립 처리의 근거는 5일 합계와의 전환 구간이다.
+    assert s["reasons"] == [
+        "외인·기관 3일 연속 순매수",
+        "5일 합계는 순매도 — 방향 전환 구간(중립 처리)",
+        "오늘 잠정도 순매수",
+        "프로그램 순매수",
+    ]
+    assert s["dir"] == "neutral"          # 전환 구간은 보수적으로 중립 유지
+
+
 # ── assess_timing: 추세 × 수급 매트릭스(보수적) ────────────────────────
 def test_uptrend_inflow_is_buy():
     from backend.analysis.timing import assess_timing

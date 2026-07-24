@@ -352,7 +352,7 @@ __ICONS__
       <div class="meta">당일 누적 순매수 금액 추이(억원) — Y축은 당일 전체 범위 고정</div>
     </div>
     <div class="panel">
-      <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh">· 전일까지 확정치</span></h2>
+      <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh" id="daily-fresh">· 전일까지 확정치</span></h2>
       <div class="tbl-wrap"><table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table></div>
     </div>
     <div class="panel">
@@ -1120,9 +1120,15 @@ function render(S){
   }
   const ED=S.estimate_detail;
   const E=S.estimate;
+  // 오늘 수급 요약의 출처 — 당일 확정 행이 있으면 확정(서버 판정). 잠정 API는
+  // 슬롯이 14:30이 마지막이라 마감 후에도 멈춰 아래 확정치와 어긋난다.
+  const TF=S.today_flow||null;
+  const TFC=!!(TF&&TF.src==='confirmed');
   if(E.rows.length){
     const last=E.rows[E.rows.length-1];
-    document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · 다음 갱신 '+nextSlot()+' · 익일 확정';
+    document.getElementById('est-fresh').textContent='잠정 · '+last.asof+' 기준 · '
+      +(TFC?'마감 후 확정치로 대체됨 — 아래 일별 확정 수급 참고'
+          :'다음 갱신 '+nextSlot()+' · 익일 확정');
     const combined=r=>-(r.frgn+r.orgn); // 개인+기타 역산(합계 0 원리)
     // 기타법인 잠정(상위30 가집계)이 있으면 개인 단독까지 분리
     const canSplit = ED.etc_qty!=null && ED.rows.length>0;
@@ -1188,6 +1194,10 @@ function render(S){
   }
   const SB=S.short||{rows:[]};
   const sbm={}; SB.rows.forEach(r=>{sbm[r.date]=r;});
+  // 당일 확정 행이 붙는 날이 있으므로 '전일까지' 라벨을 고정하지 않는다
+  document.getElementById('daily-fresh').textContent=
+    (S.daily.length&&S.daily[S.daily.length-1].date===S.kst_date)
+      ? '· 오늘 확정까지 반영' : '· 전일까지 확정치';
   document.getElementById('daily').innerHTML='<tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr>'
     +S.daily.map(d=>{const m=sbm[d.date];
     return '<tr><td>'+esc(d.date.slice(5))+'</td><td class="'+cls(d.prsn)+'">'+shares(d.prsn)
@@ -1281,7 +1291,9 @@ function render(S){
   SS_ROWS=SS.rows; renderSS();   // 공매도 거래량 차트 오버레이(일봉·토글 시)
   if(SS.rows.length){
     const sl=SS.rows[SS.rows.length-1];
-    document.getElementById('ss-pill').textContent='🕐 '+fmtD(sl.date)+' 기준 · T+1';
+    // 마감 후 당일 확정이 들어오면 'T+1'(전일 기준)은 사실과 어긋난다
+    document.getElementById('ss-pill').textContent='🕐 '+fmtD(sl.date)+' 기준 · '
+      +(sl.date===S.kst_date?'당일 확정':'T+1');
     document.getElementById('ss-fresh').textContent='출처 KIS';
     document.getElementById('ss-ratio-big').textContent='비중 '+(sl.ratio||0).toFixed(1)+'%';
     document.getElementById('ss-ratio-big').className='sig sig-'+((sl.ratio||0)>=5?'warn':'flat');
@@ -1432,9 +1444,9 @@ function render(S){
   // ── 한눈 요약 스트립: 핵심 지표를 히어로 아래 한 줄로 압축(중복이라도 전부 노출) ──
   (function(){
     let g='';
-    if(E.rows.length){const lr=E.rows[E.rows.length-1];
-      g+=glchip('외인 순매수',shares(lr.frgn),cls(lr.frgn));
-      g+=glchip('기관 순매수',shares(lr.orgn),cls(lr.orgn));}
+    if(TF){const sfx=TFC?'(확정)':'(잠정)';
+      g+=glchip('외인 순매수'+sfx,shares(TF.frgn),cls(TF.frgn));
+      g+=glchip('기관 순매수'+sfx,shares(TF.orgn),cls(TF.orgn));}
     if(P.net_value!=null)g+=glchip('프로그램',eok(P.net_value),cls(P.net_value));
     if(SS.rows.length)g+=glchip('공매도 비중',(SS.rows[SS.rows.length-1].ratio||0).toFixed(2)+'%','flat');
     if(A&&A.premium_pct!=null)g+=glchip('ADR 괴리',(A.premium_pct>0?'+':'')+A.premium_pct.toFixed(2)+'%',cls(A.premium_pct));
@@ -1444,9 +1456,10 @@ function render(S){
   (function(){
     var el=document.getElementById('today-line'); if(!el)return;
     var p=[];
-    if(E.rows.length){var lr=E.rows[E.rows.length-1];
-      if(lr.frgn>0)p.push('외국인 사는 중'); else if(lr.frgn<0)p.push('외국인 파는 중');
-      if(lr.orgn>0)p.push('기관 사는 중'); else if(lr.orgn<0)p.push('기관 파는 중');}
+    // 마감 후 확정치엔 진행형('사는 중')을 쓰지 않는다 — 이미 끝난 매매다
+    if(TF){var bu=TFC?' 순매수':' 사는 중', se=TFC?' 순매도':' 파는 중';
+      if(TF.frgn>0)p.push('외국인'+bu); else if(TF.frgn<0)p.push('외국인'+se);
+      if(TF.orgn>0)p.push('기관'+bu); else if(TF.orgn<0)p.push('기관'+se);}
     if(P.net_value>0)p.push('프로그램 매수'); else if(P.net_value<0)p.push('프로그램 매도');
     el.textContent=p.length?('오늘 · '+p.join('  ·  ')):'';
   })();

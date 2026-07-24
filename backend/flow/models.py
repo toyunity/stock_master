@@ -24,6 +24,7 @@ _POINTS_MAX = 780
 
 _SIZE_KEYS = ("s1", "s2", "s3", "s4")  # 1-10 / 11-50 / 51-100 / 100초과 (주)
 _SESSIONS = ("pre", "regular", "after")
+_KRX_CLOSE_HM = "15:30"  # 이후 KIS div J 현재가는 동결 = 정규장 종가(실측)
 
 
 def tick_session(t: str) -> str:
@@ -75,6 +76,36 @@ def size_signal(ses: dict) -> Optional[dict]:
     if (ses["buy"]["s1"]["n"] + ses["sell"]["s1"]["n"]) / tot_n >= 0.7:
         return {"text": "개인 소액 물량 중심(추정)", "tone": "info"}
     return {"text": "혼재 — 뚜렷한 우세 없음", "tone": "flat"}
+
+
+def reconcile_daily_close(daily: list, trusted: dict) -> list:
+    """일별 수급 표의 종가를 신뢰 소스로 통일한다.
+
+    KIS 투자자 TR(FHKST01010900)의 stck_clpr은 같은 날 공매도 TR·신용 TR·FDR
+    일봉과 어긋난다(2026-07-23 실측: 7/21 1,872,000 vs 1,836,000, 7/20
+    1,841,000 vs 1,764,000). 한 화면에 종가가 두 값으로 나오면 어느 쪽을 믿을지
+    알 수 없다 — 다른 패널이 쓰는 값으로 덮고, 그 소스에 없는 날은 비운다
+    (틀릴 수 있는 값보다 '–'이 낫다)."""
+    return [dict(r, close=trusted.get(r["date"])) for r in daily]
+
+
+def today_flow(daily: list, estimate_rows: list,
+               today_iso: str) -> Optional[dict]:
+    """오늘 수급 한 줄 요약이 쓸 값 — 당일 확정 행이 있으면 확정, 없으면 잠정.
+
+    잠정 API(HHPTJ04160200)는 슬롯이 14:30이 마지막이라 마감 후에도 14:30 값에
+    멈춘다 — 14:30~15:30 물량이 통째로 빠진다(2026-07-23 실측: 잠정 외인
+    +559,000 vs 확정 +689,696). 같은 화면 아래에 확정치가 이미 떠 있는데 상단
+    카드만 잠정이면 서로 어긋나 보인다."""
+    for r in reversed(daily or []):
+        if r.get("date") == today_iso:
+            return {"src": "confirmed", "asof": "확정", "prsn": r.get("prsn"),
+                    "frgn": r.get("frgn"), "orgn": r.get("orgn")}
+    if estimate_rows:
+        last = estimate_rows[-1]
+        return {"src": "estimate", "asof": last.get("asof"), "prsn": None,
+                "frgn": last.get("frgn"), "orgn": last.get("orgn")}
+    return None
 
 
 def market_state(now_kst: dt.datetime, stalled: bool, has_data: bool) -> dict:
@@ -310,11 +341,14 @@ class FlowState:
                         "day_min": self._pgm_day_min, "day_max": self._pgm_day_max,
                         "points": self._pgm_points_thin()},
             "estimate": {"asof": est_asof, "rows": list(self._estimate_rows)},
+            "today_flow": today_flow(self._daily, self._estimate_rows,
+                                     now.strftime("%Y-%m-%d")),
             "estimate_detail": {"asof": self._est_detail["asof"],
                                 "rows": list(self._est_detail["rows"]),
                                 "etc_qty": self._est_detail["etc_qty"],
                                 "etc_value": self._est_detail["etc_value"]},
-            "daily": list(self._daily),
+            "daily": reconcile_daily_close(self._daily,
+                                           self._trusted_closes(now)),
             "detail": {"date": self._detail["date"],
                        "rows": list(self._detail["rows"])},
             "short": self._short_snapshot(),
@@ -333,6 +367,21 @@ class FlowState:
             "timing": self._timing,
             "status": dict(self._status),
         }
+
+    def _trusted_closes(self, now: dt.datetime) -> dict:
+        """공매도(T+1)·신용(T+2) 패널이 쓰는 종가 맵 — FDR 일봉과 일치 확인
+        (2026-07-23, 20거래일 전수). 공매도가 더 최신이라 신용 위에 덮는다.
+
+        오늘 행은 두 소스 모두 아직 없다(공매도 공표는 16시 이후, 신용은 T+2) —
+        정규장이 끝났으면 거래소별 패널의 KRX 현재가로 메운다. div J는 15:30 이후
+        동결돼 그 값이 정규장 종가고, 해외·거래소 판정도 같은 값을 쓴다(실측)."""
+        m = {r["date"]: r["close"] for r in self._credit["rows"] if r.get("close")}
+        m.update({r["date"]: r["close"] for r in self._shortsale["rows"]
+                  if r.get("close")})
+        krx = ((self._exvol or {}).get("krx") or {}).get("price")
+        if krx and now.strftime("%H:%M") >= _KRX_CLOSE_HM:
+            m.setdefault(now.strftime("%Y-%m-%d"), krx)   # 확정치가 오면 그쪽 우선
+        return m
 
     def _adr_snapshot(self) -> Optional[dict]:
         """DR 시세 × 비율 × 환율 = 환산가, 원주 현재가 대비 괴리율 — 원주가가

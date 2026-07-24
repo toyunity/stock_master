@@ -54,6 +54,10 @@ for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh'
                   'tm-headline','tm-comment','tm-fresh'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
+console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
+console.log('TXT:today-line=' + String((els['today-line']||{}).textContent));
+console.log('TXT:daily-fresh=' + String((els['daily-fresh']||{}).textContent));
+console.log('TXT:est-fresh2=' + String((els['est-fresh']||{}).textContent));
 console.log('TXT:pstall-class=' + String((els['pstall']||{}).className));
 console.log('TXT:watch-lines=' + global.__lines.map(l=>l.title).join(','));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
@@ -272,6 +276,49 @@ def _run_harness(tmp_path, snap, snap2=None):
     r = subprocess.run(args, capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
     return _parse_harness(r.stdout)
+
+
+@needs_node
+def test_render_js_promotes_confirmed_flow_after_close(tmp_path):
+    """마감 후 상단 요약이 14:30 잠정에 머물면 같은 화면 아래 확정치와 어긋난다
+    (2026-07-23 실측: 잠정 외인 +559,000 vs 확정 +689,696)."""
+    snap = _full_snapshot()
+    snap["kst_date"] = "2026-07-23"
+    snap["daily"] = [{"date": "2026-07-23", "prsn": -530255, "frgn": 689696,
+                      "orgn": -147399, "close": 1919000}]
+    snap["today_flow"] = {"src": "confirmed", "asof": "확정", "prsn": -530255,
+                          "frgn": 689696, "orgn": -147399}
+    _, texts = _run_harness(tmp_path, snap)
+    # 잠정 마지막 슬롯(-812,000)이 아니라 확정치가 요약에 올라와야 한다
+    assert "689,696" in texts["glance-html"] and "812,000" not in texts["glance-html"]
+    assert "확정" in texts["glance-html"]
+    # 마감 후엔 진행형('사는 중')이 아니라 확정 표현으로
+    assert "외국인 순매수" in texts["today-line"]
+    assert "기관 순매도" in texts["today-line"]
+    assert "오늘" in texts["daily-fresh"]          # '전일까지 확정치' 라벨 갱신
+    assert "확정" in texts["est-fresh2"]           # 잠정 패널에 대체 안내
+
+
+@needs_node
+def test_render_js_shortsale_pill_marks_same_day_confirmation(tmp_path):
+    # 마감 후 당일 확정 공매도가 들어오면 'T+1'(전일 기준) 표기와 모순된다
+    snap = _full_snapshot()
+    snap["kst_date"] = "2026-07-23"
+    snap["shortsale"] = {"rows": [
+        {"date": "2026-07-23", "qty": 272237, "vol": 6327408, "ratio": 4.30,
+         "value": 519243880000, "close": 1919000}], "asof": "2026-07-23"}
+    _, texts = _run_harness(tmp_path, snap)
+    assert "7/23" in texts["ss-pill"]
+    assert "T+1" not in texts["ss-pill"] and "당일" in texts["ss-pill"]
+
+
+@needs_node
+def test_render_js_summary_stays_provisional_during_session(tmp_path):
+    # 장중에는 확정 행이 없으므로 종전대로 잠정 슬롯을 쓰되 '잠정'임을 밝힌다
+    _, texts = _run_harness(tmp_path, _full_snapshot())
+    assert "잠정" in texts["glance-html"] and "812,000" in texts["glance-html"]
+    assert "외국인 파는 중" in texts["today-line"]
+    assert "전일까지" in texts["daily-fresh"]
 
 
 @needs_node

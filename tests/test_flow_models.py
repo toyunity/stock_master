@@ -340,3 +340,97 @@ def test_reset_intraday_clears_day_scoped_keeps_confirmed():
     assert snap["daily"] and snap["detail"]["rows"]    # 확정 데이터는 유지
     assert snap["short"]["rows"]                       # 대차잔고도 유지(여러 날)
     assert snap["market"]["price"] == 2187000          # 시세는 폴백이 곧 자가수정
+
+
+# ── 일별 수급 표의 종가: 신뢰 소스로 통일(한 화면 두 값 방지) ──────────────
+def test_daily_close_comes_from_trusted_source_not_investor_tr():
+    """KIS 투자자 TR(FHKST01010900)의 stck_clpr은 같은 날 공매도 TR·FDR 일봉과
+    어긋난다(2026-07-23 실측: 7/21 1,872,000 vs 1,836,000·7/20 1,841,000 vs
+    1,764,000). 같은 화면에 종가가 두 값으로 나오지 않게 신뢰 소스로 덮어쓴다."""
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_daily([
+        {"date": "2026-07-20", "prsn": 1, "frgn": 2, "orgn": 3, "close": 1841000},
+        {"date": "2026-07-21", "prsn": 1, "frgn": 2, "orgn": 3, "close": 1872000},
+        {"date": "2026-07-22", "prsn": 1, "frgn": 2, "orgn": 3, "close": 1830000}])
+    s.set_shortsale({"rows": [
+        {"date": "2026-07-21", "qty": 68549, "vol": 4639208, "ratio": 1.48,
+         "value": 1, "close": 1836000},
+        {"date": "2026-07-22", "qty": 91472, "vol": 4802637, "ratio": 1.90,
+         "value": 1, "close": 1830000}], "asof": "2026-07-22"})
+    s.set_credit({"rows": [
+        {"date": "2026-07-20", "qty": 3313674, "ratio": 0.45, "new": 0,
+         "rdmp": 0, "close": 1764000, "value": 1, "chg": None}],
+        "asof": "2026-07-20"})
+    assert [r["close"] for r in s.snapshot()["daily"]] == [1764000, 1836000, 1830000]
+
+
+def test_daily_close_blank_when_no_trusted_source():
+    # 신뢰 소스에 없는 날은 틀릴 수 있는 값을 남기지 않고 비운다(화면 '–')
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_daily([{"date": "2026-06-01", "prsn": 1, "frgn": 2, "orgn": 3,
+                  "close": 9999000}])
+    assert s.snapshot()["daily"][0]["close"] is None
+
+
+# ── 오늘 수급 요약: 마감 후 잠정 → 확정 승격 ──────────────────────────────
+def test_today_flow_prefers_confirmed_row_over_stale_estimate():
+    """잠정 API(HHPTJ04160200)는 슬롯이 14:30이 마지막 — 마감 후에도 14:30에 멈춰
+    14:30~15:30 물량이 빠진다(2026-07-23 실측: 잠정 외인 +559,000 vs 확정
+    +689,696). 같은 화면에 당일 확정치가 이미 있으면 그쪽을 쓴다."""
+    from backend.flow.models import today_flow
+    daily = [{"date": "2026-07-22", "prsn": 1, "frgn": 640418, "orgn": -564978},
+             {"date": "2026-07-23", "prsn": -530255, "frgn": 689696,
+              "orgn": -147399}]
+    est = [{"asof": "14:30", "frgn": 559000, "orgn": -14000, "sum": 545000}]
+    f = today_flow(daily, est, "2026-07-23")
+    assert f["src"] == "confirmed" and f["frgn"] == 689696 and f["orgn"] == -147399
+
+
+def test_today_flow_uses_estimate_while_confirmed_missing():
+    from backend.flow.models import today_flow
+    est = [{"asof": "11:20", "frgn": -812000, "orgn": 135000, "sum": -677000},
+           {"asof": "14:30", "frgn": 559000, "orgn": -14000, "sum": 545000}]
+    f = today_flow([{"date": "2026-07-22", "prsn": 1, "frgn": 2, "orgn": 3}],
+                   est, "2026-07-23")
+    assert f["src"] == "estimate" and f["asof"] == "14:30" and f["frgn"] == 559000
+    assert today_flow([], [], "2026-07-23") is None
+
+
+def test_snapshot_exposes_today_flow(monkeypatch):
+    from backend.flow import models
+    monkeypatch.setattr(models.kst, "now",
+                        lambda: __import__("datetime").datetime(2026, 7, 23, 16, 15))
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_daily([{"date": "2026-07-23", "prsn": -530255, "frgn": 689696,
+                  "orgn": -147399, "close": 1919000}])
+    s.set_estimate([{"asof": "14:30", "frgn": 559000, "orgn": -14000,
+                     "sum": 545000}])
+    tf = s.snapshot()["today_flow"]
+    assert tf["src"] == "confirmed" and tf["frgn"] == 689696
+
+
+def _fix_now(monkeypatch, hh, mm):
+    import datetime as _dt
+
+    from backend.flow import models
+    monkeypatch.setattr(models.kst, "now",
+                        lambda: _dt.datetime(2026, 7, 23, hh, mm))
+
+
+def test_daily_close_today_falls_back_to_krx_regular_close(monkeypatch):
+    """마감 직후 오늘 행은 공매도(16시 이후 공표)·신용(T+2)이 아직 없어 비어버린다
+    — 같은 화면의 해외·거래소 판정이 쓰는 KRX 정규 종가(div J, 15:30 이후 동결)로
+    메워 한 화면 두 값을 막는다."""
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_daily([{"date": "2026-07-23", "prsn": -530255, "frgn": 689696,
+                  "orgn": -147399, "close": 1925000}])
+    s.set_exvol({"krx": {"price": 1919000, "vol": 4081543, "pbmn": 1},
+                 "nxt": {"price": 1912000, "vol": 2402725, "pbmn": 1},
+                 "nxt_share_pct": 37.1,
+                 "sessions": {"pre": 1, "main": 1, "after": 1},
+                 "warn": None, "asof": "15:45:00"})
+    _fix_now(monkeypatch, 15, 45)
+    assert s.snapshot()["daily"][0]["close"] == 1919000
+    # 정규장 종료 전 현재가는 '종가'가 아니다 — 쓰지 않는다
+    _fix_now(monkeypatch, 13, 0)
+    assert s.snapshot()["daily"][0]["close"] is None
