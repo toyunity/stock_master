@@ -59,3 +59,68 @@ def test_pick_front_month_is_the_most_traded_row():
     """월물은 롤오버되므로 코드가 아니라 거래량으로 고른다."""
     assert fx.pick_front_month(fx.parse_board(_BOARD_JS))["code"] == "101W09"
     assert fx.pick_front_month([]) is None
+
+
+# ffcode.mst 실제 레이아웃(2026-07-31 실측): 종목코드 0:32, 시리즈명 82:132, 총 223자
+def _ff_row(code, name):
+    return code.ljust(32) + "YYN" + " " * 47 + name.ljust(50) + " " * 91
+
+
+_FF_TEXT = "\n".join([
+    _ff_row("NQU26", "E-mini Nasdaq100-202609"),
+    _ff_row("NQZ26", "E-mini Nasdaq100-202612"),
+    _ff_row("NQU26-Z26", "E-mini Nasdaq100-2609-2612"),   # 스프레드
+    _ff_row("MNQU26", "Micro E-mini Nasdaq100-202609"),   # 마이크로
+    _ff_row("MNDU26", "MSCI Indonesia-202609"),           # 이름이 나스닥이 아님
+])
+
+
+def test_parse_ff_master_reads_fixed_width_fields():
+    rows = fx.parse_ff_master(_FF_TEXT)
+    assert len(rows) == 5
+    assert rows[0] == {"code": "NQU26", "name": "E-mini Nasdaq100-202609"}
+
+
+def test_pick_nq_series_takes_nearest_expiry_emini():
+    """코드 접두로 고르면 안 된다 — MND*는 나스닥이 아니라 MSCI Indonesia다."""
+    import datetime as dt
+    rows = fx.parse_ff_master(_FF_TEXT)
+    got = fx.pick_nq_series(rows, now=dt.datetime(2026, 7, 31, 12, 0, tzinfo=KST))
+    assert got == "NQU26"
+
+
+def test_pick_nq_series_rolls_to_next_when_current_expired():
+    import datetime as dt
+    rows = fx.parse_ff_master(_FF_TEXT)
+    got = fx.pick_nq_series(rows, now=dt.datetime(2026, 10, 1, 12, 0, tzinfo=KST))
+    assert got == "NQZ26"
+
+
+def test_pick_nq_series_returns_none_when_absent():
+    assert fx.pick_nq_series([]) is None
+
+
+def test_download_ff_master_caches_and_reuses(tmp_path):
+    """공개 파일이라 인증 불필요. 12시간 캐시 — 두 번째 호출은 네트워크를 타지 않는다."""
+    from backend.flow import kis
+    calls = []
+
+    def _fetch(url):
+        calls.append(url)
+        return _FF_TEXT
+
+    t1 = kis.download_ff_master(str(tmp_path), fetch=_fetch)
+    t2 = kis.download_ff_master(str(tmp_path), fetch=_fetch)
+    assert t1 == t2 == _FF_TEXT
+    assert len(calls) == 1                       # 두 번째는 캐시
+
+
+def test_download_ff_master_keeps_stale_cache_on_failure(tmp_path):
+    """월물 코드는 만기 전까지 유효 — 낡은 캐시가 무응답보다 낫다."""
+    from backend.flow import kis
+
+    def _boom(url):
+        raise RuntimeError("network down")
+
+    kis.download_ff_master(str(tmp_path), fetch=lambda url: _FF_TEXT)
+    assert kis.download_ff_master(str(tmp_path), ttl_sec=0.0, fetch=_boom) == _FF_TEXT

@@ -497,7 +497,7 @@ class KisClient:
 
     async def futures_board(self, cls_code: str) -> list:
         """지수선물 전광판 — 월물 목록과 시세가 한 콜에 같이 온다(FHPIF05030200).
-        cls_code: MKI=미니. 정규(대형) 코드는 G1 실측에서 확정."""
+        cls_code: ""=정규(대형), MKI=미니(G1 실측 확정, 2026-07-31)."""
         from backend.flow import futures as _fx      # 순환 임포트 회피(모듈 로드 시점 분리)
         js = await self._get("/uapi/domestic-futureoption/v1/quotations/display-board-futures",
                              "FHPIF05030200",
@@ -553,3 +553,44 @@ class KisClient:
                              "FHPPG04650101",
                              {"FID_COND_MRKT_DIV_CODE": self.div, "FID_INPUT_ISCD": code})
         return parse_program_trend(js)
+
+
+FF_MASTER_URL = "https://new.real.download.dws.co.kr/common/master/ffcode.mst.zip"
+
+
+def _fetch_ff_master(url: str) -> str:
+    import io
+    import zipfile
+
+    import httpx
+    r = httpx.get(url, timeout=20.0)
+    r.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        name = z.namelist()[0]
+        return z.read(name).decode("cp949", errors="replace")
+
+
+def download_ff_master(cache_dir: str, ttl_sec: float = 43200.0, fetch=None) -> str:
+    """해외선물 종목마스터(ffcode.mst) 원문 — 인증 불필요 공개 파일, 12h 파일 캐시.
+
+    받기 실패하면 낡은 캐시라도 돌려준다(월물 코드는 만기 전까지 유효). 캐시도 없으면 ''."""
+    import os
+
+    path = os.path.join(cache_dir, "ffcode.mst")
+    fresh = (os.path.exists(path)
+             and time.time() - os.path.getmtime(path) < ttl_sec)
+    if fresh:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    try:
+        text = (fetch or _fetch_ff_master)(FF_MASTER_URL)
+    except Exception:
+        log.warning("해외선물 마스터 갱신 실패 — 기존 캐시 사용", exc_info=True)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+        return ""
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return text
