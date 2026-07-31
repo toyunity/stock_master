@@ -495,6 +495,17 @@ class KisClient:
                              {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd})
         return parse_index(js)
 
+    async def futures_board(self, cls_code: str) -> list:
+        """지수선물 전광판 — 월물 목록과 시세가 한 콜에 같이 온다(FHPIF05030200).
+        cls_code: MKI=미니. 정규(대형) 코드는 G1 실측에서 확정."""
+        from backend.flow import futures as _fx      # 순환 임포트 회피(모듈 로드 시점 분리)
+        js = await self._get("/uapi/domestic-futureoption/v1/quotations/display-board-futures",
+                             "FHPIF05030200",
+                             {"FID_COND_MRKT_DIV_CODE": "F",
+                              "FID_COND_SCR_DIV_CODE": "20503",
+                              "FID_COND_MRKT_CLS_CODE": cls_code})
+        return _fx.parse_board(js)
+
     async def financials(self, code: str) -> list:
         """재무비율(최근 분기 신순) — ROE·EPS·부채비율·매출성장. 분기 갱신이라 길게 캐시."""
         js = await self._get("/uapi/domestic-stock/v1/finance/financial-ratio",

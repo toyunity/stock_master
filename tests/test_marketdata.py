@@ -202,3 +202,64 @@ def test_routes_smoke_without_key(tmp_path, monkeypatch):
     c = TestClient(create_app(s))
     assert c.get("/api/market").status_code == 200 and c.get("/api/market").json() == {}
     assert c.get("/api/fundamentals").status_code == 200 and c.get("/api/fundamentals").json() == {}
+    assert c.get("/api/futures").status_code == 200 and c.get("/api/futures").json() == {}
+
+
+class _FakeFut:
+    """선물 전광판만 답하는 가짜 클라이언트."""
+    def __init__(self):
+        self.calls = 0
+
+    async def futures_board(self, cls_code):
+        self.calls += 1
+        return [{"code": "101W09", "name": "미니F 202609", "price": 885.25,
+                 "rate": -1.49, "sign": "down", "volume": 141272},
+                {"code": "101W12", "name": "미니F 202612", "price": 889.0,
+                 "rate": -1.40, "sign": "down", "volume": 312}]
+
+
+def _reset_fut(md):
+    md._fut_cache["ts"], md._fut_cache["data"] = 0.0, None
+
+
+def test_get_futures_picks_front_month_and_labels_day_session():
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    c = _FakeFut()
+    d = asyncio.run(md.get_futures(client=c, now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d["k200"]["code"] == "101W09"           # 거래량 최다
+    assert d["k200"]["price"] == 885.25
+    assert d["k200"]["label"] == "K200선물"
+    assert d["k200"]["session"] == "day"
+
+
+def test_get_futures_labels_night_session_and_caches():
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    c = _FakeFut()
+    night = dt.datetime(2026, 7, 30, 21, 0, tzinfo=KST)
+    d = asyncio.run(md.get_futures(client=c, now=night))
+    assert d["k200"]["label"] == "야간선물" and d["k200"]["session"] == "night"
+    assert c.calls == 1
+    asyncio.run(md.get_futures(client=c, now=night))   # 30초 캐시 → 재호출 없음
+    assert c.calls == 1
+
+
+def test_get_futures_keeps_last_value_on_failure():
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    class _Boom(_FakeFut):
+        async def futures_board(self, cls_code):
+            raise RuntimeError("KIS 500")
+
+    _reset_fut(md)
+    md._fut_cache["ts"], md._fut_cache["data"] = 0.0, {"k200": {"price": 1.0}}
+    d = asyncio.run(md.get_futures(client=_Boom(),
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d == {"k200": {"price": 1.0}}          # 직전값 유지(칩이 사라지지 않음)

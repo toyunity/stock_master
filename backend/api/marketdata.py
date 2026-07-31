@@ -47,6 +47,38 @@ async def get_indices(client=None):
     return _idx_cache["data"]
 
 
+_FUT_TTL_LIVE, _FUT_TTL_IDLE = 30.0, 300.0   # 세션 활성 30초 / 비활성 5분
+_fut_cache = {"ts": 0.0, "data": None}
+_FUT_LABEL = {"night": "야간선물"}
+
+
+async def get_futures(client=None, now=None):
+    """{'k200': {label,session,code,name,price,rate,sign,volume}} — 세션별 TTL 캐시.
+
+    키없음이면 None, 조회 실패면 직전 성공값(칩이 깜빡이며 사라지지 않게)."""
+    from backend.flow import futures as fx
+    client = client or _client()
+    if client is None:
+        return None
+    ses = fx.session_of(now)
+    ttl = _FUT_TTL_LIVE if ses in ("day", "night") else _FUT_TTL_IDLE
+    if _fut_cache["data"] is not None and time.time() - _fut_cache["ts"] < ttl:
+        return _fut_cache["data"]
+    try:
+        rows = await client.futures_board(fx.BOARD_CLS)
+    except Exception:
+        return _fut_cache["data"]
+    front = fx.pick_front_month(rows)
+    if front is None:
+        return _fut_cache["data"]
+    k200 = dict(front)
+    k200["session"] = ses
+    k200["label"] = _FUT_LABEL.get(ses, "K200선물")
+    data = {"k200": k200}
+    _fut_cache["ts"], _fut_cache["data"] = time.time(), data
+    return data
+
+
 _DETAIL_TTL = 300.0
 _detail_cache: dict = {}   # code -> (ts, dict)
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)

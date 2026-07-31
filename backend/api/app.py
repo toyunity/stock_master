@@ -280,6 +280,12 @@ def create_app(settings=None) -> FastAPI:
         from backend.api import marketdata
         return JSONResponse(await marketdata.get_indices() or {})
 
+    @app.get("/api/futures")
+    async def futures_api():
+        """지수 선물(코스피200 주간·야간) — 대시보드 칩. 키없음/실패면 {}."""
+        from backend.api import marketdata
+        return JSONResponse(await marketdata.get_futures() or {})
+
     @app.get("/api/fundamentals")
     async def fundamentals_api(request: Request):
         """관심종목 밸류지표(PER/PBR/52주 위치) — 대시보드 카드 칩. 느리게 변해 별도 저빈도 조회."""
