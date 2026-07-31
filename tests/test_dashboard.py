@@ -153,3 +153,12 @@ def test_nav_loader_on_all_pages():
     from backend.report.dashboard import _NAV_LOADER
     # bfcache 무력화 리스너 금지(리뷰) — 설명 주석은 허용, 등록 구문만 금지
     assert "addEventListener('beforeunload'" not in _NAV_LOADER
+
+
+def test_dashboard_polls_futures_and_has_stale_badge_style():
+    """선물 칩은 지수 칩과 같은 스트립(#market)에 붙고, '지연' 배지 스타일을 갖는다."""
+    html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자",
+                            "close": 71000, "change": -2.1}], "2026-06-22")
+    assert "/api/futures" in html
+    assert "fxchip" in html          # 선물 칩 렌더 함수
+    assert ".mbadge" in html         # 지연 배지 CSS

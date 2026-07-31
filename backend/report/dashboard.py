@@ -138,6 +138,9 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   letter-spacing:-.01em;margin-top:2px;display:flex;align-items:baseline;gap:6px}
 .mchip .mr{font-family:var(--font-num);font-size:11.5px;font-weight:700}
 .mchip .mr.up{color:var(--up)} .mchip .mr.down{color:var(--down)} .mchip .mr.flat{color:var(--flat)}
+.mchip .mbadge{margin-left:5px;font-family:var(--font-mono);font-size:9px;font-weight:800;
+  letter-spacing:.04em;padding:1px 5px;border-radius:var(--r-pill);
+  background:var(--warn-bg);color:var(--warn)}
 
 /* 섹션 라벨 — 시그니처: 틱마크 축(axis) 룰(가격 눈금자 모티프) */
 .sectlabel{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;
@@ -353,11 +356,14 @@ async function loadPrices(){
   }catch(e){}
 }
 loadPrices(); setInterval(loadPrices, 12000);
-// ── 시장 지수(코스피·코스닥) 상단 컨텍스트 — /api/market(장외에도 캐시 직전값). 30초. ──
+// ── 시장 지수(코스피·코스닥) + 선물 상단 컨텍스트 — 30초. 장외에도 캐시 직전값. ──
 async function loadMarket(){
   try{
-    const r=await fetch('/api/market'); if(!r.ok)return;
-    const d=await r.json(); const el=document.getElementById('market');
+    const [rm,rf]=await Promise.all([fetch('/api/market'),
+                                     fetch('/api/futures').catch(function(){return null;})]);
+    if(!rm||!rm.ok)return;
+    const d=await rm.json(); const el=document.getElementById('market');
+    const f=(rf&&rf.ok)?await rf.json():{};
     function ix(o,label){
       if(!o||o.price==null)return '';
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
@@ -366,7 +372,17 @@ async function loadMarket(){
         +'<div class="mv">'+o.price.toLocaleString()
         +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
     }
-    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥')].filter(Boolean);
+    function fxchip(o){
+      if(!o||o.price==null)return '';
+      const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
+      const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
+      const badge=o.stale?'<span class="mbadge">지연</span>':'';
+      return '<div class="mchip"><div class="ml">'+o.label+badge+'</div>'
+        +'<div class="mv">'+o.price.toLocaleString()
+        +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
+    }
+    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
+                 fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
     if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
   }catch(e){}
 }
