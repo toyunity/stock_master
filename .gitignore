@@ -11,3 +11,5 @@ docs/dashboard-test.html
 docs/glossary.html
 harness/artifacts/*
 !harness/artifacts/.gitkeep
+.worktrees/
+.superpowers/
