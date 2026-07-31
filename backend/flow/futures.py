@@ -14,7 +14,8 @@ from backend.flow import kst
 
 DAY_OPEN, DAY_CLOSE = 8 * 60 + 45, 15 * 60 + 45      # 08:45 / 15:45
 NIGHT_OPEN, NIGHT_CLOSE = 18 * 60, 6 * 60            # 18:00 / 익일 06:00
-BOARD_CLS = "MKI"    # 전광판 시장구분(MKI=미니). 정규 코드는 G1에서 확정해 교체.
+BOARD_CLS = ""       # 전광판 시장구분 — ""=정규(대형) 코스피200 선물
+                     # (2026-07-31 장중 실측: A01609 F 202609). "MKI"는 미니.
 
 _SIGN = {"1": "up", "2": "up", "3": "flat", "4": "down", "5": "down"}
 
