@@ -51,7 +51,7 @@ backend/flow/wsbus.py       (조건부 신설 — G2가 REST 불가로 나올 �
 | `parse_board(js)` | 전광판 응답 → 행 리스트 | 코스피200 선물 월물 파싱 |
 | `pick_front_month(rows)` | 행 리스트 → 행 | `acml_vol` 최다 = 최근월물(롤오버 자동 대응) |
 | `parse_ff_master(text)` | ffcode.mst → `[(srs_cd, 시리즈명)]` | 해외선물 종목마스터 파싱 |
-| `pick_nq_series(rows, now)` | → `srs_cd` | 나스닥 최근월물 선택 — 마스터의 최근월물 플래그(`sNearFlgDt`) 우선, 없으면 월물코드(`U26`=9월) 파싱 폴백. 스프레드(`MNQU26-Z26`) 제외 |
+| `pick_nq_series(rows, now)` | → `srs_cd` | 나스닥 최근월물 선택 — 시리즈명 `E-mini Nasdaq100-YYYYMM`의 만기 접미사로 이번 달 이상 최소 만기를 고른다. 스프레드(코드에 `-` 포함, 예 `NQU26-Z26`)와 마이크로(`Micro E-mini`)는 제외 |
 | `parse_overseas(js)` | 해외선물 현재가 응답 → dict | 현재가·등락·체결시각 |
 
 `session_of`는 벽시계만 본다. 공휴일 판정은 기존 `market_status`가 이미 하고 있으므로 재구현하지
@@ -139,7 +139,8 @@ class WsSession:                      # 프로세스 싱글턴
 - **G2 (평일 18:00~)**: `display-board-futures`가 야간 세션가를 주는가.
   - 준다 → REST로 야간 완결. WsSession 리팩터 **불착수**(단, `/live` 2종목 동시 열기 버그는 별도 티켓).
   - 안 준다 → WS 경로 + WsSession 리팩터 착수.
-- **G3**: `ffcode.mst` → `SRS_CD`(`MNDU26`류) → `HHDFC55010000` 응답·지연 여부 확인.
+- **G3**: `ffcode.mst` → `SRS_CD`(`NQU26` = E-mini Nasdaq100-202609) → `HHDFC55010000` 응답·지연 여부 확인.
+  (주의: `MND*`는 나스닥이 아니라 MSCI Indonesia다 — 코드 접두만 보고 고르면 틀린다.)
 - **G4 (WS 경로일 때만)**: 리팩터 후 `/live` 수급 회귀 — 데모 서버 스냅샷 비교 → 장중 실서버 확인.
 
 게이트당 커밋한다(futures-plan §설계의 "각 단계 라이브 검증 후 커밋" 유지).
