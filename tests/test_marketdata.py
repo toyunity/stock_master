@@ -220,6 +220,8 @@ class _FakeFut:
 
 def _reset_fut(md):
     md._fut_cache["ts"], md._fut_cache["data"] = 0.0, None
+    from backend.flow import usquote
+    usquote._exch_cache.clear()   # QQQ 거래소 확정 캐시 — 테스트 순서 무관하게 매번 초기화
 
 
 def test_get_futures_picks_front_month_and_labels_day_session():
@@ -265,19 +267,55 @@ def test_get_futures_keeps_last_value_on_failure():
     assert d == {"k200": {"price": 1.0}}          # 직전값 유지(칩이 사라지지 않음)
 
 
-def test_get_futures_includes_nasdaq_chip():
+def test_get_futures_includes_nasdaq_qqq_chip():
+    """CME 선물 실시간 시세는 계좌에 유료 구독이 필요해(G3 실측 EGW00550) QQQ ETF로 대신한다."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
 
     class _C(_FakeFut):
-        async def overseas_futures(self, srs_cd):
-            assert srs_cd == "NQU26"
-            return {"price": 27713.25, "rate": -0.75}
+        async def _get(self, path, tr_id, params):
+            assert params["SYMB"] == "QQQ"
+            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.42",
+                                             "sign": "2", "tvol": "1"}}
 
     _reset_fut(md)
-    md._nq_code = "NQU26"                       # 마스터 조회를 건너뛰는 주입점
     d = asyncio.run(md.get_futures(client=_C(),
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
-    assert d["nq"]["price"] == 27713.25
-    assert d["nq"]["label"] == "나스닥선물"
+    assert d["nq"] == {"label": "나스닥 QQQ", "price": 487.32, "rate": 0.42}
+
+
+def test_get_futures_nasdaq_rate_none_on_preopen_rollover():
+    """sign '0'(미국 프리오픈 일자 롤오버)은 rate=None — 0.42%처럼 꾸며내지 않는다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    class _C(_FakeFut):
+        async def _get(self, path, tr_id, params):
+            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.00",
+                                             "sign": "0", "tvol": "1"}}
+
+    _reset_fut(md)
+    d = asyncio.run(md.get_futures(client=_C(),
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d["nq"]["price"] == 487.32
+    assert d["nq"]["rate"] is None
+
+
+def test_get_futures_nasdaq_failure_keeps_k200_chip():
+    """나스닥(QQQ) 조회 실패는 그 칩만 죽는다 — K200 칩은 항상 살아남는다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    class _Boom(_FakeFut):
+        async def _get(self, path, tr_id, params):
+            raise RuntimeError("KIS 500")
+
+    _reset_fut(md)
+    d = asyncio.run(md.get_futures(client=_Boom(),
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d["k200"]["code"] == "101W09"
+    assert d["k200"]["price"] == 885.25
+    assert "nq" not in d

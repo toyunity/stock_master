@@ -82,26 +82,22 @@ async def get_futures(client=None, now=None):
     return data
 
 
-_nq_code = None      # ffcode.mst에서 고른 나스닥 최근월물 — 프로세스 수명 동안 재사용
-
-
 async def _nq_quote(client):
-    """나스닥 선물 칩 데이터. 마스터 조회·조회 실패는 이 칩만 죽인다(K200 칩은 유지)."""
-    global _nq_code
-    from backend.flow import futures as fx, kis
-    if _nq_code is None:
-        text = await asyncio.get_event_loop().run_in_executor(
-            None, kis.download_ff_master, settings.cache_dir)
-        _nq_code = fx.pick_nq_series(fx.parse_ff_master(text))
-    if not _nq_code:
-        return None
+    """나스닥 100 대용 QQQ ETF 시세 칩.
+
+    선물 실시간 시세(CME)는 계좌에 월 유료 구독이 필요해(2026-08-03 G3 실측
+    EGW00550 'CME SUB거래소 신청 계좌가 아닙니다') 이미 프로덕션에서 쓰는 해외주식
+    현재가(usquote.price_us)로 QQQ를 대신 보여준다 — 종목마스터 조회 자체가 없다.
+    price_us는 거래소 순회 실패를 내부에서 흡수해 예외를 던지지 않지만, 이 함수도
+    통째로 감싸 어떤 이유로든(형식 변경 등) 이 칩만 죽고 K200 칩은 항상 유지된다."""
+    from backend.flow.usquote import price_us
     try:
-        q = await client.overseas_futures(_nq_code)
+        q = await price_us(client, "QQQ")
+        if not q:
+            return None
+        return {"label": "나스닥 QQQ", "price": q["price"], "rate": q["change"]}
     except Exception:
         return None
-    if not q:
-        return None
-    return {"label": "나스닥선물", "code": _nq_code, "price": q["price"], "rate": q["rate"]}
 
 
 _DETAIL_TTL = 300.0
