@@ -124,3 +124,14 @@ def test_download_ff_master_keeps_stale_cache_on_failure(tmp_path):
 
     kis.download_ff_master(str(tmp_path), fetch=lambda url: _FF_TEXT)
     assert kis.download_ff_master(str(tmp_path), ttl_sec=0.0, fetch=_boom) == _FF_TEXT
+
+
+def test_parse_overseas_reads_price_and_rate():
+    """HHDFC55010000 응답. 실제 키 이름은 G3에서 확인해 좁힌다(현재는 후보 중 첫 존재 키)."""
+    js = {"rt_cd": "0", "output1": {"last": "27713.25", "prdy_ctrt": "-0.75"}}
+    assert fx.parse_overseas(js) == {"price": 27713.25, "rate": -0.75}
+
+
+def test_parse_overseas_returns_none_on_failure():
+    assert fx.parse_overseas({"rt_cd": "1"}) is None
+    assert fx.parse_overseas({"rt_cd": "0", "output1": {}}) is None

@@ -121,3 +121,27 @@ def pick_nq_series(rows: list, now: Optional[dt.datetime] = None) -> Optional[st
         if best is None or m.group(1) < best[0]:
             best = (m.group(1), r["code"])
     return best[1] if best else None
+
+
+# 해외선물 현재가 응답 키 — G3 실측에서 확인되는 대로 하나로 좁힌다.
+_OVS_PRICE_KEYS = ("last", "ovrs_prpr", "prpr", "futs_prpr")
+_OVS_RATE_KEYS = ("prdy_ctrt", "prdy_rate", "rate")
+
+
+def _first(d: dict, keys) -> Optional[str]:
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def parse_overseas(js: dict) -> Optional[dict]:
+    """해외선물 현재가(HHDFC55010000) → {price, rate}. 실패/빈 응답이면 None."""
+    if js.get("rt_cd") != "0":
+        return None
+    o = js.get("output1") or js.get("output") or js.get("output2") or {}
+    px = _first(o, _OVS_PRICE_KEYS)
+    if px is None:
+        return None
+    return {"price": _f(px), "rate": _f(_first(o, _OVS_RATE_KEYS) or 0)}

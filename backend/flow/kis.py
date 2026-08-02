@@ -506,6 +506,13 @@ class KisClient:
                               "FID_COND_MRKT_CLS_CODE": cls_code})
         return _fx.parse_board(js)
 
+    async def overseas_futures(self, srs_cd: str) -> Optional[dict]:
+        """해외선물 현재가(HHDFC55010000) — 나스닥 E-mini 등. srs_cd는 ffcode.mst의 종목코드."""
+        from backend.flow import futures as _fx
+        js = await self._get("/uapi/overseas-futureoption/v1/quotations/inquire-price",
+                             "HHDFC55010000", {"SRS_CD": srs_cd})
+        return _fx.parse_overseas(js)
+
     async def financials(self, code: str) -> list:
         """재무비율(최근 분기 신순) — ROE·EPS·부채비율·매출성장. 분기 갱신이라 길게 캐시."""
         js = await self._get("/uapi/domestic-stock/v1/finance/financial-ratio",
@@ -570,27 +577,29 @@ def _fetch_ff_master(url: str) -> str:
         return z.read(name).decode("cp949", errors="replace")
 
 
+def _read_ff_cache(path: Path) -> Optional[str]:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+
+
 def download_ff_master(cache_dir: str, ttl_sec: float = 43200.0, fetch=None) -> str:
     """해외선물 종목마스터(ffcode.mst) 원문 — 인증 불필요 공개 파일, 12h 파일 캐시.
 
-    받기 실패하면 낡은 캐시라도 돌려준다(월물 코드는 만기 전까지 유효). 캐시도 없으면 ''."""
-    import os
-
-    path = os.path.join(cache_dir, "ffcode.mst")
-    fresh = (os.path.exists(path)
-             and time.time() - os.path.getmtime(path) < ttl_sec)
+    받기 실패하면 낡은 캐시라도 돌려준다(월물 코드는 만기 전까지 유효). 캐시도 없으면 ''.
+    캐시 파일이 깨져 읽기 실패해도 예외를 올리지 않고 재수집으로 넘어간다."""
+    path = Path(cache_dir) / "ffcode.mst"
+    fresh = path.exists() and time.time() - path.stat().st_mtime < ttl_sec
     if fresh:
-        with open(path, encoding="utf-8") as f:
-            return f.read()
+        cached = _read_ff_cache(path)
+        if cached is not None:
+            return cached
     try:
         text = (fetch or _fetch_ff_master)(FF_MASTER_URL)
     except Exception:
         log.warning("해외선물 마스터 갱신 실패 — 기존 캐시 사용", exc_info=True)
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                return f.read()
-        return ""
-    os.makedirs(cache_dir, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+        return _read_ff_cache(path) or ""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
     return text

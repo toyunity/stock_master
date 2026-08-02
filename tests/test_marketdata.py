@@ -263,3 +263,21 @@ def test_get_futures_keeps_last_value_on_failure():
     d = asyncio.run(md.get_futures(client=_Boom(),
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert d == {"k200": {"price": 1.0}}          # 직전값 유지(칩이 사라지지 않음)
+
+
+def test_get_futures_includes_nasdaq_chip():
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    class _C(_FakeFut):
+        async def overseas_futures(self, srs_cd):
+            assert srs_cd == "NQU26"
+            return {"price": 27713.25, "rate": -0.75}
+
+    _reset_fut(md)
+    md._nq_code = "NQU26"                       # 마스터 조회를 건너뛰는 주입점
+    d = asyncio.run(md.get_futures(client=_C(),
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d["nq"]["price"] == 27713.25
+    assert d["nq"]["label"] == "나스닥선물"

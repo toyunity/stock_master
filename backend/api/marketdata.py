@@ -75,8 +75,33 @@ async def get_futures(client=None, now=None):
     k200["session"] = ses
     k200["label"] = _FUT_LABEL.get(ses, "K200선물")
     data = {"k200": k200}
+    nq = await _nq_quote(client)
+    if nq:
+        data["nq"] = nq
     _fut_cache["ts"], _fut_cache["data"] = time.time(), data
     return data
+
+
+_nq_code = None      # ffcode.mst에서 고른 나스닥 최근월물 — 프로세스 수명 동안 재사용
+
+
+async def _nq_quote(client):
+    """나스닥 선물 칩 데이터. 마스터 조회·조회 실패는 이 칩만 죽인다(K200 칩은 유지)."""
+    global _nq_code
+    from backend.flow import futures as fx, kis
+    if _nq_code is None:
+        text = await asyncio.get_event_loop().run_in_executor(
+            None, kis.download_ff_master, settings.cache_dir)
+        _nq_code = fx.pick_nq_series(fx.parse_ff_master(text))
+    if not _nq_code:
+        return None
+    try:
+        q = await client.overseas_futures(_nq_code)
+    except Exception:
+        return None
+    if not q:
+        return None
+    return {"label": "나스닥선물", "code": _nq_code, "price": q["price"], "rate": q["rate"]}
 
 
 _DETAIL_TTL = 300.0
