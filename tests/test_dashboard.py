@@ -111,6 +111,7 @@ def test_dashboard_drag_swipe_enhancement():
         assert fn in edit, fn + " 누락(버튼 폴백/커밋 경로)"
 
 
+import json
 import shutil
 import subprocess
 
@@ -162,3 +163,46 @@ def test_dashboard_polls_futures_and_has_stale_badge_style():
     assert "/api/futures" in html
     assert "fxchip" in html          # 선물 칩 렌더 함수
     assert ".mbadge" in html         # 지연 배지 CSS
+
+
+def _extract_js_function(script, name):
+    """중괄호 깊이를 세어 함수 소스만 잘라낸다(정규식만으로는 중첩 {}에서 깨짐)."""
+    start = script.index("function " + name + "(")
+    brace = script.index("{", start)
+    depth, i = 0, brace
+    for i in range(brace, len(script)):
+        if script[i] == "{":
+            depth += 1
+        elif script[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    return script[start:i + 1]
+
+
+@_needs_node
+def test_dashboard_fxchip_null_rate_renders_dash_not_fake_zero(tmp_path):
+    """rate:null(나스닥 QQQ 프리오픈 롤오버 등)을 '0.00%(보합)'로 꾸미지 않는다 — 실행 검증.
+
+    문자열 존재 검사가 아니라 렌더된 실제 HTML 대시보드 소스에서 fxchip 함수 본문을 그대로
+    잘라내 node로 실행해 확인한다(test_live_page_js.py와 같은 관행). 진짜 0.00%(rate===0,
+    보합)는 그대로 표시돼야 한다 — 둘을 구분 못 하면 회귀다."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    fn = _extract_js_function(main, "fxchip")
+    harness = fn + """
+const out = {
+  nullRate: fxchip({label:'나스닥 QQQ', price:687.99, rate:null}),
+  zeroRate: fxchip({label:'테스트', price:100, rate:0}),
+};
+console.log(JSON.stringify(out));
+"""
+    js = tmp_path / "fxchip_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "fxchip 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert "–" in out["nullRate"] and "0.00%" not in out["nullRate"], out["nullRate"]
+    assert "0.00%" in out["zeroRate"], out["zeroRate"]     # 진짜 보합은 그대로

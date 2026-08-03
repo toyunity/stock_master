@@ -377,9 +377,12 @@ async function loadMarket(){
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
       const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
       const badge=o.stale?'<span class="mbadge">지연</span>':'';
+      // rate:null(예 나스닥 QQQ 프리오픈 롤오버)은 '모른다'를 '0.00%(보합)'로 꾸미지
+      // 않고 대시로 보여준다 — 진짜 0.00%(rate===0)는 그대로 표시(loadSemi의 rt()와 같은 관행).
+      const pct=o.rate==null?'–':(ar+Math.abs(o.rate).toFixed(2)+'%');
       return '<div class="mchip"><div class="ml">'+o.label+badge+'</div>'
         +'<div class="mv">'+o.price.toLocaleString()
-        +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
+        +'<span class="mr '+cls+'">'+pct+'</span></div></div>';
     }
     const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
                  fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
