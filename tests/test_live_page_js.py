@@ -57,8 +57,7 @@ for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh'
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
-                  'tm-headline'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -214,8 +213,6 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
     assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
-    # 매매 타이밍 헤드라인(히어로 상단 배지) — 상세 근거·코멘트 패널은 2026-08-04 제거
-    assert "매수" in texts["tm-headline"] and "확신도" in texts["tm-headline"]
     # 확정 밴드 · 태그(설계 2026-07-20)
     page = html_p.read_text(encoding="utf-8")
     assert "tag-fixed" in page and "tag-live" in page

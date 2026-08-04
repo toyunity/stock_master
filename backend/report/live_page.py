@@ -221,7 +221,6 @@ __BASE_CSS__
 .wl-actions{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
 .wl-status{font-size:12px;color:var(--text-3);font-weight:600}
 /* ══ 토스식 요약우선 IA — 히어로 판정 + 주제별 드릴다운 섹션 ══ */
-.hero-verdict{font-size:15px;font-weight:800;padding:11px 14px;margin-top:9px}
 #today-line{margin-top:9px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.5;
   padding-left:13px;border-left:3px solid var(--primary)}
 #today-line:empty{display:none}
@@ -257,7 +256,6 @@ __ICONS__
     <span id="mstate" class="badge b-off">상태 확인 중</span></div>
   <div class="price" id="price">–</div>
   <div class="chg flat" id="chg"></div>
-  <div class="sig sig-flat hero-verdict" id="tm-headline"></div>
   <div class="note" id="walert"></div>
   <div id="today-line"></div>
 </div>
@@ -1309,16 +1307,6 @@ function render(S){
     +S.tape.map(t=>'<tr><td>'+esc(t.t)+'</td><td>'+won(t.price)+'</td><td>'+num(t.vol)
     +'</td><td class="'+(t.side==='buy'?'up':(t.side==='sell'?'down':'flat'))+'">'
     +(t.side==='buy'?'매수':(t.side==='sell'?'매도':'-'))+'</td></tr>').join('');
-  // ── 매매 타이밍(이평 20/60/120 × 수급) 헤드라인 — sticky 히어로에 참고용 배지로만 표시.
-  //    상세 근거·코멘트 패널("매매 타이밍")은 2026-08-04 섹션 제거로 함께 없어짐(소유자 판단). ──
-  const TM=S.timing, tmh=document.getElementById('tm-headline');
-  if(TM&&TM.stance){
-    tmh.textContent=TM.headline+(TM.confidence!=null?' · 확신도 '+TM.confidence+'/3':'');
-    tmh.className='sig sig-'+(TM.tone||'flat');
-  }else{
-    tmh.textContent=(TM&&TM.headline)||'판정 보류 — 데이터 대기';
-    tmh.className='sig sig-flat';
-  }
   // ── 한눈 요약 스트립: 핵심 지표를 히어로 아래 한 줄로 압축(중복이라도 전부 노출) ──
   (function(){
     let g='';
