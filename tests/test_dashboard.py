@@ -111,6 +111,7 @@ def test_dashboard_drag_swipe_enhancement():
         assert fn in edit, fn + " 누락(버튼 폴백/커밋 경로)"
 
 
+import json
 import shutil
 import subprocess
 
@@ -153,3 +154,88 @@ def test_nav_loader_on_all_pages():
     from backend.report.dashboard import _NAV_LOADER
     # bfcache 무력화 리스너 금지(리뷰) — 설명 주석은 허용, 등록 구문만 금지
     assert "addEventListener('beforeunload'" not in _NAV_LOADER
+
+
+def test_dashboard_polls_futures_and_renders_fxchip():
+    """선물 칩은 지수 칩과 같은 스트립(#market)에 붙는다."""
+    html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자",
+                            "close": 71000, "change": -2.1}], "2026-06-22")
+    assert "/api/futures" in html
+    assert "fxchip" in html          # 선물 칩 렌더 함수
+    # 배지가 실제로 뜨는지(마감/지연 프로듀서가 있는지)는 아래
+    # test_dashboard_fxchip_renders_closed_and_stale_badges_not_on_live_chip이 node로 실행 검증한다
+    # — ".mbadge" 문자열이 CSS에 있다는 것만으로는 아무것도 만들지 않아도 통과해버린다(리뷰 확정).
+
+
+def _extract_js_function(script, name):
+    """중괄호 깊이를 세어 함수 소스만 잘라낸다(정규식만으로는 중첩 {}에서 깨짐)."""
+    start = script.index("function " + name + "(")
+    brace = script.index("{", start)
+    depth, i = 0, brace
+    for i in range(brace, len(script)):
+        if script[i] == "{":
+            depth += 1
+        elif script[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    return script[start:i + 1]
+
+
+@_needs_node
+def test_dashboard_fxchip_null_rate_renders_dash_not_fake_zero(tmp_path):
+    """rate:null(나스닥 QQQ 프리오픈 롤오버 등)을 '0.00%(보합)'로 꾸미지 않는다 — 실행 검증.
+
+    문자열 존재 검사가 아니라 렌더된 실제 HTML 대시보드 소스에서 fxchip 함수 본문을 그대로
+    잘라내 node로 실행해 확인한다(test_live_page_js.py와 같은 관행). 진짜 0.00%(rate===0,
+    보합)는 그대로 표시돼야 한다 — 둘을 구분 못 하면 회귀다."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    fn = _extract_js_function(main, "fxchip")
+    harness = fn + """
+const out = {
+  nullRate: fxchip({label:'나스닥 QQQ', price:687.99, rate:null}),
+  zeroRate: fxchip({label:'테스트', price:100, rate:0}),
+};
+console.log(JSON.stringify(out));
+"""
+    js = tmp_path / "fxchip_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "fxchip 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert "–" in out["nullRate"] and "0.00%" not in out["nullRate"], out["nullRate"]
+    assert "0.00%" in out["zeroRate"], out["zeroRate"]     # 진짜 보합은 그대로
+
+
+@_needs_node
+def test_dashboard_fxchip_renders_closed_and_stale_badges_not_on_live_chip(tmp_path):
+    """마감(o.closed)·지연(o.stale) 배지가 실제로 렌더되고, 라이브 칩(둘 다 없음)엔 안 붙는다 —
+    실행 검증(리뷰 확정: 문자열 존재검사(".mbadge" in html)만으론 아무도 stale/closed를
+    만들지 않아도 통과해버려 배지가 도달 불가능해도 테스트가 못 잡았다). 둘 다 있으면(예:
+    휴장 중 갱신도 실패) 마감이 지연을 덮는다 — 마감 자체가 이미 '라이브 아님'을 말하므로."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    fn = _extract_js_function(main, "fxchip")
+    harness = fn + """
+const out = {
+  closed: fxchip({label:'K200선물', price:340.5, rate:-0.3, closed:true}),
+  stale: fxchip({label:'나스닥 QQQ', price:487.32, rate:0.1, stale:true}),
+  both: fxchip({label:'K200선물', price:340.5, rate:-0.3, closed:true, stale:true}),
+  live: fxchip({label:'K200선물', price:340.5, rate:-0.3}),
+};
+console.log(JSON.stringify(out));
+"""
+    js = tmp_path / "fxchip_badge_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "fxchip 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert "마감" in out["closed"] and "지연" not in out["closed"]
+    assert "지연" in out["stale"] and "마감" not in out["stale"]
+    assert "마감" in out["both"] and "지연" not in out["both"]     # 마감이 지연을 덮는다
+    assert "마감" not in out["live"] and "지연" not in out["live"]

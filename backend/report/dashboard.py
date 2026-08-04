@@ -138,6 +138,10 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   letter-spacing:-.01em;margin-top:2px;display:flex;align-items:baseline;gap:6px}
 .mchip .mr{font-family:var(--font-num);font-size:11.5px;font-weight:700}
 .mchip .mr.up{color:var(--up)} .mchip .mr.down{color:var(--down)} .mchip .mr.flat{color:var(--flat)}
+.mchip .mbadge{margin-left:5px;font-family:var(--font-mono);font-size:9px;font-weight:800;
+  letter-spacing:.04em;padding:1px 5px;border-radius:var(--r-pill);
+  background:var(--warn-bg);color:var(--warn)}
+.mchip .mbadge.mbadge-closed{background:var(--surface-3);color:var(--text-2)}
 
 /* 섹션 라벨 — 시그니처: 틱마크 축(axis) 룰(가격 눈금자 모티프) */
 .sectlabel{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;
@@ -353,11 +357,16 @@ async function loadPrices(){
   }catch(e){}
 }
 loadPrices(); setInterval(loadPrices, 12000);
-// ── 시장 지수(코스피·코스닥) 상단 컨텍스트 — /api/market(장외에도 캐시 직전값). 30초. ──
+// ── 시장 지수(코스피·코스닥) + 선물 상단 컨텍스트 — 30초. 장외에도 캐시 직전값. ──
 async function loadMarket(){
   try{
-    const r=await fetch('/api/market'); if(!r.ok)return;
-    const d=await r.json(); const el=document.getElementById('market');
+    // 두 API 모두 실패에 관대해야 한다 — 한쪽이 reject/파싱실패해도 다른 쪽 칩은 뜬다.
+    const [rm,rf]=await Promise.all([fetch('/api/market').catch(function(){return null;}),
+                                     fetch('/api/futures').catch(function(){return null;})]);
+    const el=document.getElementById('market');
+    let d={}, f={};
+    try{ if(rm&&rm.ok) d=await rm.json(); }catch(e){}
+    try{ if(rf&&rf.ok) f=await rf.json(); }catch(e){}
     function ix(o,label){
       if(!o||o.price==null)return '';
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
@@ -366,7 +375,24 @@ async function loadMarket(){
         +'<div class="mv">'+o.price.toLocaleString()
         +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
     }
-    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥')].filter(Boolean);
+    function fxchip(o){
+      if(!o||o.price==null)return '';
+      const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
+      const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
+      // 마감(휴장·gap 세션의 직전 종가)과 지연(갱신 실패로 캐시 서빙)은 서로 다른 배지다.
+      // 마감이면 그 자체로 '라이브 아님'이 이미 드러나므로 지연을 겹쳐 달지 않는다.
+      const badge=o.closed?'<span class="mbadge mbadge-closed">마감</span>'
+                 :(o.stale?'<span class="mbadge">지연</span>':'');
+      // rate:null(예 나스닥 QQQ 프리오픈 롤오버)은 '모른다'를 '0.00%(보합)'로 꾸미지
+      // 않고 대시로 보여준다 — 진짜 0.00%(rate===0)는 그대로 표시(loadSemi의 rt()와 같은 관행).
+      const pct=o.rate==null?'–':(ar+Math.abs(o.rate).toFixed(2)+'%');
+      const cur=o.currency==='USD'?'$':'';   // 달러 표시 — 지수 레벨(코스피 3,2xx)과 헷갈리지 않게
+      return '<div class="mchip"><div class="ml">'+o.label+badge+'</div>'
+        +'<div class="mv">'+cur+o.price.toLocaleString()
+        +'<span class="mr '+cls+'">'+pct+'</span></div></div>';
+    }
+    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
+                 fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
     if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
   }catch(e){}
 }

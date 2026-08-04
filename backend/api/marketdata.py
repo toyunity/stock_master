@@ -47,6 +47,111 @@ async def get_indices(client=None):
     return _idx_cache["data"]
 
 
+_FUT_TTL_LIVE, _FUT_TTL_IDLE = 30.0, 300.0   # 세션 활성 30초 / 비활성 5분
+_fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}}
+_FUT_LABEL = {"night": "야간선물"}
+
+
+async def get_futures(client=None, now=None):
+    """{'k200': {label,session,code,name,price,rate,sign,volume,closed,stale?},
+        'nq': {label,price,rate,currency,stale?}} — 대시보드 선물 칩 두 개.
+
+    두 칩은 서로 다른 소스(국내선물 전광판 vs 해외주식 현재가)라 캐시·갱신이 완전히
+    독립이다 — 한쪽이 죽어도(raise든 '쓸 행 없음'이든) 다른 쪽은 항상 시도한다(칩 단위
+    독립 실패). 각 칩은 갱신 실패 시 자기 직전 성공값을 그대로 쓰고 'stale':True를
+    얹는다(지연 배지 — 체결정체가 아니라 갱신실패 기준). K200은 추가로 세션이
+    gap·closed면 'closed':True를 얹어(마감 배지) 직전 종가를 라이브 가격과 구분되게
+    보여준다. 키없음이면 None, 둘 다 콜드 상태로 실패하면 {}."""
+    from backend.flow import futures as fx
+    client = client or _client()
+    if client is None:
+        return None
+    ses = fx.session_of(now)
+    ttl = _FUT_TTL_LIVE if ses in ("day", "night") else _FUT_TTL_IDLE
+    data = {}
+    k200 = await _k200_leg(client, fx, ses, ttl)
+    if k200 is not None:
+        data["k200"] = k200
+    nq = await _nq_leg(client, ttl)
+    if nq is not None:
+        data["nq"] = nq
+    return data
+
+
+def _fut_closed(ses) -> bool:
+    return ses in ("gap", "closed")
+
+
+async def _k200_leg(client, fx, ses, ttl):
+    """K200선물 칩 — 자기 슬롯만 보고 자기 슬롯만 채운다(nq 실패와 무관)."""
+    slot = _fut_cache["k200"]
+    if slot["data"] is not None and time.time() - slot["ts"] < ttl:
+        out = dict(slot["data"])
+        out["closed"] = _fut_closed(ses)          # 세션은 캐시 히트여도 매번 새로 판정
+        return out
+    front = None
+    try:
+        rows = await client.futures_board(fx.BOARD_CLS)
+        front = fx.pick_front_month(rows)
+    except Exception:
+        front = None                               # 전광망 자체 실패도 '쓸 행 없음'과 동일 취급
+    if front is None:
+        if slot["data"] is None:
+            return None                            # 콜드 + 실패 → 보여줄 게 없다
+        out = dict(slot["data"])
+        # 실패 폴백은 TTL의 제약을 받지 않고(원인이 계속되는 한) 무한정 오래된 값을 서빙할
+        # 수 있다 — 세션 경계를 넘긴 채로(예: 15시 주간에 캐시된 값을 21시 야간에 그대로
+        # 서빙) label/session을 얼리면(freeze) "주간선물" 라벨이 야간에 붙는다. 캐시 히트
+        # (TTL 30초/300초 이내)와 달리 여기선 매번 재라벨링한다.
+        out["session"] = ses
+        out["label"] = _FUT_LABEL.get(ses, "K200선물")
+        out["closed"] = _fut_closed(ses)
+        out["stale"] = True                        # 갱신 실패 → 지연 배지
+        return out
+    k200 = dict(front)
+    k200["session"] = ses
+    k200["label"] = _FUT_LABEL.get(ses, "K200선물")
+    slot["ts"], slot["data"] = time.time(), k200    # 캐시엔 closed/stale을 굽지 않는다(매번 재판정)
+    out = dict(k200)
+    out["closed"] = _fut_closed(ses)
+    return out
+
+
+async def _nq_leg(client, ttl):
+    """나스닥 QQQ 칩 — K200 성공/실패와 무관하게 항상 시도한다."""
+    slot = _fut_cache["nq"]
+    if slot["data"] is not None and time.time() - slot["ts"] < ttl:
+        return dict(slot["data"])
+    nq = await _nq_quote(client)
+    if nq is None:
+        if slot["data"] is None:
+            return None
+        out = dict(slot["data"])
+        out["stale"] = True
+        return out
+    slot["ts"], slot["data"] = time.time(), nq
+    return dict(nq)
+
+
+async def _nq_quote(client):
+    """나스닥 100 대용 QQQ ETF 시세 칩.
+
+    선물 실시간 시세(CME)는 계좌에 월 유료 구독이 필요해(2026-08-03 G3 실측
+    EGW00550 'CME SUB거래소 신청 계좌가 아닙니다') 이미 프로덕션에서 쓰는 해외주식
+    현재가(usquote.price_us)로 QQQ를 대신 보여준다 — 종목마스터 조회 자체가 없다.
+    price_us는 거래소 순회 실패를 내부에서 흡수해 예외를 던지지 않지만, 이 함수도
+    통째로 감싸 어떤 이유로든(형식 변경 등) 이 칩만 죽고 K200 칩은 항상 유지된다."""
+    from backend.flow.usquote import price_us
+    try:
+        q = await price_us(client, "QQQ")
+        if not q:
+            return None
+        return {"label": "나스닥 QQQ", "price": q["price"], "rate": q["change"],
+                "currency": "USD"}
+    except Exception:
+        return None
+
+
 _DETAIL_TTL = 300.0
 _detail_cache: dict = {}   # code -> (ts, dict)
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)
