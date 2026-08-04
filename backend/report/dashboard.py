@@ -14,6 +14,8 @@ import json
 from html import escape
 from pathlib import Path
 
+from backend.config import settings
+from backend.flow.session import session_minutes
 from backend.report.render import _ACTION_KO, _bt_view, _issues_view
 
 _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-charts.js"
@@ -397,15 +399,22 @@ async function loadMarket(){
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
-// 시장상태 펄스(헤더 시그니처): KR 장중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색
+// 시장상태 펄스(헤더 시그니처): KR 세션 중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색.
+// 세션 경계는 서버 렌더 시 settings.market_div로 결정 — UN/NX면 아래에 NXT 프리·애프터
+// 분기가 삽입되고, J면 빈 문자열이 들어가 09:00~15:30만(기존 동작과 동일).
+function pulseState(day,hm,h){
+  if(day>=1&&day<=5){
+    if(hm>=540&&hm<930){ return ['live','장중']; }
+    __PULSE_EXT__
+  }
+  if(h>=22||h<6){ return ['night','야간·미국장']; }
+  return ['closed','장 마감'];
+}
 function marketPulse(){
   const p=document.getElementById('mkpulse'), t=document.getElementById('mktxt'); if(!p)return;
   const n=new Date(), day=n.getDay(), h=n.getHours(), hm=h*60+n.getMinutes();
-  let st,tx;
-  if(day>=1&&day<=5 && hm>=540 && hm<=930){ st='live'; tx='장중'; }
-  else if(h>=22 || h<6){ st='night'; tx='야간·미국장'; }
-  else { st='closed'; tx='장 마감'; }
-  p.className='pulse '+st; t.textContent=tx;
+  const r=pulseState(day,hm,h);
+  p.className='pulse '+r[0]; t.textContent=r[1];
 }
 marketPulse(); setInterval(marketPulse,60000);
 // ── 관심종목 밸류지표(PER·PBR·52주 위치) — /api/fundamentals(느리게 변해 5분). ──
@@ -664,6 +673,18 @@ def assemble_stock(signal, issues, candles, price, names=None) -> dict:
             "candles": candles or []}
 
 
+def _pulse_ext_js() -> str:
+    """marketPulse()의 NXT 프리/애프터 분기 — settings.market_div가 UN/NX일 때만 삽입.
+    session.py(단일 정의 소스)의 세션 창(08:00~20:00)에서 정규장(09:00~15:30)을 뺀
+    앞뒤 구간을 /live와 같은 어휘(장전(NXT)/장후(NXT))로 라벨링. J면 빈 문자열
+    → pulseState가 기존(09:00~15:30만) 동작 그대로."""
+    start, end = session_minutes(settings.market_div)
+    if (start, end) == (9 * 60, 15 * 60 + 30):   # J(정규장만) — NXT 확장 없음
+        return ""
+    return ("    if(hm>=%d&&hm<540){ return ['live','장전(NXT)']; }\n"
+            "    if(hm>=930&&hm<%d){ return ['live','장후(NXT)']; }" % (start, end))
+
+
 def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
     """assembled stocks + universe → 자기완결 HTML 문자열."""
     lib = _LIB_PATH.read_text(encoding="utf-8")
@@ -682,4 +703,5 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
             .replace("__REFRESH__", refresh)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
             .replace("__DATA__", data_json)
+            .replace("__PULSE_EXT__", _pulse_ext_js())
             .replace("__LIB__", lib))

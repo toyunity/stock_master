@@ -55,10 +55,11 @@ def _get_client() -> KisClient:
 
 
 def _session_window() -> tuple:
-    """(시작, 마감 캡) — NXT 포함(UN/NX)이면 프리 08:00 ~ 애프터 20:00까지."""
-    if settings.market_div in ("UN", "NX"):
-        return "08:00:00", "200000"
-    return "09:00:00", "153000"
+    """(시작, 마감 캡) — NXT 포함(UN/NX)이면 프리 08:00 ~ 애프터 20:00까지.
+    KIS 문자열 포맷(시작 'HH:MM:SS', 마감 'HHMMSS')은 session_minutes()(단일 정의 소스)에서 파생."""
+    from backend.flow.session import session_minutes
+    start, end = session_minutes(settings.market_div)
+    return "%02d:%02d:00" % divmod(start, 60), "%02d%02d00" % divmod(end, 60)
 
 
 def aggregate(bars: list, n: int) -> list:

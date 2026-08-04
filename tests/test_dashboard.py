@@ -239,3 +239,91 @@ console.log(JSON.stringify(out));
     assert "지연" in out["stale"] and "마감" not in out["stale"]
     assert "마감" in out["both"] and "지연" not in out["both"]     # 마감이 지연을 덮는다
     assert "마감" not in out["live"] and "지연" not in out["live"]
+
+
+@_needs_node
+def test_dashboard_pulse_state_matches_nxt_session_un(tmp_path, monkeypatch):
+    """헤더 펄스(marketPulse) — UN(기본, KRX+NXT 통합)에서 NXT 프리·애프터 시간에도
+    '장 마감'으로 오표시하지 않는다(2026-07-27 실사용자 리포트: 16:16 NXT 애프터마켓
+    거래 중에 장 마감 배지). pulseState(day,hm,h)를 node로 직접 실행해 경계를 표 검증한다
+    — /api/prices·build_dashboard를 열어두는 cli._kr_market_open()과 같은 세션 정의를
+    쓰므로(session.py), 초록(=live) ⟺ 실시간 데이터가 흐름이 성립해야 한다."""
+    from backend.config import settings
+    from backend.report.dashboard import render_dashboard
+    monkeypatch.setattr(settings, "market_div", "UN")
+    html = render_dashboard([], [], "2026-07-27")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    fn = _extract_js_function(main, "pulseState")
+    assert "장전(NXT)" in fn and "장후(NXT)" in fn   # UN이면 NXT 분기가 실제로 삽입됨
+    cases = [
+        (2, 7 * 60 + 59, 7), (2, 8 * 60, 8), (2, 9 * 60, 9),
+        (2, 15 * 60 + 29, 15), (2, 15 * 60 + 30, 15),
+        (2, 19 * 60 + 59, 19), (2, 20 * 60, 20),
+        (2, 23 * 60, 23), (2, 3 * 60, 3),
+        (0, 11 * 60, 11),   # 일요일 낮
+        (0, 23 * 60, 23),   # 일요일 밤 — night 조건(h>=22)엔 요일 가드가 없다(기존 동작 보존,
+                            # 이 자체가 선행 버그지만 이번 변경 범위 밖 — 의도적으로 안 건드림을 고정)
+    ]
+    harness = fn + """
+const out = [%s].map(function(c){ return pulseState(c[0],c[1],c[2]); });
+console.log(JSON.stringify(out));
+""" % ",".join("[%d,%d,%d]" % c for c in cases)
+    js = tmp_path / "pulse_state_un.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "pulseState 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    expected = [
+        ["closed", "장 마감"], ["live", "장전(NXT)"], ["live", "장중"],
+        ["live", "장중"], ["live", "장후(NXT)"],
+        ["live", "장후(NXT)"], ["closed", "장 마감"],
+        ["night", "야간·미국장"], ["night", "야간·미국장"],
+        ["closed", "장 마감"],   # 일요일 11:00 — day 조건에 안 걸리고 night 조건도 안 걸림
+        ["night", "야간·미국장"],   # 일요일 23:00 — night 조건이 요일 무관이라 여기선 뜬다
+    ]
+    assert out == expected, out
+
+
+@_needs_node
+def test_dashboard_pulse_state_j_matches_regular_session_only(tmp_path, monkeypatch):
+    """J(KRX만)면 NXT 프리·애프터 분기가 아예 삽입되지 않고, 09:00~15:30(정규장)만 열린다.
+    주의: 15:30 정각은 기존 JS(hm<=930, inclusive)에선 '장중'이었지만 이번 변경으로
+    Python _kr_market_open()(원래도 exclusive)과 맞추기 위해 hm<930(exclusive)로 바꿨다 —
+    J도 이 1분 경계는 바뀐다(그 밖의 모든 경계는 기존과 동일). 회귀가 아니라 두 화면(펄스·
+    폴링)이 같은 순간에 서로 다른 상태를 보여주던 기존 불일치를 없앤 것."""
+    from backend.config import settings
+    from backend.report.dashboard import render_dashboard
+    monkeypatch.setattr(settings, "market_div", "J")
+    html = render_dashboard([], [], "2026-07-27")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    fn = _extract_js_function(main, "pulseState")
+    assert "NXT" not in fn
+    assert "hm>=540&&hm<930" in fn   # 정규장 경계는 그대로
+    cases = [
+        (2, 7 * 60 + 59, 7), (2, 8 * 60, 8), (2, 9 * 60, 9),
+        (2, 15 * 60 + 29, 15), (2, 15 * 60 + 30, 15),
+        (2, 19 * 60 + 59, 19), (2, 20 * 60, 20),
+        (2, 23 * 60, 23), (2, 3 * 60, 3),
+        (0, 11 * 60, 11),   # 일요일 낮
+    ]
+    harness = fn + """
+const out = [%s].map(function(c){ return pulseState(c[0],c[1],c[2]); });
+console.log(JSON.stringify(out));
+""" % ",".join("[%d,%d,%d]" % c for c in cases)
+    js = tmp_path / "pulse_state_j.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "pulseState 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    expected = [
+        ["closed", "장 마감"], ["closed", "장 마감"], ["live", "장중"],
+        ["live", "장중"], ["closed", "장 마감"],
+        ["closed", "장 마감"], ["closed", "장 마감"],
+        ["night", "야간·미국장"], ["night", "야간·미국장"],
+        ["closed", "장 마감"],
+    ]
+    assert out == expected, out

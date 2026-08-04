@@ -56,15 +56,40 @@ def test_generate_report_collection_failure_is_graceful(tmp_path, monkeypatch):
     assert "005930" in out.read_text(encoding="utf-8")
 
 
-def test_kr_market_open_boundaries():
-    # 대시보드는 장중에만 KIS 실시간 현재가로 덮어씀 — 경계 판정(평일 09:00~15:30 KST).
+def test_kr_market_open_boundaries_un(monkeypatch):
+    # UN(KRX+NXT 통합, 기본값) — 프리 08:00 ~ 애프터 20:00까지 세션이 열려 있다(2026-07-27
+    # 버그리포트: 16:16에 NXT 애프터마켓이 흐르는데 장 마감으로 오표시).
     from zoneinfo import ZoneInfo
+    from backend.config import settings
+    monkeypatch.setattr(settings, "market_div", "UN")
     KST = ZoneInfo("Asia/Seoul")
 
     def kst(h, m, day=16):  # 2026-07-16 목요일
         return dt.datetime(2026, 7, day, h, m, tzinfo=KST)
+    assert cli._kr_market_open(kst(7, 59)) is False   # 프리 전
+    assert cli._kr_market_open(kst(8, 0)) is True      # 프리 시작
+    assert cli._kr_market_open(kst(9, 0)) is True       # 정규장
+    assert cli._kr_market_open(kst(15, 29)) is True
+    assert cli._kr_market_open(kst(15, 30)) is True     # 정규장→애프터 경계, UN은 계속 열림
+    assert cli._kr_market_open(kst(19, 59)) is True     # 애프터 마감 직전
+    assert cli._kr_market_open(kst(20, 0)) is False     # 애프터 마감
+    assert cli._kr_market_open(kst(11, 0, day=18)) is False   # 토요일(주말은 여전히 마감)
+
+
+def test_kr_market_open_boundaries_j(monkeypatch):
+    # J(KRX만) — 09:00~15:30만 열림(기존 동작 그대로, NXT 확장 없음).
+    from zoneinfo import ZoneInfo
+    from backend.config import settings
+    monkeypatch.setattr(settings, "market_div", "J")
+    KST = ZoneInfo("Asia/Seoul")
+
+    def kst(h, m, day=16):  # 2026-07-16 목요일
+        return dt.datetime(2026, 7, day, h, m, tzinfo=KST)
+    assert cli._kr_market_open(kst(7, 59)) is False
+    assert cli._kr_market_open(kst(8, 0)) is False      # J엔 프리마켓 없음
     assert cli._kr_market_open(kst(9, 0)) is True
     assert cli._kr_market_open(kst(15, 29)) is True
-    assert cli._kr_market_open(kst(8, 59)) is False
-    assert cli._kr_market_open(kst(15, 30)) is False
+    assert cli._kr_market_open(kst(15, 30)) is False    # 정규장 마감
+    assert cli._kr_market_open(kst(19, 59)) is False    # J엔 애프터 없음
+    assert cli._kr_market_open(kst(20, 0)) is False
     assert cli._kr_market_open(kst(11, 0, day=18)) is False   # 토요일

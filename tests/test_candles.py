@@ -1,8 +1,21 @@
 """봉 차트 데이터(분봉 파싱·집계·데모 합성·라우트) 테스트."""
 import asyncio
 
-from backend.flow.candles import _attach_ma, aggregate, get_candles
+from backend.flow.candles import _attach_ma, _session_window, aggregate, get_candles
 from backend.flow.kis import parse_minute_candles
+
+
+def test_session_window_formats(monkeypatch):
+    """_session_window()가 session.py(단일 정의 소스)에서 파생한 KIS 문자열 포맷을 유지하는지
+    고정(pin) — 시작은 'HH:MM:SS', 마감은 'HHMMSS'(KIS 기준시각 페이지네이션이 요구, 실측).
+    2026-08 NXT 애프터마켓 대응 리팩터가 이 포맷을 깨면 /live 당일 분봉 조회가 조용히 실패한다."""
+    from backend.config import settings
+    monkeypatch.setattr(settings, "market_div", "UN")
+    assert _session_window() == ("08:00:00", "200000")
+    monkeypatch.setattr(settings, "market_div", "NX")
+    assert _session_window() == ("08:00:00", "200000")
+    monkeypatch.setattr(settings, "market_div", "J")
+    assert _session_window() == ("09:00:00", "153000")
 
 
 def test_parse_minute_candles_real_fields_sorted_ascending():
