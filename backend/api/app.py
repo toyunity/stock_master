@@ -282,7 +282,9 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/futures")
     async def futures_api():
-        """지수 선물(코스피200 주간·야간) — 대시보드 칩. 키없음/실패면 {}."""
+        """지수 선물 칩 2종 — K200(주간↔야간 세션 전환) + 나스닥100 대용 QQQ ETF.
+        칩별 독립 캐시·독립 실패(한쪽이 죽어도 다른 쪽은 그대로 응답). 키없음이면 {},
+        일부만 실패하면 그 칩만 빠진 dict."""
         from backend.api import marketdata
         return JSONResponse(await marketdata.get_futures() or {})
 

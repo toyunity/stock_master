@@ -35,10 +35,12 @@ def test_session_weekend():
     assert fx.session_of(_at(2026, 8, 2, 3, 0)) == "closed"
 
 
+# cls_code=""(정규/대형) 응답 — 2026-07-31 장중 실측 shape. 코드/종목명 접두는 미니("101W09"/
+# "미니F 202609")와 다르다(2e0216a에서 cls_code를 "MKI"→""로 확정한 이유 그대로 여기도 반영).
 _BOARD_JS = {"rt_cd": "0", "output": [
-    {"futs_shrn_iscd": "101W09", "hts_kor_isnm": "미니F 202609", "futs_prpr": "885.25",
+    {"futs_shrn_iscd": "A01609", "hts_kor_isnm": "F 202609", "futs_prpr": "885.25",
      "futs_prdy_ctrt": "-1.49", "prdy_vrss_sign": "5", "acml_vol": "141272"},
-    {"futs_shrn_iscd": "101W12", "hts_kor_isnm": "미니F 202612", "futs_prpr": "889.00",
+    {"futs_shrn_iscd": "A01612", "hts_kor_isnm": "F 202612", "futs_prpr": "889.00",
      "futs_prdy_ctrt": "-1.40", "prdy_vrss_sign": "5", "acml_vol": "312"},
 ]}
 
@@ -46,7 +48,7 @@ _BOARD_JS = {"rt_cd": "0", "output": [
 def test_parse_board_maps_documented_fields():
     rows = fx.parse_board(_BOARD_JS)
     assert len(rows) == 2
-    assert rows[0] == {"code": "101W09", "name": "미니F 202609", "price": 885.25,
+    assert rows[0] == {"code": "A01609", "name": "F 202609", "price": 885.25,
                        "rate": -1.49, "sign": "down", "volume": 141272}
 
 
@@ -57,5 +59,5 @@ def test_parse_board_returns_empty_on_failure_response():
 
 def test_pick_front_month_is_the_most_traded_row():
     """월물은 롤오버되므로 코드가 아니라 거래량으로 고른다."""
-    assert fx.pick_front_month(fx.parse_board(_BOARD_JS))["code"] == "101W09"
+    assert fx.pick_front_month(fx.parse_board(_BOARD_JS))["code"] == "A01609"
     assert fx.pick_front_month([]) is None
