@@ -170,7 +170,6 @@ class DemoSource:
                               note="데모 데이터(시뮬레이션) — 실데이터가 아닙니다. KIS 키 입력 시 라이브 전환.")
         price, acml_vol, acml_value, n, last_est = float(self.base), 0, 0, 0, 0.0
         pgm_qty, pgm_val = 0, 0
-        last_timing = -100.0   # 첫 틱에 바로 계산되게
         loop = asyncio.get_event_loop()
         start = loop.time()
         while not stop.is_set():
@@ -210,20 +209,6 @@ class DemoSource:
                 rows.append({"asof": kst.now().strftime("%H:%M"),
                              "frgn": frgn, "orgn": orgn, "sum": frgn + orgn})
                 self.state.set_estimate(rows)
-            if elapsed - last_timing > 20:  # 매매 타이밍(데모도 동작하게 ~20초 주기)
-                last_timing = elapsed
-                try:
-                    from backend.analysis import timing as _timing
-                    from backend.flow import candles as _candles
-                    cd = await _candles.get_candles(self.state.code, "1d")
-                    snap = self.state.snapshot()
-                    tv = _timing.compute_timing(
-                        cd.get("candles") or [], snap["daily"],
-                        snap["estimate"]["rows"], snap["program"]["net_value"],
-                        snap["market"]["price"])
-                    self.state.set_timing(dict(tv, asof=kst.now().strftime("%H:%M")))
-                except Exception:
-                    pass
             try:
                 await asyncio.wait_for(stop.wait(), timeout=rng.uniform(0.2, 0.8))
             except asyncio.TimeoutError:

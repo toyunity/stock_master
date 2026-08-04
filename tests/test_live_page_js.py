@@ -145,11 +145,6 @@ def _full_snapshot():
         "glob": {"seln": 831835, "shnu": 739909, "ntby": -91926,
                  "seln_rlim": 10.46, "shnu_rlim": 9.31},
         "asof": "16:31:13"})
-    s.set_timing({"stance": "buy", "tone": "good", "headline": "🟢 매수 우호",
-                  "comment": "상승추세+수급 유입 — 매수 우호, 20일선 눌림목 분할 접근",
-                  "reasons": ["정배열(현재가>20일>60일>120일)", "외인·기관 3일 연속 순매수"],
-                  "entry_hint": "20일선 2,180,000원 눌림목 지지 확인 시 분할",
-                  "overheated": False, "confidence": 2, "asof": "13:20"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
