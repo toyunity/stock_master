@@ -40,39 +40,10 @@ __BASE_CSS__
   font-variant-numeric:tabular-nums}
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
-.fin{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
 .ob{margin-top:8px}
 .obbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2)}
 .obbid{background:var(--up)}.obask{background:var(--down)}
 .obtxt{font-size:12px;color:var(--text-2);margin-top:3px;font-weight:600}
-ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);font-weight:500}
-.nd{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--surface)}
-.nd .ndh{display:flex;align-items:baseline;gap:2px;flex-wrap:wrap}
-.nd .badge-nd{font-weight:800;font-size:14px}
-.nd.up .badge-nd{color:var(--up)}.nd.down .badge-nd{color:var(--down)}.nd.neutral .badge-nd{color:var(--text-2)}
-.nd .ndf{font-size:11.5px;color:var(--text-2)}
-.nd ul{margin:7px 0 0;padding-left:17px;font-size:12.5px;color:var(--text)}
-.nd .cau{margin-top:6px;font-size:11.5px;color:var(--text-2)}
-.sit{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--surface)}
-.sit .sith{font-weight:800;font-size:14px;display:flex;align-items:center;flex-wrap:wrap}
-.sit .phase{font-size:11px;font-weight:700;color:var(--text-2);border:1px solid var(--border);border-radius:999px;padding:1px 9px;margin-left:8px}
-.sit ul{margin:8px 0 0;padding-left:16px;font-size:13px;color:var(--text);display:flex;flex-direction:column;gap:4px}
-.sit .cau{margin-top:7px;font-size:11px;color:var(--text-2)}
-/* 🎓 초보 가이드 카드 */
-.guide{margin-top:11px;border:1.5px solid var(--primary);border-radius:14px;padding:13px 14px;background:var(--info-bg)}
-.guide .gh{font-weight:900;font-size:15px;color:var(--primary-ink);margin-bottom:4px;letter-spacing:-.02em}
-.guide .gsec{font-size:13px;color:var(--text);margin-top:9px;line-height:1.55}
-.guide .gl{display:block;font-size:10.5px;font-weight:800;color:var(--primary-ink);letter-spacing:.05em;margin-bottom:2px}
-.guide ul{margin:3px 0 0;padding-left:16px}.guide li{margin:2px 0}
-.guide .glesson{border-top:1px dashed var(--primary);padding-top:9px;margin-top:11px}
-.guide .glb{font-size:12px;color:var(--text-2);margin-top:2px;line-height:1.55}
-/* 히어로 코치 그룹 — 계기 리드아웃과 튜터 안내를 시각적으로 분리(내용 있을 때만 구분선) */
-.hero .coach{display:flex;flex-direction:column;gap:9px}
-.hero .coach .sit,.hero .coach .nd,.hero .coach .guide{margin-top:0}
-.hero .coach.on{margin-top:13px;padding-top:14px;border-top:1px dashed var(--border);position:relative}
-.hero .coach.on::before{content:"초보 도우미";position:absolute;top:-7px;left:0;
-  font-size:10px;font-weight:800;letter-spacing:.03em;color:var(--text-3);
-  background:var(--bg);padding-right:9px}
 /* 자세히 보기(전문 패널 접기) */
 .advtoggle{width:100%;margin:16px 0 4px;min-height:48px;font-size:14px;font-weight:800;
   border:1px dashed var(--border);background:var(--surface-2);color:var(--text-2);border-radius:var(--r);
@@ -124,9 +95,6 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .pro-verdict.info{background:var(--info-bg);color:var(--primary-ink)}
 .pro-basis{font-size:11px;color:var(--text-3);font-weight:700}
 .advw{display:none}.advw.on{display:block}
-.finex li .qi{cursor:pointer;color:var(--primary);font-weight:800;margin-left:6px;user-select:none}
-.finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
-.finex .cexp.on{display:block}
 #pmeta{margin-top:8px}
 #pmeta .fresh{display:inline;margin:0}
 #chart{height:180px}
@@ -538,22 +506,6 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" open>
-  <summary><svg class="hic secic"><use href="#i-compass"/></svg> 왜 움직였나 · 배우기 <span class="chev">▾</span></summary>
-  <div class="sec-body">
-    <div class="sit" id="sit" style="display:none"></div>
-    <div class="nd" id="nd" style="display:none"></div>
-    <div class="guide" id="guide" style="display:none"></div>
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-compass"/></svg> 매매 타이밍 <span class="fresh" id="tm-fresh">· 참고용(추정)</span></h2>
-      <div id="tm-comment" style="font-size:14px;margin:2px 0 6px"></div>
-      <table id="tm-reasons"></table>
-      <div class="meta" id="tm-note">20·60·120일선 배열(추세)과 수급을 결합한 <b>참고용 추정</b> —
-      매매 조언이 아니며 투자 판단·책임은 본인에게 있습니다. 확정 수급은 T+1 반영.</div>
-    </div>
-    <div class="fin" id="fin" style="display:none"></div>
-  </div>
-</details>
 <div class="disc">__DISCLAIMER__ 실시간 수급의 외국인/기관 수치는 장중 <b>추정치(잠정)</b>이며
 확정치는 다음 영업일에 제공됩니다. 데이터 출처: 한국투자증권 오픈API(국내·해외 시세, 환율,
 신용잔고, 공매도)·금융투자협회(대차잔고)·네이버(폴백). 모든 표시 시각은 KST(Asia/Seoul) 기준.</div>
@@ -564,76 +516,8 @@ const CODE='__CODE__';
 let WATCH=__WATCH__; // 감시선 [{price,label}] — 서버 저장(/api/watch)에서 주입, 편집 시 가변
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
 const won=n=>n==null?'–':num(n)+'원';
-// ── 기업 체력(재무) + 밸류 — /api/financials/{code} 1회 로드(느리게 변해 폴링 불필요). ──
-async function loadFin(){
-  try{
-    const r=await fetch('/api/financials/'+CODE); if(!r.ok)return;
-    const d=await r.json(); const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
-    // 숫자 요약 + 지표마다 쉬운말(항상 병기)
-    const bits=[];
-    if(v.per!=null)bits.push('PER <span class="n">'+v.per.toFixed(1)+'</span>');
-    if(v.pbr!=null)bits.push('PBR <span class="n">'+v.pbr.toFixed(1)+'</span>');
-    if(v.w52_pos!=null)bits.push('52주 <span class="n">'+Math.round(v.w52_pos)+'%</span>');
-    if(f.roe!=null)bits.push('ROE <span class="n">'+f.roe.toFixed(0)+'%</span>');
-    if(f.debt!=null)bits.push('부채 <span class="n">'+f.debt.toFixed(0)+'%</span>');
-    if(bits.length){
-      const ex=d.explains||{}, co=d.concepts||{};
-      let h='<svg class="hic" style="width:13px;height:13px;color:var(--text-3)"><use href="#i-bars"/></svg> '+bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
-      // 지표마다 쉬운말(항상) + ⓘ 탭하면 개념 설명 펼침
-      const rows=['per','w52','roe','debt','pbr'].filter(k=>ex[k]).map(function(k){
-        const c=co[k]; let li='<li>'+esc(ex[k]);
-        if(c) li+='<span class="qi" data-k="'+k+'">ⓘ</span>'
-          +'<div class="cexp" id="cexp-'+k+'"><b>'+esc(c.title)+'</b> — '+esc(c.body)+'</div>';
-        return li+'</li>';
-      });
-      if(rows.length) h+='<ul class="finex">'+rows.join('')+'</ul>';
-      const el=document.getElementById('fin'); el.innerHTML=h; el.style.display='block';
-      el.querySelectorAll('.qi').forEach(function(q){ q.onclick=function(){
-        const e=document.getElementById('cexp-'+q.dataset.k); if(e)e.classList.toggle('on'); }; });
-    }
-    // 🧭 오늘 현황 — 서술 + 장 단계(phase는 항상, 프리장 없는 KR은 '장 종료')
-    const sit=d.situation||{}, sp=document.getElementById('sit');
-    if(d.phase){
-      let sh='<div class="sith">🧭 오늘 현황<span class="phase">'+esc(d.phase)+'</span></div>';
-      const ss=sit.sentences||[];
-      if(ss.length) sh+='<ul>'+ss.map(x=>'<li>'+esc(x)+'</li>').join('')
-        +'</ul><div class="cau">⚠ '+esc(sit.caution||'')+'</div>';
-      sp.innerHTML=sh; sp.style.display='block';
-    }
-    // 🔮 내일 예상 카드 — 배지 + 근거 + 주의(fin 숫자 없어도 독립 표시)
-    const o=d.outlook, nd=document.getElementById('nd');
-    if(o&&o.direction){
-      const ko={up:'🔴 강세 우세',down:'🔵 약세 우세',neutral:'⚪ 중립'}[o.direction]||'';
-      nd.className='nd '+o.direction;
-      nd.innerHTML='<div class="ndh"><span class="badge-nd">🔮 내일 예상: '+ko+'</span>'
-        +'<span class="ndf"> · '+esc(o.framing)+'</span></div>'
-        +'<ul>'+(o.reasons||[]).map(x=>'<li>'+esc(x.text)+'</li>').join('')+'</ul>'
-        +'<div class="cau">⚠ '+esc(o.caution)+'</div>';
-      nd.style.display='block';
-    }
-    // 🎓 초보 가이드 카드 — 왜 움직였나 · 지금 볼 포인트 · 다음엔 · 오늘의 배움
-    const gd=d.guide, gc=document.getElementById('guide');
-    if(gd&&gd.why_moved){
-      let gh='<div class="gh">🎓 초보 가이드</div>'
-        +'<div class="gsec"><span class="gl">오늘 왜?</span>'+esc(gd.why_moved)+'</div>';
-      if(gd.points&&gd.points.length)
-        gh+='<div class="gsec"><span class="gl">지금 볼 포인트</span><ul>'
-          +gd.points.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
-      gh+='<div class="gsec"><span class="gl">다음엔?</span>'+esc(gd.next_action)+'</div>';
-      const ls=d.lesson;
-      if(ls&&ls.title) gh+='<div class="gsec glesson"><span class="gl">📚 오늘의 배움</span><b>'
-        +esc(ls.title)+'</b><div class="glb">'+esc(ls.body)+'</div></div>';
-      gc.innerHTML=gh; gc.style.display='block';
-    }
-    // 코치 그룹 구분선은 안내 카드가 실제로 뜰 때만(빈 구분선 방지)
-    var _coach=document.querySelector('.hero .coach');
-    if(_coach)_coach.classList.toggle('on',(sp&&sp.style.display==='block')
-      ||(nd&&nd.style.display==='block')||(gc&&gc.style.display==='block'));
-  }catch(e){}
-}
 function toggleAdv(){var a=document.getElementById('advanced'),b=document.getElementById('advtoggle');
   if(!a)return; var on=a.classList.toggle('on'); if(b)b.classList.toggle('on',on);}
-loadFin();
 // ── 호가(매도벽·매수받침) — /api/asking REST 스냅샷 5초 폴링(실시간 WS 세션 회피). ──
 async function pollOB(){
   try{
@@ -1425,21 +1309,15 @@ function render(S){
     +S.tape.map(t=>'<tr><td>'+esc(t.t)+'</td><td>'+won(t.price)+'</td><td>'+num(t.vol)
     +'</td><td class="'+(t.side==='buy'?'up':(t.side==='sell'?'down':'flat'))+'">'
     +(t.side==='buy'?'매수':(t.side==='sell'?'매도':'-'))+'</td></tr>').join('');
-  // ── 매매 타이밍(이평 20/60/120 × 수급) — 참고용 추정. 헤드라인은 sticky 히어로에 표시 ──
+  // ── 매매 타이밍(이평 20/60/120 × 수급) 헤드라인 — sticky 히어로에 참고용 배지로만 표시.
+  //    상세 근거·코멘트 패널("매매 타이밍")은 2026-08-04 섹션 제거로 함께 없어짐(소유자 판단). ──
   const TM=S.timing, tmh=document.getElementById('tm-headline');
   if(TM&&TM.stance){
     tmh.textContent=TM.headline+(TM.confidence!=null?' · 확신도 '+TM.confidence+'/3':'');
     tmh.className='sig sig-'+(TM.tone||'flat');
-    document.getElementById('tm-comment').textContent=TM.comment||'';
-    document.getElementById('tm-reasons').innerHTML=(TM.reasons||[]).map(r=>'<tr><td>· '+esc(r)+'</td></tr>').join('')
-      +(TM.entry_hint?'<tr><td>🎯 진입: '+esc(TM.entry_hint)+'</td></tr>':'');
-    document.getElementById('tm-fresh').textContent='· 참고용(추정) · '+esc(TM.asof||'')+' 기준';
   }else{
     tmh.textContent=(TM&&TM.headline)||'판정 보류 — 데이터 대기';
     tmh.className='sig sig-flat';
-    document.getElementById('tm-comment').textContent=(TM&&TM.comment)||'일봉(120)·수급 확보 후 표시';
-    document.getElementById('tm-reasons').innerHTML='';
-    document.getElementById('tm-fresh').textContent='· 참고용(추정)';
   }
   // ── 한눈 요약 스트립: 핵심 지표를 히어로 아래 한 줄로 압축(중복이라도 전부 노출) ──
   (function(){

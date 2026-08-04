@@ -7,7 +7,7 @@ import subprocess
 
 import httpx
 
-_FETCH_PATHS = ("/api/candles/%s?tf=5m", "/api/asking/%s", "/api/financials/%s")
+_FETCH_PATHS = ("/api/candles/%s?tf=5m", "/api/asking/%s")
 
 
 def _js_safe(s: str) -> str:

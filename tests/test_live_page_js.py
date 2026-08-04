@@ -26,9 +26,16 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const snap = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
+// 실제 페이지에 존재하는 id만 인정한다 — 제거된 패널의 id를 getElementById가 계속
+// 유령 엘리먼트로 만들어주면(구 하니스), 그 id에 접근하는 죽은 JS 참조를 이 테스트가
+// 못 잡는다(2026-08-04: '왜 움직였나·배우기' 섹션 제거 하니스 강화). 실 브라우저처럼
+// 없는 id는 null을 돌려줘, 그 뒤 .textContent= 등에서 TypeError로 렌더가 죽어야 잡힌다.
+const validIds = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
 const els = {};
 global.document = {
-  getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
+  getElementById: id => validIds.has(id)
+    ? (els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}))
+    : null,
   querySelectorAll: () => [],
 };
 global.__lines = [];  // createPriceLine 기록 — 감시선 렌더 검증(P1-8)
@@ -44,14 +51,14 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl','tm-reasons'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
                   'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
-                  'tm-headline','tm-comment','tm-fresh'])
+                  'tm-headline'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -207,11 +214,8 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
     assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
-    # 매매 타이밍 패널: 판정 헤드라인·코멘트·근거가 채워짐(참고용 라벨)
+    # 매매 타이밍 헤드라인(히어로 상단 배지) — 상세 근거·코멘트 패널은 2026-08-04 제거
     assert "매수" in texts["tm-headline"] and "확신도" in texts["tm-headline"]
-    assert "수급 유입" in texts["tm-comment"]
-    assert int(filled["tm-reasons"]) > 0            # 근거 목록 렌더
-    assert "참고용" in texts["tm-fresh"]
     # 확정 밴드 · 태그(설계 2026-07-20)
     page = html_p.read_text(encoding="utf-8")
     assert "tag-fixed" in page and "tag-live" in page
