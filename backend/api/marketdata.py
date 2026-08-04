@@ -7,6 +7,7 @@ from __future__ import annotations
 Python 3.9 호환."""
 
 import asyncio
+import datetime as dt
 import time
 
 from backend.config import settings
@@ -52,16 +53,21 @@ _fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}
 _FUT_LABEL = {"night": "야간선물"}
 
 
-async def get_futures(client=None, now=None):
+async def get_futures(client=None, now=None, fetch=None):
     """{'k200': {label,session,code,name,price,rate,sign,volume,closed,stale?},
-        'nq': {label,price,rate,currency,stale?}} — 대시보드 선물 칩 두 개.
+        'nq': {label,price,rate,stale?}} — 대시보드 선물 칩 두 개.
 
-    두 칩은 서로 다른 소스(국내선물 전광판 vs 해외주식 현재가)라 캐시·갱신이 완전히
-    독립이다 — 한쪽이 죽어도(raise든 '쓸 행 없음'이든) 다른 쪽은 항상 시도한다(칩 단위
-    독립 실패). 각 칩은 갱신 실패 시 자기 직전 성공값을 그대로 쓰고 'stale':True를
-    얹는다(지연 배지 — 체결정체가 아니라 갱신실패 기준). K200은 추가로 세션이
-    gap·closed면 'closed':True를 얹어(마감 배지) 직전 종가를 라이브 가격과 구분되게
-    보여준다. 키없음이면 None, 둘 다 콜드 상태로 실패하면 {}."""
+    두 칩은 서로 다른 소스(국내선물 전광판 vs FinanceDataReader NQ=F)라 캐시·갱신이
+    완전히 독립이다 — 한쪽이 죽어도(raise든 '쓸 행 없음'이든) 다른 쪽은 항상 시도한다
+    (칩 단위 독립 실패). 각 칩은 갱신 실패 시 자기 직전 성공값을 그대로 쓰고
+    'stale':True를 얹는다(지연 배지 — 체결정체가 아니라 갱신실패 기준). K200은 추가로
+    세션이 gap·closed면 'closed':True를 얹어(마감 배지) 직전 종가를 라이브 가격과
+    구분되게 보여준다. 키없음이면 None, 둘 다 콜드 상태로 실패하면 {}.
+
+    nq 칩은 KIS가 아니라 FinanceDataReader(NQ=F, Yahoo 배경)를 쓰므로 한국 세션에
+    묶인 ttl(day/night=30초, 그 외=300초)을 따르지 않는다 — 나스닥 선물은 거의 24시간
+    움직이므로 항상 짧은 TTL(_FUT_TTL_LIVE=30초)로 갱신한다. fetch는 테스트가 실제
+    FinanceDataReader 호출 없이 주입하는 훅(기본값 None → 실제 FDR 호출)."""
     from backend.flow import futures as fx
     client = client or _client()
     if client is None:
@@ -72,7 +78,7 @@ async def get_futures(client=None, now=None):
     k200 = await _k200_leg(client, fx, ses, ttl)
     if k200 is not None:
         data["k200"] = k200
-    nq = await _nq_leg(client, ttl)
+    nq = await _nq_leg(client, _FUT_TTL_LIVE, fetch)
     if nq is not None:
         data["nq"] = nq
     return data
@@ -117,12 +123,12 @@ async def _k200_leg(client, fx, ses, ttl):
     return out
 
 
-async def _nq_leg(client, ttl):
-    """나스닥 QQQ 칩 — K200 성공/실패와 무관하게 항상 시도한다."""
+async def _nq_leg(client, ttl, fetch=None):
+    """나스닥 선물(NQ=F) 칩 — K200 성공/실패와 무관하게 항상 시도한다."""
     slot = _fut_cache["nq"]
     if slot["data"] is not None and time.time() - slot["ts"] < ttl:
         return dict(slot["data"])
-    nq = await _nq_quote(client)
+    nq = await _nq_quote(client, fetch)
     if nq is None:
         if slot["data"] is None:
             return None
@@ -133,21 +139,48 @@ async def _nq_leg(client, ttl):
     return dict(nq)
 
 
-async def _nq_quote(client):
-    """나스닥 100 대용 QQQ ETF 시세 칩.
+_NQ_SYMBOL = "NQ=F"
+_NQ_LOOKBACK_DAYS = 7   # 주말 + NaN 결측 행을 넉넉히 건너뛸 만큼(약 1주일)
 
-    선물 실시간 시세(CME)는 계좌에 월 유료 구독이 필요해(2026-08-03 G3 실측
-    EGW00550 'CME SUB거래소 신청 계좌가 아닙니다') 이미 프로덕션에서 쓰는 해외주식
-    현재가(usquote.price_us)로 QQQ를 대신 보여준다 — 종목마스터 조회 자체가 없다.
-    price_us는 거래소 순회 실패를 내부에서 흡수해 예외를 던지지 않지만, 이 함수도
-    통째로 감싸 어떤 이유로든(형식 변경 등) 이 칩만 죽고 K200 칩은 항상 유지된다."""
-    from backend.flow.usquote import price_us
+
+def _fetch_nq(start: str):
+    """FinanceDataReader NQ=F(나스닥100 선물, Yahoo 배경·비공식) — 동기·블로킹 호출.
+    _nq_quote가 run_in_executor로 스레드풀에 위임해 이벤트루프를 막지 않는다."""
+    import FinanceDataReader as fdr
+    return fdr.DataReader(_NQ_SYMBOL, start)
+
+
+async def _nq_quote(client, fetch=None):
+    """나스닥 100 선물(NQ=F) 시세 칩 — FinanceDataReader(비공식 Yahoo 경유) 경유.
+
+    KIS 해외선물(CME)은 계좌에 월 유료 구독이 필요해(2026-08-03 G3 실측 EGW00550
+    'CME SUB거래소 신청 계좌가 아닙니다') 여전히 막혀 있다. 직전엔 프로덕션 검증필
+    QQQ ETF(usquote.price_us)로 대신했으나 QQQ는 현물이라 미국 정규장 시간에만
+    움직여, 이 칩의 원래 목적(야간 오버나이트 방향성)을 못 채웠다 — 2026-08-04 QQQ를
+    걷어내고 FinanceDataReader의 NQ=F(선물, 거의 24시간 움직임)로 교체했다.
+
+    FDR은 동기 라이브러리라 그대로 부르면 이벤트루프를 막는다 — run_in_executor로
+    스레드풀에 위임한다(과거 kis.download_ff_master 호출과 같은 관용구). 응답엔
+    거래일인데도 통째로 NaN인 행이 실제로 섞여 나온다(실측) — futures.pick_latest_pair가
+    유효값만 걸러 현재가/직전값을 고른다. client는 이 칩에서 쓰지 않지만(FDR은 KIS
+    무관) K200과 같은 시그니처를 유지해 _nq_leg 호출부를 단순하게 둔다.
+
+    개인용 한정: FDR의 NQ=F는 비공식 Yahoo Finance 경유라 재배포 허가가 없다 — 이
+    앱을 공개로 열면 이 칩은 반드시 제거해야 한다(제한 자체는 실시간 시세 재배포
+    금지라는 기존 원칙과 같다).
+
+    어떤 이유로든(임포트 실패·네트워크·빈 프레임·전부 NaN) 실패하면 함수 전체가
+    감싸져 있어 이 칩만 죽고 K200 칩은 항상 유지된다."""
+    from backend.flow import futures as fx, kst
     try:
-        q = await price_us(client, "QQQ")
-        if not q:
+        start = (kst.now() - dt.timedelta(days=_NQ_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+        df = await asyncio.get_event_loop().run_in_executor(
+            None, fetch or _fetch_nq, start)
+        price, prev = fx.pick_latest_pair(list(df["Close"]))
+        if price is None:
             return None
-        return {"label": "나스닥 QQQ", "price": q["price"], "rate": q["change"],
-                "currency": "USD"}
+        rate = None if prev is None or prev == 0 else (price - prev) / prev * 100
+        return {"label": "나스닥 선물", "price": price, "rate": rate}
     except Exception:
         return None
 
