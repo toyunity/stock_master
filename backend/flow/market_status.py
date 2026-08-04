@@ -22,8 +22,10 @@ _hol_cache = {"ts": 0.0, "days": None}       # {'YYYYMMDD': 개장여부}
 
 
 def wallclock_open(now=None) -> bool:
-    """주말·시간대만 보는 벽시계 장중(09:00~15:30 KST). 공휴일은 모른다(cli._kr_market_open과
-    동일 정의 — cli는 대시보드 폴링용이라 의존을 만들지 않고 여기 재정의)."""
+    """주말·시간대만 보는 벽시계 장중(09:00~15:30 KST, KRX 정규장 고정 — market_div 무관).
+    공휴일은 모른다. cli._kr_market_open()은 2026-08 NXT 애프터마켓 대응으로 market_div에
+    따라 08:00~20:00까지 넓어졌으므로 더는 이 함수와 동일 정의가 아니다(의도적 분기 —
+    위젯 장중 판정은 여기서 독립적으로 유지, cli는 대시보드 폴링/헤더 펄스용)."""
     now = now or kst.now()
     if now.weekday() >= 5:
         return False

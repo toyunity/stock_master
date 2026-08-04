@@ -8,7 +8,8 @@ kis.py에 넣지 않은 이유: kis가 이 모듈의 파서를 부르므로 반�
 Python 3.9 호환."""
 
 import datetime as dt
-from typing import Optional
+import math
+from typing import Optional, Tuple
 
 from backend.flow import kst
 
@@ -81,3 +82,31 @@ def pick_front_month(rows: list) -> Optional[dict]:
     if not live:
         return None
     return max(live, key=lambda r: r.get("volume", 0))
+
+
+def pick_latest_pair(closes) -> Tuple[Optional[float], Optional[float]]:
+    """종가 시퀀스(과거→현재, 항목은 None/NaN일 수 있음) → (현재가, 직전 유효종가).
+
+    FinanceDataReader(NQ=F)는 거래일인데도 통째로 NaN인 행을 실제로 내보낸다(휴장이
+    아니라 결측) — 그 행을 건너뛰고 유효값만 골라 마지막 두 개를 취한다. 숫자로 변환
+    가능한 값(문자열 포함)이면 받아들이고, None·NaN·변환 불가 값은 결측으로 취급한다.
+
+    현재가가 없으면 (None, None) — 호출부가 칩 자체를 생략한다. 현재가는 있는데 그
+    직전 유효값이 없으면 (price, None) — 등락률을 0.00%로 꾸며내지 말고 rate:None으로
+    넘기라는 신호다(dashboard.py의 fxchip()이 이미 None을 대시로 표시한다)."""
+    valid = []
+    for c in closes:
+        if c is None:
+            continue
+        try:
+            v = float(c)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(v):
+            continue
+        valid.append(v)
+    if not valid:
+        return None, None
+    if len(valid) == 1:
+        return valid[0], None
+    return valid[-1], valid[-2]

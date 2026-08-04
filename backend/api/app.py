@@ -265,7 +265,8 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/prices")
     async def prices_api(request: Request):
-        """관심종목 실시간 현재가 — 대시보드 카드가 폴링. 장중에만 KIS 조회(장외/주말은 open:false).
+        """관심종목 실시간 현재가 — 대시보드 카드가 폴링. 세션 중에만 KIS 조회
+        (UN 기본: 프리 08:00~애프터 20:00 KST, NXT 포함 — 그 밖/주말은 open:false).
         KR 파이프라인이라 계정 watchlist의 KR 코드만 조회(US는 여기 경로 없음)."""
         from backend.cli import _kr_market_open, fetch_live_prices
         from backend.flow import userstore

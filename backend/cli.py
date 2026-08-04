@@ -66,13 +66,13 @@ def build_daily_html(codes, cache_dir, source=None, history_days=400,
 
 
 def _kr_market_open(now=None) -> bool:
-    """KRX 정규장(평일 09:00~15:30 KST) 여부."""
+    """KRX+NXT 통합 세션(평일, market_div=UN/NX면 프리 08:00~애프터 20:00, J면 09:00~15:30 KST) 여부.
+    settings.market_div=UN(기본)이라 NXT 애프터마켓(15:30~20:00)도 '열림'으로 본다 — /api/prices와
+    build_dashboard의 실시간 덮어쓰기가 이 시간에도 계속 흐른다(설계, session.py가 단일 정의 소스)."""
     from zoneinfo import ZoneInfo
+    from backend.flow.session import is_session_open
     n = now or dt.datetime.now(ZoneInfo("Asia/Seoul"))
-    if n.weekday() >= 5:
-        return False
-    hm = n.strftime("%H:%M")
-    return "09:00" <= hm < "15:30"
+    return is_session_open(n, settings.market_div)
 
 
 async def fetch_live_prices(codes) -> dict:
@@ -129,7 +129,8 @@ def build_dashboard(codes, cache_dir, source=None, history_days=400,
     nm = name_map(universe)
     issues = _collect_issues(codes, nm) if with_news else {}
     pm = price_map(universe)
-    if _kr_market_open():   # 장중엔 관심종목을 KIS 실시간 현재가로 덮어씀(StockListing=전일 종가)
+    if _kr_market_open():   # 세션 중엔(UN 기본: 프리·정규·NXT 애프터) 관심종목을 KIS 실시간
+                             # 현재가로 덮어씀(StockListing=전일 종가)
         pm.update(_live_prices(codes))
     stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code), nm)
               for s in signals]

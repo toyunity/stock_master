@@ -1,5 +1,9 @@
 """대시보드 시장 컨텍스트 조립(marketdata) + 라우트 스모크 — 네트워크 없이 가짜 클라이언트."""
 import asyncio
+import time
+
+import pandas as pd
+import pytest
 
 
 class _FakeC:
@@ -228,8 +232,17 @@ class _FakeFut:
 
 def _reset_fut(md):
     _reset_fut_cache(md)
-    from backend.flow import usquote
-    usquote._exch_cache.clear()   # QQQ 거래소 확정 캐시 — 테스트 순서 무관하게 매번 초기화
+
+
+def _nq_df(closes):
+    """FDR NQ=F 응답 모양의 가짜 DataFrame — Close 컬럼만 있으면 _nq_quote가 충분하다."""
+    return pd.DataFrame({"Close": closes})
+
+
+def _nq_fail(start):
+    """나스닥 레그를 결정적으로 실패시키는 스텁 — K200 전용 테스트에 fetch로 넘겨,
+    fetch 인자를 빼먹었을 때 실제 FinanceDataReader 네트워크 호출로 새는 것을 막는다."""
+    raise RuntimeError("나스닥 fetch 스텁 미지정(K200 전용 테스트)")
 
 
 def test_get_futures_picks_front_month_and_labels_day_session():
@@ -238,7 +251,8 @@ def test_get_futures_picks_front_month_and_labels_day_session():
     from backend.flow.kst import KST
     _reset_fut(md)
     c = _FakeFut()
-    d = asyncio.run(md.get_futures(client=c, now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    d = asyncio.run(md.get_futures(client=c, fetch=_nq_fail,
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert d["k200"]["code"] == "A01609"           # 거래량 최다
     assert d["k200"]["price"] == 885.25
     assert d["k200"]["label"] == "K200선물"
@@ -253,11 +267,11 @@ def test_get_futures_labels_night_session_and_caches():
     _reset_fut(md)
     c = _FakeFut()
     night = dt.datetime(2026, 7, 30, 21, 0, tzinfo=KST)
-    d = asyncio.run(md.get_futures(client=c, now=night))
+    d = asyncio.run(md.get_futures(client=c, fetch=_nq_fail, now=night))
     assert d["k200"]["label"] == "야간선물" and d["k200"]["session"] == "night"
     assert d["k200"]["closed"] is False             # night도 라이브 세션 — 마감 아님
     assert c.calls == 1
-    asyncio.run(md.get_futures(client=c, now=night))   # 30초 캐시 → 재호출 없음
+    asyncio.run(md.get_futures(client=c, fetch=_nq_fail, now=night))   # 30초 캐시 → 재호출 없음
     assert c.calls == 1
 
 
@@ -271,12 +285,12 @@ def test_get_futures_marks_closed_during_gap_and_closed_sessions():
     _reset_fut(md)
     c = _FakeFut()
     gap = dt.datetime(2026, 7, 30, 16, 0, tzinfo=KST)          # 목요일 15:45~18:00
-    d = asyncio.run(md.get_futures(client=c, now=gap))
+    d = asyncio.run(md.get_futures(client=c, fetch=_nq_fail, now=gap))
     assert d["k200"]["closed"] is True and "stale" not in d["k200"]   # 정상 조회 성공 + 마감 표시
 
     md._fut_cache["k200"]["ts"] = 0.0                           # TTL 만료시켜 세션 재판정 강제
     weekend = dt.datetime(2026, 8, 1, 10, 0, tzinfo=KST)        # 토요일 = closed
-    d2 = asyncio.run(md.get_futures(client=c, now=weekend))
+    d2 = asyncio.run(md.get_futures(client=c, fetch=_nq_fail, now=weekend))
     assert d2["k200"]["closed"] is True
 
 
@@ -292,11 +306,11 @@ def test_get_futures_keeps_last_value_on_failure():
 
     _reset_fut(md)
     md._fut_cache["k200"]["ts"], md._fut_cache["k200"]["data"] = 0.0, {"price": 1.0}
-    d = asyncio.run(md.get_futures(client=_Boom(),
+    d = asyncio.run(md.get_futures(client=_Boom(), fetch=_nq_fail,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert d["k200"]["price"] == 1.0            # 직전값 유지(칩이 사라지지 않음)
     assert d["k200"]["stale"] is True            # 갱신 실패 표시(지연 배지)
-    assert "nq" not in d                         # nq도 콜드 상태로 실패(_Boom엔 _get 없음)
+    assert "nq" not in d                         # nq도 콜드 상태로 실패(fetch 스텁이 raise)
 
 
 def test_get_futures_stale_fallback_relabels_across_session_boundary():
@@ -315,68 +329,80 @@ def test_get_futures_stale_fallback_relabels_across_session_boundary():
     md._fut_cache["k200"]["ts"], md._fut_cache["k200"]["data"] = 0.0, {
         "code": "A01609", "price": 340.5, "session": "day", "label": "K200선물"}
     night = dt.datetime(2026, 7, 30, 21, 0, tzinfo=KST)
-    d = asyncio.run(md.get_futures(client=_Boom(), now=night))
+    d = asyncio.run(md.get_futures(client=_Boom(), fetch=_nq_fail, now=night))
     assert d["k200"]["label"] == "야간선물" and d["k200"]["session"] == "night"
     assert d["k200"]["price"] == 340.5 and d["k200"]["stale"] is True
 
 
-def test_get_futures_includes_nasdaq_qqq_chip():
-    """CME 선물 실시간 시세는 계좌에 유료 구독이 필요해(G3 실측 EGW00550) QQQ ETF로 대신한다."""
+def test_get_futures_includes_nasdaq_futures_chip():
+    """QQQ ETF 프록시를 걷어내고 FinanceDataReader NQ=F(나스닥100 선물)로 교체한 경로 —
+    fetch 훅으로 실제 FDR 호출 없이 주입한다. $ 접두 없음(선물은 지수 포인트 표기)."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
 
-    class _C(_FakeFut):
-        def __init__(self):
-            super().__init__()
-            self.nq_params = None
+    calls = []
 
-        async def _get(self, path, tr_id, params):
-            # price_us가 예외를 통째로 삼키므로(거래소 순회 실패 흡수) assert를 이 안에 두면
-            # 실패가 조용히 None으로 바뀌어 엉뚱한 곳(KeyError 등)에서 터진다 — 밖에서 검증한다.
-            self.nq_params = params
-            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.42",
-                                             "sign": "2", "tvol": "1"}}
+    def fetch(start):
+        calls.append(start)
+        return _nq_df([28237.75, 28404.25])
 
     _reset_fut(md)
-    c = _C()
-    d = asyncio.run(md.get_futures(client=c,
+    c = _FakeFut()
+    d = asyncio.run(md.get_futures(client=c, fetch=fetch,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
-    assert c.nq_params["SYMB"] == "QQQ"
-    assert d["nq"] == {"label": "나스닥 QQQ", "price": 487.32, "rate": 0.42,
-                       "currency": "USD"}
+    assert calls, "fetch가 호출되지 않았다"
+    rate = (28404.25 - 28237.75) / 28237.75 * 100
+    assert d["nq"] == {"label": "나스닥 선물", "price": 28404.25, "rate": rate}
+    assert "currency" not in d["nq"]          # $ 접두 제거 — fxchip()은 currency=='USD'일 때만 붙인다
 
 
-def test_get_futures_nasdaq_rate_none_on_preopen_rollover():
-    """sign '0'(미국 프리오픈 일자 롤오버)은 rate=None — 0.42%처럼 꾸며내지 않는다."""
+def test_get_futures_nasdaq_skips_nan_hole_from_fdr():
+    """FDR이 실제로 내보내는 결측(all-NaN) 행 — 휴장이 아닌 거래일에도 나온다(실측).
+    NaN 행을 현재가로 오채택하지 않고 건너뛴다."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
 
-    class _C(_FakeFut):
-        async def _get(self, path, tr_id, params):
-            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.00",
-                                             "sign": "0", "tvol": "1"}}
+    def fetch(start):
+        return _nq_df([28317.0, float("nan"), 28930.0])
 
     _reset_fut(md)
-    d = asyncio.run(md.get_futures(client=_C(),
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=fetch,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
-    assert d["nq"]["price"] == 487.32
+    assert d["nq"]["price"] == 28930.0
+    assert d["nq"]["rate"] == pytest.approx((28930.0 - 28317.0) / 28317.0 * 100)
+
+
+def test_get_futures_nasdaq_rate_none_when_no_previous_valid_close():
+    """유효 종가가 현재가 하나뿐이면(예: 첫 조회, 나머지 전부 NaN) rate:None — 0.00%로
+    꾸며내지 않는다. fxchip()이 이를 대시로 렌더한다(dashboard.py, node 실행검증은
+    test_dashboard.py에 있음 — 여기선 marketdata가 실제로 None을 넘기는지만 본다)."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    def fetch(start):
+        return _nq_df([float("nan"), float("nan"), 28930.0])
+
+    _reset_fut(md)
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=fetch,
+                                   now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert d["nq"]["price"] == 28930.0
     assert d["nq"]["rate"] is None
 
 
 def test_get_futures_nasdaq_failure_keeps_k200_chip():
-    """나스닥(QQQ) 조회 실패는 그 칩만 죽는다 — K200 칩은 항상 살아남는다(콜드 상태의 nq)."""
+    """나스닥(NQ=F) 조회 실패는 그 칩만 죽는다 — K200 칩은 항상 살아남는다(콜드 상태의 nq)."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
 
-    class _Boom(_FakeFut):
-        async def _get(self, path, tr_id, params):
-            raise RuntimeError("KIS 500")
+    def boom(start):
+        raise RuntimeError("FDR 네트워크 오류")
 
     _reset_fut(md)
-    d = asyncio.run(md.get_futures(client=_Boom(),
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=boom,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert d["k200"]["code"] == "A01609"
     assert d["k200"]["price"] == 885.25
@@ -384,9 +410,9 @@ def test_get_futures_nasdaq_failure_keeps_k200_chip():
 
 
 def test_get_futures_k200_failure_does_not_block_nq_chip():
-    """CRITICAL(리뷰) — K200 전광판이 raise해도 나스닥(QQQ) 칩은 항상 시도된다.
+    """CRITICAL(리뷰) — K200 전광판이 raise해도 나스닥(NQ=F) 칩은 항상 시도된다.
     이전엔 두 early-return이 _nq_quote 호출 자체를 막아, 콜드 캐시 상태에서(예: 주말 재기동
-    직후) K200이 실패하면 QQQ까지 같이 죽었다(/api/futures가 {} 통째 반환)."""
+    직후) K200이 실패하면 나스닥까지 같이 죽었다(/api/futures가 {} 통째 반환)."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
@@ -395,21 +421,20 @@ def test_get_futures_k200_failure_does_not_block_nq_chip():
         async def futures_board(self, cls_code):
             raise RuntimeError("KIS 500")
 
-        async def _get(self, path, tr_id, params):
-            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.42",
-                                             "sign": "2", "tvol": "1"}}
+    def fetch(start):
+        return _nq_df([28237.75, 28404.25])
 
     _reset_fut(md)
     md._fut_cache["k200"]["ts"], md._fut_cache["k200"]["data"] = 0.0, {"code": "A01609", "price": 1.0}
-    d = asyncio.run(md.get_futures(client=_C(),
+    d = asyncio.run(md.get_futures(client=_C(), fetch=fetch,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
-    assert d["nq"]["price"] == 487.32                                  # K200 실패와 무관하게 산다
+    assert d["nq"]["price"] == 28404.25                                # K200 실패와 무관하게 산다
     assert d["k200"]["price"] == 1.0 and d["k200"]["stale"] is True    # K200은 직전값 + 지연 배지
 
 
 def test_get_futures_front_month_none_does_not_block_nq_chip():
     """전광판 응답에 행은 있어도 전부 미체결(price=0)이면 pick_front_month가 None을 반환한다 —
-    이 갈래가 이전엔 테스트가 없었다(리뷰가 지목한 미검증 분기). 이때도 QQQ는 살아야 한다."""
+    이 갈래가 이전엔 테스트가 없었다(리뷰가 지목한 미검증 분기). 이때도 나스닥은 살아야 한다."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
@@ -419,47 +444,43 @@ def test_get_futures_front_month_none_does_not_block_nq_chip():
             return [{"code": "A01609", "name": "F 202609", "price": 0.0,
                      "rate": 0.0, "sign": "", "volume": 0}]
 
-        async def _get(self, path, tr_id, params):
-            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.42",
-                                             "sign": "2", "tvol": "1"}}
+    def fetch(start):
+        return _nq_df([28237.75, 28404.25])
 
     _reset_fut(md)
-    d = asyncio.run(md.get_futures(client=_C(),
+    d = asyncio.run(md.get_futures(client=_C(), fetch=fetch,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert "k200" not in d               # 콜드 + 쓸 행 없음 → 보여줄 게 없다(꾸며낼 값 없음)
-    assert d["nq"]["price"] == 487.32
+    assert d["nq"]["price"] == 28404.25
 
 
 def test_get_futures_nq_failure_after_good_value_keeps_cache_and_marks_stale():
-    """QQQ가 한 번 성공한 뒤 실패하면 직전값 + stale:True(지연 배지)를 남긴다 — 캐시 히트로
+    """나스닥이 한 번 성공한 뒤 실패하면 직전값 + stale:True(지연 배지)를 남긴다 — 캐시 히트로
     재시도조차 안 일어나면 이 테스트는 아무것도 검증하지 못하므로 ts를 강제로 만료시킨다."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
 
-    class _Good(_FakeFut):
-        async def _get(self, path, tr_id, params):
-            return {"rt_cd": "0", "output": {"last": "487.32", "rate": " 0.42",
-                                             "sign": "2", "tvol": "1"}}
+    def good(start):
+        return _nq_df([28237.75, 28404.25])
 
-    class _NqBoom(_FakeFut):
-        async def _get(self, path, tr_id, params):
-            raise RuntimeError("KIS 500")
+    def boom(start):
+        raise RuntimeError("FDR 네트워크 오류")
 
     _reset_fut(md)
     now = dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)
-    d1 = asyncio.run(md.get_futures(client=_Good(), now=now))
-    assert d1["nq"]["price"] == 487.32 and "stale" not in d1["nq"]
+    d1 = asyncio.run(md.get_futures(client=_FakeFut(), fetch=good, now=now))
+    assert d1["nq"]["price"] == 28404.25 and "stale" not in d1["nq"]
 
     md._fut_cache["nq"]["ts"] = 0.0            # TTL 캐시 히트를 피해 실제로 재시도시킨다
-    d2 = asyncio.run(md.get_futures(client=_NqBoom(), now=now))
-    assert d2["nq"] == {"label": "나스닥 QQQ", "price": 487.32, "rate": 0.42,
-                        "currency": "USD", "stale": True}
+    d2 = asyncio.run(md.get_futures(client=_FakeFut(), fetch=boom, now=now))
+    rate = (28404.25 - 28237.75) / 28237.75 * 100
+    assert d2["nq"] == {"label": "나스닥 선물", "price": 28404.25, "rate": rate, "stale": True}
     assert d2["k200"]["code"] == "A01609" and "stale" not in d2["k200"]   # K200은 여전히 라이브
 
 
 def test_get_futures_both_cold_and_failing_returns_empty():
-    """K200·QQQ 둘 다 콜드 상태로 실패하면 빈 dict — 보여줄 값 자체가 없다."""
+    """K200·나스닥 둘 다 콜드 상태로 실패하면 빈 dict — 보여줄 값 자체가 없다."""
     import datetime as dt
     from backend.api import marketdata as md
     from backend.flow.kst import KST
@@ -468,10 +489,43 @@ def test_get_futures_both_cold_and_failing_returns_empty():
         async def futures_board(self, cls_code):
             raise RuntimeError("KIS 500")
 
-        async def _get(self, path, tr_id, params):
-            raise RuntimeError("KIS 500")
+    def boom(start):
+        raise RuntimeError("FDR 네트워크 오류")
 
     _reset_fut(md)
-    d = asyncio.run(md.get_futures(client=_Boom(),
+    d = asyncio.run(md.get_futures(client=_Boom(), fetch=boom,
                                    now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
     assert d == {}
+
+
+def test_get_futures_nasdaq_uses_short_ttl_regardless_of_korean_session():
+    """나스닥(NQ=F)은 한국 세션에 묶인 ttl(비활성 300초)이 아니라 항상 30초로 갱신한다 —
+    나스닥 선물은 거의 24시간 움직이므로 한국 장 마감/휴장과 무관하다. K200은 그대로
+    세션별 ttl(이 테스트의 토요일=closed → 300초)을 따른다 — 둘의 TTL이 분리돼 있는지가
+    핵심이므로 같은 캐시 나이(60초 = 30초보다 늙었지만 300초보다는 젊음)에서 나스닥만
+    재조회되고 K200은 캐시를 그대로 쓰는지로 판별한다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    calls = []
+
+    def fetch(start):
+        calls.append(start)
+        return _nq_df([28237.75, 28404.25])
+
+    _reset_fut(md)
+    weekend = dt.datetime(2026, 8, 1, 10, 0, tzinfo=KST)   # 토요일 = K200 세션 closed → ttl=300s
+    c = _FakeFut()
+    d1 = asyncio.run(md.get_futures(client=c, fetch=fetch, now=weekend))
+    assert d1["k200"]["closed"] is True
+    assert len(calls) == 1 and c.calls == 1
+
+    age = 60.0   # 30초(나스닥 ttl)보다 늙었지만 300초(K200 idle ttl)보다는 젊다
+    md._fut_cache["nq"]["ts"] = time.time() - age
+    md._fut_cache["k200"]["ts"] = time.time() - age
+    d2 = asyncio.run(md.get_futures(client=c, fetch=fetch, now=weekend))
+    assert len(calls) == 2               # 나스닥은 30초 TTL을 넘겨 재조회됐다
+    assert c.calls == 1                  # K200은 300초 TTL 안이라 전광판을 다시 부르지 않았다
+    assert d2["nq"]["price"] == 28404.25
+    assert d2["k200"]["price"] == 885.25

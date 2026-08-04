@@ -61,3 +61,40 @@ def test_pick_front_month_is_the_most_traded_row():
     """월물은 롤오버되므로 코드가 아니라 거래량으로 고른다."""
     assert fx.pick_front_month(fx.parse_board(_BOARD_JS))["code"] == "A01609"
     assert fx.pick_front_month([]) is None
+
+
+# ── pick_latest_pair — FDR(NQ=F) 결측(all-NaN) 행 대응, 나스닥 선물 칩의 현재/직전값 ──
+_NAN = float("nan")
+
+
+def test_pick_latest_pair_normal_case():
+    """정상 시계열 — 마지막 값이 현재, 그 앞이 직전."""
+    assert fx.pick_latest_pair([100.0, 105.0, 110.0]) == (110.0, 105.0)
+
+
+def test_pick_latest_pair_skips_nan_hole_in_middle():
+    """중간의 결측 행(2026-08-03 실측처럼)은 건너뛰고 유효값끼리만 현재/직전을 고른다."""
+    assert fx.pick_latest_pair([100.0, _NAN, 110.0]) == (110.0, 100.0)
+
+
+def test_pick_latest_pair_skips_nan_at_end():
+    """가장 최근 행이 결측이면 그 앞의 유효값이 현재가가 된다."""
+    assert fx.pick_latest_pair([100.0, 105.0, _NAN]) == (105.0, 100.0)
+
+
+def test_pick_latest_pair_single_valid_returns_price_only_no_previous():
+    """유효값이 하나뿐이면 (price, None) — 0.00%를 꾸며내지 않고 rate:None으로 넘긴다.
+    fxchip()은 rate:None을 대시로 렌더한다(dashboard.py) — 여기선 함수가 실제로 None을
+    돌려주는지만 증명한다(믿지 않고 검증)."""
+    price, prev = fx.pick_latest_pair([_NAN, _NAN, 105.0])
+    assert price == 105.0
+    assert prev is None
+
+
+def test_pick_latest_pair_all_nan_returns_none():
+    """전부 결측이면 현재가 자체가 없다 — (None, None), 호출부가 칩을 생략한다."""
+    assert fx.pick_latest_pair([_NAN, _NAN]) == (None, None)
+
+
+def test_pick_latest_pair_empty_returns_none():
+    assert fx.pick_latest_pair([]) == (None, None)
