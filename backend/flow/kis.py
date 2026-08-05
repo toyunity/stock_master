@@ -506,6 +506,18 @@ class KisClient:
                               "FID_COND_MRKT_CLS_CODE": cls_code})
         return _fx.parse_board(js)
 
+    async def option_quote(self, code: str) -> Optional[dict]:
+        """옵션 단건 시세(FHMIF10000000) — 전광판이 보드의 상위 100행만 주므로
+        전 구간을 보려면 종목별로 이걸 돈다(2026-08-05 O1 실측).
+
+        div=O가 옵션이다. 응답 본문이 output이 아니라 **output1**이라는 게 이 TR의
+        함정 — parse_quote가 그걸 안다."""
+        from backend.flow import options as _opt      # 순환 임포트 회피
+        js = await self._get("/uapi/domestic-futureoption/v1/quotations/inquire-price",
+                             "FHMIF10000000",
+                             {"FID_COND_MRKT_DIV_CODE": "O", "FID_INPUT_ISCD": code})
+        return _opt.parse_quote(js)
+
     async def financials(self, code: str) -> list:
         """재무비율(최근 분기 신순) — ROE·EPS·부채비율·매출성장. 분기 갱신이라 길게 캐시."""
         js = await self._get("/uapi/domestic-stock/v1/finance/financial-ratio",

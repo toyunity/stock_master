@@ -327,3 +327,18 @@ console.log(JSON.stringify(out));
         ["closed", "장 마감"],
     ]
     assert out == expected, out
+
+
+def test_dashboard_has_collapsed_options_section_hidden_by_default():
+    """옵션 섹션은 접힌 채로, 데이터가 오기 전엔 숨어 있어야 한다 —
+    빈 섹션이 '옵션 데이터 없음'처럼 자리를 차지하면 안 된다."""
+    from backend.report.dashboard import render_dashboard
+    html = render_dashboard([], [], "2026-08-05")
+    assert 'id="optsec"' in html
+    assert 'style="display:none"' in html.split('id="optsec"')[1][:120]
+    assert "<details" in html.split('id="optsec"')[0][-80:]
+    assert "open" not in html.split('id="optsec"')[1].split(">")[0]   # 기본 접힘
+    assert 'id="opt-chg"' in html and 'id="opt-oi"' in html
+    # 증감 차트가 누적보다 **위**에 온다 — 오늘의 신호가 주인공이다
+    assert html.index('id="opt-chg"') < html.index('id="opt-oi"')
+    assert "loadOptions" in html

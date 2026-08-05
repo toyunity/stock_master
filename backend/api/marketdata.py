@@ -8,11 +8,14 @@ Python 3.9 호환."""
 
 import asyncio
 import datetime as dt
+import logging
 import time
 
 from backend.config import settings
 from backend.education import glossary
 from backend.signals import nextday
+
+log = logging.getLogger(__name__)
 
 _IDX_TTL = 30.0            # 지수 30초
 _FUN_TTL = 300.0          # 밸류 5분(일 단위로만 바뀜)
@@ -51,6 +54,65 @@ async def get_indices(client=None):
 _FUT_TTL_LIVE, _FUT_TTL_IDLE = 30.0, 300.0   # 세션 활성 30초 / 비활성 5분
 _fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}}
 _FUT_LABEL = {"night": "야간선물"}
+
+_NGT_TR = "H0MFCNT0"   # KRX 야간선물 실시간체결
+_NGT_SANE = 0.30       # 틱 가격이 REST 값과 이 비율 넘게 벌어지면 안 쓴다(아래 참조)
+_night_tick = None     # 최신 야간 틱(WS) — 없으면 REST 값으로 조용히 강등
+_night_reg = None      # 현재 등록된 야간선물 종목코드(월물 롤오버 감지용)
+
+
+def _night_price(rest_price):
+    """실시간 틱 가격을 쓸 수 있으면 (price, rate), 아니면 None.
+
+    **필드 순서를 못 믿기 때문에 있는 관문이다.** H0MFCNT0의 인덱스는 KIS 공식
+    예제를 옮긴 것이고 이 저장소에 독립 근거가 없다 — 하나만 어긋나도
+    누적거래량(예: 141272)이 가격 자리에 조용히 들어앉는다. 오버나잇 변동이
+    아무리 커도 30%를 넘지는 않으므로, 그 밖이면 매핑이 틀렸다고 보고 REST 값을
+    쓴다. 틀린 값을 자신 있게 보여주느니 덜 새로운 값을 보여준다."""
+    t = _night_tick
+    if not t or not t.get("price"):
+        return None
+    if rest_price:
+        if abs(t["price"] - rest_price) / rest_price > _NGT_SANE:
+            log.warning("야간 틱 가격 %.2f가 REST %.2f와 %d%% 넘게 벌어짐 — "
+                        "H0MFCNT0 필드 매핑 의심, REST 값 사용",
+                        t["price"], rest_price, int(_NGT_SANE * 100))
+            return None
+    return t["price"], t.get("rate")
+
+
+def _on_night_tick(rec):
+    """H0MFCNT0 레코드 → 최신 틱 보관.
+
+    **선물 전용 파서를 쓴다** — 주식(H0STCNT0)용 kis.parse_ccnl은 필드 순서가
+    다르고 가격이 정수라 이 레코드에선 아예 예외로 죽는다(tests/test_futures.py).
+    파싱 실패(핑퐁·잘린 프레임)는 직전 틱을 덮어쓰지 않는다."""
+    global _night_tick
+    from backend.flow import futures as fx
+    t = fx.parse_ngt_ccnl(rec)
+    if t:
+        _night_tick = {"price": t["price"], "rate": t["rate"]}
+
+
+async def _ensure_night_ws(client, code):
+    """야간 세션에서만 H0MFCNT0을 등록한다. 월물이 바뀌면 이전 등록을 해제하고 새로 건다.
+
+    등록 실패는 삼킨다 — 실시간은 덤이고 칩 자체는 REST 값으로 살아야 한다.
+    실패하면 _night_reg를 비워 다음 폴링(30초 뒤)에 다시 시도한다."""
+    global _night_reg
+    from backend.flow import wsbus
+    if _night_reg == code:
+        return
+    try:
+        bus = wsbus.WsSession.get(client)
+        bus.start()
+        if _night_reg:
+            await bus.unregister(_NGT_TR, _night_reg, _on_night_tick)
+        await bus.register(_NGT_TR, code, _on_night_tick)
+        _night_reg = code
+    except Exception:
+        _night_reg = None
+        log.warning("야간선물 실시간 등록 실패 — REST 값으로 계속한다", exc_info=True)
 
 
 async def get_futures(client=None, now=None, fetch=None):
@@ -93,7 +155,21 @@ async def _k200_leg(client, fx, ses, ttl):
     slot = _fut_cache["k200"]
     if slot["data"] is not None and time.time() - slot["ts"] < ttl:
         out = dict(slot["data"])
-        out["closed"] = _fut_closed(ses)          # 세션은 캐시 히트여도 매번 새로 판정
+        # 세션에 매인 것은 캐시 히트여도 매번 새로 판정한다. gap의 TTL이 300초라
+        # 17:58에 담긴 캐시가 18:01에 그대로 나오면 라벨이 "K200선물"로 남는다
+        # (실패 폴백 경로에서 같은 이유로 이미 재라벨링하고 있다).
+        out["session"] = ses
+        out["label"] = _FUT_LABEL.get(ses, "K200선물")
+        out["closed"] = _fut_closed(ses)
+        if ses == "night":
+            # 등록도 여기서 확인한다 — 안 그러면 야간 개장 후 캐시가 만료될 때까지
+            # (최대 5분) 실시간이 안 붙는다. 이미 등록돼 있으면 즉시 반환된다.
+            await _ensure_night_ws(client, out.get("code"))
+            # 틱은 캐시보다 새롭다 — 안 얹으면 실시간을 달아 놓고도 화면이
+            # 30초에 한 번만 움직인다.
+            live = _night_price(out.get("price"))
+            if live:
+                out["price"], out["rate"] = live
         return out
     front = None
     try:
@@ -117,6 +193,13 @@ async def _k200_leg(client, fx, ses, ttl):
     k200 = dict(front)
     k200["session"] = ses
     k200["label"] = _FUT_LABEL.get(ses, "K200선물")
+    if ses == "night":
+        # 야간 세션가는 전광판(REST)이 15:45 종가에 멈춰 있을 수 있다(G2 미측정) —
+        # 실시간 틱이 있으면 그걸 덮어쓴다. 없으면 REST 값 그대로 간다.
+        await _ensure_night_ws(client, k200.get("code"))
+        live = _night_price(k200.get("price"))
+        if live:
+            k200["price"], k200["rate"] = live
     slot["ts"], slot["data"] = time.time(), k200    # 캐시엔 closed/stale을 굽지 않는다(매번 재판정)
     out = dict(k200)
     out["closed"] = _fut_closed(ses)
@@ -183,6 +266,217 @@ async def _nq_quote(client, fetch=None):
         return {"label": "나스닥 선물", "price": price, "rate": rate}
     except Exception:
         return None
+
+
+# ── 코스피200 옵션 ─────────────────────────────────────────────────────────
+_OPT_RATE = 5.0     # 초당 발사 상한. 개인 계정 한도는 10건/초인데 /live 수급이
+                    # 2~4건/초를 이미 쓴다 — 절반만 쓴다. 7.3건/초에서 EGW00201이
+                    # 780건 중 6건 났다(2026-08-05 실측).
+_OPT_CONC = 3       # 동시 요청 수(같은 실측의 조합: 동시 3 + 페이싱)
+_OPT_RETRY = 2      # EGW00201 재시도 횟수
+_OPT_BACKOFF = 1.0  # 재시도 첫 대기(초). 매 회 2배 — 테스트가 0으로 덮어쓴다.
+
+
+async def _collect_chain(client, rows, rate=None, conc=None):
+    """옵션 종목 리스트 → (파싱된 행 리스트, 실패 건수). 초당 rate 건을 안 넘는다.
+
+    세마포어만으로는 유량을 못 막는다 — 응답이 빠르면 동시 3으로도 초당 20건이
+    나간다. '직전 발사 예정 시각'을 잠금으로 지켜 간격 자체를 강제한다. 페이싱을
+    세마포어 **안**에서 하는 이유: 예약 직후 곧바로 발사돼야 예약과 실제 발사가
+    어긋나지 않는다(밖에서 하면 세마포어 대기 동안 예약이 밀려 뭉쳐 나간다).
+
+    rate/conc 기본값을 상수로 직접 쓰지 않고 None으로 두는 이유: 기본값은 함수
+    정의 시점에 묶여, 테스트가 _OPT_RATE를 바꿔도 안 먹는다.
+
+    실패는 예외로 올리지 않는다 — 1,012건 중 몇 건은 늘 실패하고, 그건 정상
+    경로다(스펙 §에러 처리). 대신 **몇 건 실패했는지를 반환해 화면이 밝힌다**."""
+    if not rows:
+        return [], 0
+    rate = _OPT_RATE if rate is None else rate
+    conc = _OPT_CONC if conc is None else conc
+    interval = 1.0 / max(rate, 0.001)
+    sem = asyncio.Semaphore(max(1, conc))
+    lock = asyncio.Lock()
+    state = {"next": 0.0, "failed": 0}
+
+    async def pace():
+        async with lock:
+            now = time.monotonic()
+            wait = max(0.0, state["next"] - now)
+            state["next"] = max(now, state["next"]) + interval
+        if wait > 0:
+            await asyncio.sleep(wait)
+
+    async def one(row):
+        delay = _OPT_BACKOFF
+        for attempt in range(_OPT_RETRY + 1):
+            async with sem:
+                await pace()
+                try:
+                    q = await client.option_quote(row["code"])
+                except Exception:
+                    q = None
+            if q is not None:
+                q["code"], q["side"] = row["code"], row.get("side")
+                if not q.get("strike"):
+                    q["strike"] = row.get("strike")   # 응답이 비면 마스터 값으로
+                return q
+            if attempt < _OPT_RETRY and delay:
+                await asyncio.sleep(delay)            # 지수 백오프
+                delay *= 2
+        state["failed"] += 1
+        return None
+
+    out = await asyncio.gather(*(one(r) for r in rows))
+    return [q for q in out if q is not None], state["failed"]
+
+
+_OPT_TTL = 3600.0        # 장중 1시간. 회차당 1,012건·약 3.5분이라 더 자주 돌 이유가 없다.
+_OPT_FILE = "options_%s.json"
+_opt_cache = {"ts": 0.0, "data": None, "busy": False}
+
+
+def _opt_path(expiry):
+    import os
+    return os.path.join(settings.cache_dir, _OPT_FILE % expiry)
+
+
+def _opt_save_disk(data):
+    """수집 결과를 디스크에 남긴다 — 서버 재기동에도 직전 보드가 살아 있어야 한다."""
+    import json
+    import os
+    try:
+        os.makedirs(settings.cache_dir, exist_ok=True)
+        with open(_opt_path(data["expiry"]), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass                     # 캐시 저장 실패가 화면을 죽이면 안 된다
+
+
+def _opt_load_disk():
+    """가장 최근에 저장된 보드 하나를 읽는다(만기별 파일 중 mtime 최신). 없으면 None."""
+    import glob
+    import json
+    import os
+    try:
+        paths = glob.glob(os.path.join(settings.cache_dir, _OPT_FILE % "*"))
+        if not paths:
+            return None
+        with open(max(paths, key=os.path.getmtime), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+async def _pick_expiry(client, rows, today):
+    """근월물과 잔존일수 — 마스터로 고르고 **한 건만 찔러 확인**한다.
+
+    만기일 계산(둘째 목요일)은 공휴일로 앞당겨지는 경우를 못 본다. 전 종목 3.5분을
+    돌고 나서 '이미 만기였다'를 알면 늦으므로, 체인 한가운데 한 종목만 조회해
+    잔존일수를 본다. 음수면 다음 월물로 넘어간다. 프로브가 실패하면(장외 등) 계산값을
+    그대로 쓴다 — best effort지 게이트가 아니다."""
+    from backend.flow import optmaster as om
+    months = [m for m in sorted({r["expiry"] for r in rows})
+              if om.expiry_date(m) >= today][:2]
+    for m in months:
+        ch = om.chain(rows, m)
+        pool = ch["calls"] or ch["puts"]
+        if not pool:
+            continue
+        try:
+            q = await client.option_quote(pool[len(pool) // 2]["code"])
+        except Exception:
+            q = None
+        if q is None:
+            return m, None                       # 프로브 실패 → 계산값 채택
+        if (q.get("remain_days") or 0) >= 0:
+            return m, q.get("remain_days")
+    return (months[0], None) if months else (None, None)
+
+
+def _opt_pack(rows):
+    """행 리스트 → [[행사가, 미결제, 당일증감], ...] (행사가 오름차순).
+
+    1,012행을 dict로 보내면 JSON이 120KB를 넘는다 — 화면이 쓰는 건 이 셋뿐이라
+    3튜플로 줄인다(약 20KB). 순서는 응답의 'cols'가 밝힌다."""
+    return [[r.get("strike"), r.get("oi") or 0, r.get("oi_chg") or 0]
+            for r in sorted(rows, key=lambda x: x.get("strike") or 0.0)
+            if r.get("strike")]
+
+
+async def _collect_options(client):
+    """한 회차 전체 수집 — 마스터 → 만기 → 현물 → 콜/풋 전 종목. 실패하면 None."""
+    from backend.flow import kst, optmaster as om, options as opt
+    rows = await asyncio.get_event_loop().run_in_executor(
+        None, om.load, settings.cache_dir)
+    if not rows:
+        return None
+    expiry, remain = await _pick_expiry(client, rows, kst.today())
+    if not expiry:
+        return None
+    ch = om.chain(rows, expiry)
+    if not ch["calls"] and not ch["puts"]:
+        return None
+    # 코스피200 현물 — 스펙은 단건 시세 output3에 딸려 온다고 했지만 그 필드명이
+    # 실측으로 기록되지 않았다. 추측한 이름이 빗나가면 spot=0이 되고, spot이 0이면
+    # wall()·atm_iv()가 통째로 무의미해진다. 이미 검증된 index("2001")을 쓴다(1건).
+    try:
+        spot = (await client.index("2001") or {}).get("price")
+    except Exception:
+        spot = None
+    calls, cf = await _collect_chain(client, ch["calls"])
+    puts, pf = await _collect_chain(client, ch["puts"])
+    if not calls and not puts:
+        return None
+    if remain is None:
+        got = [r.get("remain_days") for r in (calls + puts) if r.get("remain_days")]
+        remain = got[0] if got else None
+    return {"expiry": expiry, "label": opt.month_label(expiry),
+            "remain_days": remain, "spot": spot,
+            "cols": ["strike", "oi", "oi_chg"],
+            "calls": _opt_pack(calls), "puts": _opt_pack(puts),
+            "summary": opt.summarize(calls, puts, spot),
+            "failed": cf + pf, "ts": time.time()}
+
+
+async def _opt_refresh(client):
+    """백그라운드 1회차 — 성공하면 캐시·디스크를 갈아끼우고, 실패하면 직전값을 둔다."""
+    try:
+        data = await _collect_options(client)
+        if data:
+            _opt_cache["ts"], _opt_cache["data"] = time.time(), data
+            _opt_save_disk(data)
+    except Exception:
+        pass
+    finally:
+        _opt_cache["busy"] = False        # 실패해도 반드시 풀린다(안 풀면 영영 안 돈다)
+
+
+async def get_options(client=None, now=None):
+    """코스피200 옵션 보드 — 대시보드 섹션용. 키없음이면 None, 콜드+수집중이면 {}.
+
+    한 회차가 최대 1,012건·약 3.5분이라 **요청을 붙잡지 않는다** — 캐시가 만료돼도
+    직전값을 즉시 돌려주고 갱신은 백그라운드로 돌린다('collecting': True). 대차잔고
+    최초 백필과 같은 패턴이다. 'stale'은 장중에 TTL이 지났는데 아직 새 값이 없다는
+    뜻이고, 마감 후엔 붙이지 않는다(마감은 지연이 아니다 — 선물 칩에서 정한 규칙)."""
+    from backend.flow import options as opt
+    client = client or _client()
+    if client is None:
+        return None
+    if _opt_cache["data"] is None:
+        _opt_cache["data"] = _opt_load_disk()     # 재기동 직후에도 직전 보드를 보여준다
+    live = opt.session_of(now) == "live"
+    fresh = (time.time() - _opt_cache["ts"]) < _OPT_TTL
+    if live and not fresh and not _opt_cache["busy"]:
+        _opt_cache["busy"] = True
+        asyncio.ensure_future(_opt_refresh(client))
+    data = _opt_cache["data"]
+    if data is None:
+        return {}
+    out = dict(data)
+    out["collecting"] = _opt_cache["busy"]
+    out["stale"] = bool(live and not fresh)
+    return out
 
 
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)

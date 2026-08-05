@@ -538,3 +538,214 @@ def test_get_stock_detail_omits_missing_metrics():
     d = asyncio.run(md.get_stock_detail("000660", client=Empty()))
     assert d["valuation"] is None and d["financials"] == []
     assert d["explains"] == {}
+
+
+# ── T9 야간선물 실시간(H0MFCNT0) ──────────────────────────────────────────
+class _FakeBus:
+    """wsbus.WsSession 대역 — 등록/해제만 기록한다(소켓 미접촉)."""
+
+    def __init__(self):
+        self.started, self.regs, self.unregs = 0, [], []
+
+    def start(self):
+        self.started += 1
+
+    async def register(self, tr_id, tr_key, handler):
+        self.regs.append((tr_id, tr_key))
+
+    async def unregister(self, tr_id, tr_key, handler):
+        self.unregs.append((tr_id, tr_key))
+
+
+def _install_bus(monkeypatch, md, bus):
+    from backend.flow import wsbus
+    monkeypatch.setattr(wsbus.WsSession, "get", classmethod(lambda cls, c: bus))
+    md._night_reg = None
+    md._night_tick = None
+
+
+def _night(h=21):
+    import datetime as dt
+    from backend.flow.kst import KST
+    return dt.datetime(2026, 7, 30, h, 0, tzinfo=KST)
+
+
+def test_get_futures_prefers_ws_tick_at_night(monkeypatch):
+    """야간엔 실시간 틱이 있으면 그것을, 없으면 REST 값을 쓴다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    md._night_tick = {"price": 883.4, "rate": -0.2}
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 883.4 and d["k200"]["rate"] == -0.2
+
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 885.25          # REST 폴백
+
+
+def test_get_futures_registers_night_ws_only_at_night(monkeypatch):
+    """주간엔 H0MFCNT0을 등록하지 않는다 — 야간 세션에만 존재하는 시세다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail,
+                               now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)))
+    assert bus.regs == []
+
+    _reset_fut(md)
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert bus.regs == [("H0MFCNT0", "A01609")]     # 최근월물 코드로 등록
+    assert bus.started == 1
+
+
+def test_night_ws_registration_is_idempotent_across_polls(monkeypatch):
+    """대시보드가 30초마다 부른다 — 매번 다시 등록하면 안 된다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    for _ in range(3):
+        md._fut_cache["k200"]["ts"] = 0.0            # TTL 만료시켜 매번 재조회
+        asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert bus.regs == [("H0MFCNT0", "A01609")] and bus.unregs == []
+
+
+def test_night_ws_reregisters_when_the_contract_rolls(monkeypatch):
+    """월물이 바뀌면 이전 등록을 해제하고 새 코드로 건다 — 안 그러면 만기 지난
+    종목을 계속 듣고 화면은 영영 안 움직인다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+
+    class _Rolled(_FakeFut):
+        async def futures_board(self, cls_code):
+            rows = await super().futures_board(cls_code)
+            for r in rows:
+                r["code"] = "A01612" if r["code"] == "A01609" else r["code"]
+            return rows
+
+    _reset_fut(md)
+    md._night_tick = None
+    asyncio.run(md.get_futures(client=_Rolled(), fetch=_nq_fail, now=_night()))
+    assert bus.unregs == [("H0MFCNT0", "A01609")]
+    assert bus.regs[-1] == ("H0MFCNT0", "A01612")
+
+
+def test_on_night_tick_stores_only_parseable_records():
+    """핑퐁·잘린 프레임이 최신 틱을 0으로 덮어쓰면 안 된다."""
+    from backend.api import marketdata as md
+    md._night_tick = None
+    md._on_night_tick(["101W09", "210131"])          # 짧은 레코드
+    assert md._night_tick is None
+    md._on_night_tick(["101W09", "210131", "-1.80", "5", "-0.20", "883.40",
+                       "885.00", "886.10", "882.05", "3", "141272", "1250000000",
+                       "884.10", "-0.70", "-0.08", "0", "0", "0", "170400"])
+    assert md._night_tick == {"price": 883.40, "rate": -0.20}
+    md._on_night_tick(["101W09", "210131"])          # 다시 짧은 레코드
+    assert md._night_tick == {"price": 883.40, "rate": -0.20}   # 직전값 유지
+    md._night_tick = None
+
+
+def test_night_ws_failure_does_not_kill_the_chip(monkeypatch):
+    """웹소켓 등록이 실패해도 칩은 REST 값으로 살아야 한다 — 실시간은 덤이다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+
+    class _BoomBus(_FakeBus):
+        async def register(self, tr_id, tr_key, handler):
+            raise RuntimeError("승인키 만료")
+
+    _install_bus(monkeypatch, md, _BoomBus())
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 885.25 and d["k200"]["label"] == "야간선물"
+
+
+def test_night_tick_applies_on_cache_hit_too(monkeypatch):
+    """TTL 캐시 히트에도 최신 틱을 얹어야 한다.
+
+    안 그러면 실시간을 달아 놓고도 화면은 30초에 한 번만 움직인다 — 웹소켓을
+    등록한 이유가 절반 사라진다. 세션·마감 배지를 캐시 히트마다 재판정하는
+    것과 같은 이유다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+
+    md._night_tick = {"price": 901.55, "rate": 1.75}     # 캐시 만료 없이 틱만 도착
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 901.55 and d["k200"]["rate"] == 1.75
+    md._night_tick = None
+
+
+def test_night_registration_recovers_within_a_poll_after_session_flip(monkeypatch):
+    """gap(15:45~18:00) 캐시가 살아 있는 채로 18:00을 넘어도 등록이 늦지 않아야 한다.
+
+    gap의 TTL은 300초라, 캐시 히트 경로에서 등록을 안 하면 야간 개장 후 최대
+    5분 동안 실시간이 안 붙는다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail,
+                               now=dt.datetime(2026, 7, 30, 17, 0, tzinfo=KST)))
+    assert bus.regs == []                                 # gap엔 등록 안 함
+
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["label"] == "야간선물"
+    assert bus.regs == [("H0MFCNT0", "A01609")]           # 캐시 히트여도 곧바로 등록
+
+
+def test_cached_chip_relabels_across_session_boundary():
+    """캐시 히트에도 라벨·세션을 재판정한다(실시간 여부와 무관한 회귀).
+
+    gap의 TTL은 300초라 17:58에 담긴 캐시가 18:01에 그대로 나온다 — 그때
+    '야간선물'이어야 할 라벨이 'K200선물'로 남아 있으면 사용자는 지금 보는 값이
+    주간 종가인지 야간 시세인지 알 수 없다."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    md._fut_cache["k200"]["ts"] = time.time()            # 갓 담긴 캐시
+    md._fut_cache["k200"]["data"] = {"code": "A01609", "name": "F 202609",
+                                     "price": 885.25, "rate": -1.4,
+                                     "session": "gap", "label": "K200선물"}
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail,
+                                   now=dt.datetime(2026, 7, 30, 12, 0, tzinfo=KST)))
+    assert d["k200"]["label"] == "K200선물" and d["k200"]["session"] == "day"
+    assert d["k200"]["closed"] is False
+
+
+def test_night_tick_is_rejected_when_wildly_off_the_rest_price(monkeypatch):
+    """틱 가격이 REST 값과 터무니없이 다르면 쓰지 않는다.
+
+    H0MFCNT0의 필드 순서는 KIS 공식 예제를 옮긴 것이고 저장소에 독립 근거가
+    없다. 인덱스가 하나만 어긋나도 누적거래량(141272) 같은 값이 가격 자리에
+    조용히 들어앉는다 — 오버나잇 변동은 아무리 커도 이 정도가 아니다.
+    묵묵히 틀린 값을 보여주느니 REST 값으로 강등한다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    md._night_tick = {"price": 141272.0, "rate": -0.2}      # 거래량이 가격 자리에
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 885.25                     # REST 값으로 강등
+    md._night_tick = None
+
+
+def test_night_tick_allows_a_large_but_plausible_overnight_move(monkeypatch):
+    """진짜 급등락(±10%)은 그대로 통과해야 한다 — 방어가 과하면 실시간이 죽는다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    md._night_tick = {"price": 885.25 * 1.10, "rate": 10.0}
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert abs(d["k200"]["price"] - 885.25 * 1.10) < 0.01
+    md._night_tick = None

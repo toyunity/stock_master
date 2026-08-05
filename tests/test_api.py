@@ -43,3 +43,15 @@ def test_icon_returns_png_bytes():
 
 def test_icon_unknown_size_404():
     assert client.get("/icons/icon-999.png").status_code == 404
+
+
+def test_options_route_returns_empty_without_key(monkeypatch):
+    """키가 없으면 빈 dict — 프론트가 섹션을 통째로 숨긴다(에러 토스트 금지)."""
+    from fastapi.testclient import TestClient
+
+    from backend.api.app import create_app
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    with TestClient(create_app()) as c:
+        r = c.get("/api/options")
+    assert r.status_code == 200 and r.json() == {}

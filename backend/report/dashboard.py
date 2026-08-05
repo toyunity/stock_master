@@ -16,6 +16,7 @@ from pathlib import Path
 
 from backend.config import settings
 from backend.flow.session import session_minutes
+from backend.report import options_panel as _optp
 from backend.report.render import _ACTION_KO, _bt_view, _issues_view
 
 _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-charts.js"
@@ -189,6 +190,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 .mv{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
   margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em}
 .mv.star{font-family:inherit;font-size:12px;color:var(--warn);letter-spacing:.5px}
+__OPT_CSS__
 </style></head><body>
 __ICONS__
 <div id="app"><div id="app-scroll">
@@ -221,6 +223,7 @@ __REFRESH__
     </div>
   </div>
 </details>
+__OPT_HTML__
 <div class="grouphd"><svg class="hic secic"><use href="#i-chart"/></svg> 관심종목 분석 <span class="seccap">차트·뉴스·공시</span></div>
 <div id="cards"></div>
 <div class="disc">__DISCLAIMER__</div>
@@ -399,6 +402,7 @@ async function loadMarket(){
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
+__OPT_JS__
 // 시장상태 펄스(헤더 시그니처): KR 세션 중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색.
 // 세션 경계는 서버 렌더 시 settings.market_div로 결정 — UN/NX면 아래에 NXT 프리·애프터
 // 분기가 삽입되고, J면 빈 문자열이 들어가 09:00~15:30만(기존 동작과 동일).
@@ -704,4 +708,7 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
             .replace("__DATA__", data_json)
             .replace("__PULSE_EXT__", _pulse_ext_js())
+            .replace("__OPT_CSS__", _optp.CSS)
+            .replace("__OPT_HTML__", _optp.HTML)
+            .replace("__OPT_JS__", _optp.JS)
             .replace("__LIB__", lib))
