@@ -13,3 +13,5 @@ harness/artifacts/*
 !harness/artifacts/.gitkeep
 .worktrees/
 .superpowers/
+scratchpad/
+.venv
