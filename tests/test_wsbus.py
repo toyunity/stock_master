@@ -68,7 +68,7 @@ def test_unregister_only_unsubscribes_when_last_handler_leaves():
     assert len(ws.sent) == 1                       # 아직 해지 안 함
     asyncio.run(s.unregister("H0UNCNT0", "005930", h2))
     assert len(ws.sent) == 2                       # 마지막이 빠질 때만 해지
-    assert '"tr_type": "0"' in ws.sent[1]          # 해지 프레임
+    assert '"tr_type": "2"' in ws.sent[1]          # 해지 프레임(1:등록 2:해지)
 
 
 def test_register_before_connect_is_deferred_to_resubscribe():

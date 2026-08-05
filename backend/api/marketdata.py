@@ -130,10 +130,15 @@ def _on_night_tick(rec):
 async def _ensure_night_ws(client, code):
     """야간 세션에서만 H0MFCNT0을 등록한다. 월물이 바뀌면 이전 등록을 해제하고 새로 건다.
 
+    **`code`가 비면 해제만 한다** — 야간이 끝났거나 전광판이 코드를 안 준 경우다.
+    예전엔 이 갈래가 아예 없어서 (a) 야간이 끝나도 등록이 `_subs`에 남아 재접속마다
+    되살아났고(다음 재기동까지), (b) 코드가 비면 `tr_key: null`을 보낼 수 있었다.
+
     등록 실패는 삼킨다 — 실시간은 덤이고 칩 자체는 REST 값으로 살아야 한다.
     실패하면 _night_reg를 비워 다음 폴링(30초 뒤)에 다시 시도한다."""
-    global _night_reg
+    global _night_reg, _night_tick
     from backend.flow import wsbus
+    code = code or None
     if _night_reg == code:
         return
     try:
@@ -141,8 +146,10 @@ async def _ensure_night_ws(client, code):
         bus.start()
         if _night_reg:
             await bus.unregister(_NGT_TR, _night_reg, _on_night_tick)
-        await bus.register(_NGT_TR, code, _on_night_tick)
-        _night_reg = code
+            _night_reg, _night_tick = None, None   # 지난 세션 틱을 다음 야간에 물려주지 않는다
+        if code:
+            await bus.register(_NGT_TR, code, _on_night_tick)
+            _night_reg = code
     except Exception:
         _night_reg = None
         log.warning("야간선물 실시간 등록 실패 — REST 값으로 계속한다", exc_info=True)
@@ -185,6 +192,10 @@ def _fut_closed(ses) -> bool:
 
 async def _k200_leg(client, fx, ses, ttl):
     """K200선물 칩 — 자기 슬롯만 보고 자기 슬롯만 채운다(nq 실패와 무관)."""
+    if ses != "night" and _night_reg:
+        # 야간이 끝났다 — 등록을 놓는다. 등록 갱신은 night 갈래에서만 일어나므로
+        # 여기서 안 놓으면 놓을 곳이 없다(재기동 전까지 구독이 남는다).
+        await _ensure_night_ws(client, None)
     slot = _fut_cache["k200"]
     if slot["data"] is not None and time.time() - slot["ts"] < ttl:
         out = dict(slot["data"])

@@ -129,11 +129,23 @@ def is_invalid_approval(err: Optional[str]) -> bool:
     return "opsp0011" in e or "invalid approval" in e
 
 
+SUB_ON, SUB_OFF = "1", "2"   # KIS tr_type — 1:등록 2:해지. **0은 없다**(아래 참조)
+
+
 def build_subscribe(approval_key: str, tr_id: str, code: str, on: bool = True) -> str:
-    """웹소켓 구독(tr_type=1)/해지(0) 메시지."""
+    """웹소켓 구독(tr_type=1)/해지(2) 메시지.
+
+    해지가 "0"이었다(2026-07-10 S5 설계 문서의 표기를 그대로 옮긴 것). 등록만 쓰던
+    동안엔 드러나지 않다가, wsbus가 해지를 실제로 보내기 시작한 2026-08-05부터
+    KIS가 `OPSP8997 JSON PARSING ERROR : invalid tr_type`으로 거부했다. 거부는
+    수신 루프에서 예외가 되어 **공유 세션 전체가 끊기고 30초 뒤 재접속**한다 —
+    한 화면이 구독을 놓는 것뿐인데 다른 화면의 실시간까지 같이 죽었다.
+
+    프레임에서 tr_type이라는 이름을 가진 필드는 이것 하나뿐이고 "1"은 실측으로
+    동작하므로, 거부 대상은 "0"이다."""
     return json.dumps({
         "header": {"approval_key": approval_key, "custtype": "P",
-                   "tr_type": "1" if on else "0", "content-type": "utf-8"},
+                   "tr_type": SUB_ON if on else SUB_OFF, "content-type": "utf-8"},
         "body": {"input": {"tr_id": tr_id, "tr_key": code}},
     })
 

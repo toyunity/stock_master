@@ -143,4 +143,6 @@ def test_build_subscribe_roundtrip():
     assert msg["header"]["custtype"] == "P"
     assert msg["body"]["input"] == {"tr_id": "H0STPGM0", "tr_key": "000660"}
     off = json.loads(build_subscribe("K", "H0STCNT0", "000660", on=False))
-    assert off["header"]["tr_type"] == "0"
+    # 해지는 "2"다. "0"을 보내면 KIS가 OPSP8997 invalid tr_type으로 거부하고,
+    # 그 거부가 공유 세션 전체를 끊는다(2026-08-06 실측 로그).
+    assert off["header"]["tr_type"] == "2"

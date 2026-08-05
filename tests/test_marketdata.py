@@ -704,6 +704,43 @@ def test_night_registration_recovers_within_a_poll_after_session_flip(monkeypatc
     assert bus.regs == [("H0MFCNT0", "A01609")]           # 캐시 히트여도 곧바로 등록
 
 
+def test_night_registration_is_released_when_the_night_session_ends(monkeypatch):
+    """야간이 끝나면 등록을 놓아야 한다.
+
+    등록 갱신은 night 갈래에서만 일어나므로 여기서 안 놓으면 놓을 곳이 없다 —
+    (H0MFCNT0, 코드)가 `_subs`에 남아 재접속마다 되살아나고 다음 재기동까지 간다.
+    지난 세션 틱도 같이 버린다(다음 야간 첫 폴링에 옛 가격이 뜨지 않게)."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+    _reset_fut(md)
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert bus.regs == [("H0MFCNT0", "A01609")]
+    md._night_tick = {"price": 901.55, "rate": 1.75}
+
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail,
+                               now=dt.datetime(2026, 7, 31, 12, 0, tzinfo=KST)))
+    assert bus.unregs == [("H0MFCNT0", "A01609")]
+    assert md._night_reg is None and md._night_tick is None
+
+
+def test_night_ws_never_subscribes_an_empty_code(monkeypatch):
+    """코드가 비면 **해제만** 한다 — 등록하면 tr_key가 null인 프레임이 나간다.
+
+    KIS는 그런 프레임을 OPSP8997 invalid로 거부하고, 거부 하나가 공유 세션
+    전체를 끊는다(수급 화면의 실시간까지 같이 죽는다)."""
+    from backend.api import marketdata as md
+    bus = _FakeBus()
+    _install_bus(monkeypatch, md, bus)
+    md._night_reg, md._night_tick = "A01609", {"price": 901.55, "rate": 1.75}
+    asyncio.run(md._ensure_night_ws(_FakeFut(), None))
+    assert bus.regs == []                                 # 등록 프레임은 안 나간다
+    assert bus.unregs == [("H0MFCNT0", "A01609")]
+    assert md._night_reg is None and md._night_tick is None
+
+
 def test_cached_chip_relabels_across_session_boundary():
     """캐시 히트에도 라벨·세션을 재판정한다(실시간 여부와 무관한 회귀).
 
