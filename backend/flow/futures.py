@@ -84,6 +84,26 @@ def pick_front_month(rows: list) -> Optional[dict]:
     return max(live, key=lambda r: r.get("volume", 0))
 
 
+# H0MFCNT0(KRX 야간선물 실시간체결) 레코드 인덱스 — KIS 공식 예제의 COLUMN_MAPPING 순서.
+# 주식 H0STCNT0과 순서가 다르므로 kis.parse_ccnl을 재사용하면 안 된다(가격도 소수다 —
+# 정수 파서로 읽으면 883.40이 883으로 잘린다).
+_NGT_CHANGE, _NGT_SIGN, _NGT_RATE, _NGT_PRICE = 2, 3, 4, 5
+_NGT_VOL, _NGT_OI = 10, 18
+
+
+def parse_ngt_ccnl(rec: list) -> Optional[dict]:
+    """야간선물 실시간체결 레코드 → {price, rate, change, sign, acml_vol, oi}.
+    필드가 모자란 레코드(핑퐁·잘린 프레임)는 None — 호출부가 조용히 무시한다."""
+    if not rec or len(rec) <= _NGT_OI:
+        return None
+    return {"price": _f(rec[_NGT_PRICE]),
+            "rate": _f(rec[_NGT_RATE]),
+            "change": _f(rec[_NGT_CHANGE]),
+            "sign": _SIGN.get(str(rec[_NGT_SIGN]), ""),
+            "acml_vol": _i(rec[_NGT_VOL]),
+            "oi": _i(rec[_NGT_OI])}
+
+
 def pick_latest_pair(closes) -> Tuple[Optional[float], Optional[float]]:
     """종가 시퀀스(과거→현재, 항목은 None/NaN일 수 있음) → (현재가, 직전 유효종가).
 

@@ -8,11 +8,14 @@ Python 3.9 호환."""
 
 import asyncio
 import datetime as dt
+import logging
 import time
 
 from backend.config import settings
 from backend.education import glossary
 from backend.signals import nextday
+
+log = logging.getLogger(__name__)
 
 _IDX_TTL = 30.0            # 지수 30초
 _FUN_TTL = 300.0          # 밸류 5분(일 단위로만 바뀜)
@@ -51,6 +54,44 @@ async def get_indices(client=None):
 _FUT_TTL_LIVE, _FUT_TTL_IDLE = 30.0, 300.0   # 세션 활성 30초 / 비활성 5분
 _fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}}
 _FUT_LABEL = {"night": "야간선물"}
+
+_NGT_TR = "H0MFCNT0"   # KRX 야간선물 실시간체결
+_night_tick = None     # 최신 야간 틱(WS) — 없으면 REST 값으로 조용히 강등
+_night_reg = None      # 현재 등록된 야간선물 종목코드(월물 롤오버 감지용)
+
+
+def _on_night_tick(rec):
+    """H0MFCNT0 레코드 → 최신 틱 보관.
+
+    **선물 전용 파서를 쓴다** — 주식(H0STCNT0)용 kis.parse_ccnl은 필드 순서가
+    다르고 가격이 정수라 이 레코드에선 아예 예외로 죽는다(tests/test_futures.py).
+    파싱 실패(핑퐁·잘린 프레임)는 직전 틱을 덮어쓰지 않는다."""
+    global _night_tick
+    from backend.flow import futures as fx
+    t = fx.parse_ngt_ccnl(rec)
+    if t:
+        _night_tick = {"price": t["price"], "rate": t["rate"]}
+
+
+async def _ensure_night_ws(client, code):
+    """야간 세션에서만 H0MFCNT0을 등록한다. 월물이 바뀌면 이전 등록을 해제하고 새로 건다.
+
+    등록 실패는 삼킨다 — 실시간은 덤이고 칩 자체는 REST 값으로 살아야 한다.
+    실패하면 _night_reg를 비워 다음 폴링(30초 뒤)에 다시 시도한다."""
+    global _night_reg
+    from backend.flow import wsbus
+    if _night_reg == code:
+        return
+    try:
+        bus = wsbus.WsSession.get(client)
+        bus.start()
+        if _night_reg:
+            await bus.unregister(_NGT_TR, _night_reg, _on_night_tick)
+        await bus.register(_NGT_TR, code, _on_night_tick)
+        _night_reg = code
+    except Exception:
+        _night_reg = None
+        log.warning("야간선물 실시간 등록 실패 — REST 값으로 계속한다", exc_info=True)
 
 
 async def get_futures(client=None, now=None, fetch=None):
@@ -93,7 +134,21 @@ async def _k200_leg(client, fx, ses, ttl):
     slot = _fut_cache["k200"]
     if slot["data"] is not None and time.time() - slot["ts"] < ttl:
         out = dict(slot["data"])
-        out["closed"] = _fut_closed(ses)          # 세션은 캐시 히트여도 매번 새로 판정
+        # 세션에 매인 것은 캐시 히트여도 매번 새로 판정한다. gap의 TTL이 300초라
+        # 17:58에 담긴 캐시가 18:01에 그대로 나오면 라벨이 "K200선물"로 남는다
+        # (실패 폴백 경로에서 같은 이유로 이미 재라벨링하고 있다).
+        out["session"] = ses
+        out["label"] = _FUT_LABEL.get(ses, "K200선물")
+        out["closed"] = _fut_closed(ses)
+        if ses == "night":
+            # 등록도 여기서 확인한다 — 안 그러면 야간 개장 후 캐시가 만료될 때까지
+            # (최대 5분) 실시간이 안 붙는다. 이미 등록돼 있으면 즉시 반환된다.
+            await _ensure_night_ws(client, out.get("code"))
+            if _night_tick and _night_tick.get("price"):
+                # 틱은 캐시보다 새롭다 — 안 얹으면 실시간을 달아 놓고도 화면이
+                # 30초에 한 번만 움직인다.
+                out["price"] = _night_tick["price"]
+                out["rate"] = _night_tick["rate"]
         return out
     front = None
     try:
@@ -117,6 +172,13 @@ async def _k200_leg(client, fx, ses, ttl):
     k200 = dict(front)
     k200["session"] = ses
     k200["label"] = _FUT_LABEL.get(ses, "K200선물")
+    if ses == "night":
+        # 야간 세션가는 전광판(REST)이 15:45 종가에 멈춰 있을 수 있다(G2 미측정) —
+        # 실시간 틱이 있으면 그걸 덮어쓴다. 없으면 REST 값 그대로 간다.
+        await _ensure_night_ws(client, k200.get("code"))
+        if _night_tick and _night_tick.get("price"):
+            k200["price"] = _night_tick["price"]
+            k200["rate"] = _night_tick["rate"]
     slot["ts"], slot["data"] = time.time(), k200    # 캐시엔 closed/stale을 굽지 않는다(매번 재판정)
     out = dict(k200)
     out["closed"] = _fut_closed(ses)

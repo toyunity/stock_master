@@ -98,3 +98,40 @@ def test_pick_latest_pair_all_nan_returns_none():
 
 def test_pick_latest_pair_empty_returns_none():
     assert fx.pick_latest_pair([]) == (None, None)
+
+
+def test_parse_ngt_ccnl_reads_futures_field_order():
+    """H0MFCNT0 필드 순서(KIS 공식 예제 COLUMN_MAPPING 기준):
+    0 종목코드 · 1 영업시간 · 2 전일대비 · 3 부호 · 4 전일대비율 · 5 현재가 ·
+    … · 10 누적거래량 · … · 18 미결제약정."""
+    rec = ["101W09", "210131", "-1.80", "5", "-0.20", "883.40",
+           "885.00", "886.10", "882.05", "3", "141272", "1250000000",
+           "884.10", "-0.70", "-0.08", "0", "0", "0", "170400"]
+    t = fx.parse_ngt_ccnl(rec)
+    assert t["price"] == 883.40          # 소수점 유지(정수 파서 쓰면 883이 된다)
+    assert t["rate"] == -0.20
+    assert t["change"] == -1.80
+    assert t["sign"] == "down"
+    assert t["acml_vol"] == 141272
+    assert t["oi"] == 170400
+
+
+def test_parse_ngt_ccnl_ignores_short_record():
+    assert fx.parse_ngt_ccnl(["101W09", "210131"]) is None
+
+
+def test_parse_ngt_ccnl_is_not_the_stock_parser():
+    """주식 파서(H0STCNT0)를 야간선물에 재사용하면 안 된다.
+
+    필드 순서가 다르고 가격이 정수라, 같은 레코드를 넣으면 **예외로 죽는다**
+    (rec[2]='-1.80'을 int로 읽으려다 ValueError). 전용 파서가 필요한 이유를
+    추측이 아니라 실행으로 고정한다."""
+    import pytest as _pytest
+
+    from backend.flow import kis
+    rec = ["101W09", "210131", "-1.80", "5", "-0.20", "883.40",
+           "885.00", "886.10", "882.05", "3", "141272", "1250000000",
+           "884.10", "-0.70", "-0.08", "0", "0", "0", "170400"]
+    assert fx.parse_ngt_ccnl(rec)["price"] == 883.40
+    with _pytest.raises(Exception):
+        kis.parse_ccnl(rec)
