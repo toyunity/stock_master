@@ -163,6 +163,7 @@ def _isolate_opt_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(md, "_OPT_RATE", 1000.0)
     monkeypatch.setattr(kst, "today", lambda: dt.date(2026, 8, 5))
+    monkeypatch.setattr(settings, "options_enabled", True)   # 켠 상태가 이 파일의 기본
     _reset_opt(md)
     yield
     _reset_opt(md)
@@ -228,14 +229,17 @@ def test_get_options_serves_cache_immediately_and_refreshes_in_background(monkey
     asyncio.run(_run())
 
 
-def test_get_options_does_not_refresh_outside_session(monkeypatch):
+def test_get_options_never_marks_stale_outside_session(monkeypatch):
+    """마감 후엔 '지연' 배지를 안 붙인다 — 마감은 지연이 아니다(선물 칩과 같은 규칙).
+
+    갱신이 돌고 있어도 직전값은 그대로 내준다."""
     from backend.api import marketdata as md
     _install_master(monkeypatch, md, _master_rows())
-    md._opt_cache["data"] = {"expiry": "202608", "calls": [], "puts": [], "summary": {}}
-    md._opt_cache["ts"] = 0.0
-    c = _FakeBoard()
-    d = asyncio.run(md.get_options(client=c, now=_CLOSED))
-    assert d["collecting"] is False and c.at == []    # 마감 후엔 한 건도 안 부른다
+    md._opt_cache["data"] = {"expiry": "202608", "calls": [[1.0, 1, 1]], "puts": [],
+                             "summary": {}}
+    md._opt_cache["ts"] = 0.0                         # 언제 받았는지 모름 → 갱신 대상
+    d = asyncio.run(md.get_options(client=_FakeBoard(), now=_CLOSED))
+    assert d["expiry"] == "202608"                    # 직전값을 곧바로 준다
     assert d["stale"] is False                        # 마감은 '지연'이 아니다
 
 
@@ -277,3 +281,92 @@ def test_get_options_failure_keeps_previous_board(monkeypatch):
     asyncio.run(md._opt_refresh(_Boom()))
     assert md._opt_cache["data"]["expiry"] == "202608"   # 직전값 유지
     assert md._opt_cache["busy"] is False                # 실패해도 잠금은 풀린다
+
+
+# ── 기능 플래그 ────────────────────────────────────────────────────────────
+def test_get_options_is_off_by_default(monkeypatch):
+    """플래그를 안 켜면 옵션 수집이 아예 안 돈다.
+
+    한 회차가 KIS 호출 최대 1,012건이고 /live 수급과 같은 키를 나눠 쓴다 —
+    장중 실측(O8) 전에 자동으로 켜지면 안 된다. 기본값은 끔이다."""
+    from backend.api import marketdata as md
+    from backend.config import settings
+    monkeypatch.setattr(settings, "options_enabled", False)
+    c = _FakeBoard()
+    assert asyncio.run(md.get_options(client=c, now=_LIVE)) is None
+    assert c.at == []                       # KIS를 한 번도 안 부른다
+    assert md._opt_cache["busy"] is False   # 백그라운드 수집도 안 띄운다
+
+
+def test_get_options_off_does_not_read_the_disk_cache(monkeypatch):
+    """꺼져 있으면 디스크에 남은 직전 보드도 서빙하지 않는다 — 화면에서 통째로 사라진다."""
+    from backend.api import marketdata as md
+    from backend.config import settings
+    _install_master(monkeypatch, md, _master_rows())
+    asyncio.run(md._opt_refresh(_FakeBoard()))     # 디스크에 한 회차 저장
+    _reset_opt(md)
+    monkeypatch.setattr(settings, "options_enabled", False)
+    assert asyncio.run(md.get_options(client=_FakeBoard(), now=_CLOSED)) is None
+
+
+# ── 마감 후 수집(스펙 §데이터 흐름 "그 외 다음 개장까지") ────────────────────
+def test_get_options_collects_after_close_when_cache_is_cold(monkeypatch):
+    """마감 후에도 **처음 한 번은** 받아야 한다.
+
+    스펙은 '정규장 3600초 / 그 외 다음 개장까지'다 — 장외에도 그날 보드가 화면에
+    있어야 한다는 뜻이다. 미결제·당일증감은 15:45에 확정되고 그 뒤로 안 변하므로
+    장외 조회도 정상 응답한다(2026-08-05 18:40 실측). 'live일 때만 수집'으로 두면
+    마감 후 재기동한 저녁 내내 섹션이 텅 빈다."""
+    from backend.api import marketdata as md
+    _install_master(monkeypatch, md, _master_rows())
+
+    async def _run():
+        d = await md.get_options(client=_FakeBoard(), now=_CLOSED)
+        assert d == {}                          # 콜드 + 수집 시작 → 아직 보여줄 게 없다
+        assert md._opt_cache["busy"] is True    # 백그라운드로 받고 있다
+        for _ in range(300):
+            if not md._opt_cache["busy"]:
+                break
+            await asyncio.sleep(0.01)
+        d2 = await md.get_options(client=_FakeBoard(), now=_CLOSED)
+        assert d2["expiry"] == "202608"
+        assert d2["stale"] is False             # 마감은 '지연'이 아니다
+
+    asyncio.run(_run())
+
+
+def test_get_options_does_not_recollect_after_close_once_it_has_todays_board(monkeypatch):
+    """마감 후 한 번 받았으면 다음 개장까지 다시 안 받는다 — 보드가 안 변하니까."""
+    import time as _t
+    from backend.api import marketdata as md
+    _install_master(monkeypatch, md, _master_rows())
+    c = _FakeBoard()
+    md._opt_cache["data"] = {"expiry": "202608", "calls": [[1.0, 1, 1]], "puts": [],
+                             "summary": {}}
+    md._opt_cache["ts"] = _t.time()             # 방금(= 마감 이후) 받은 것
+    asyncio.run(md.get_options(client=c, now=_CLOSED))
+    assert c.at == [] and md._opt_cache["busy"] is False
+
+
+def test_get_options_recollects_after_close_if_cache_predates_todays_close(monkeypatch):
+    """어제 것을 들고 있으면 오늘 마감 후엔 새로 받는다."""
+    import datetime as _dt
+    from backend.api import marketdata as md
+    from backend.flow import options as _opt
+    _install_master(monkeypatch, md, _master_rows())
+    md._opt_cache["data"] = {"expiry": "202607", "calls": [[1.0, 1, 1]], "puts": [],
+                             "summary": {}}
+    # 오늘 마감보다 하루 앞선 시각 = 어제 보드
+    md._opt_cache["ts"] = (_opt.last_close(_CLOSED) - _dt.timedelta(days=1)).timestamp()
+
+    async def _run():
+        await md.get_options(client=_FakeBoard(), now=_CLOSED)
+        # busy는 asyncio.run이 태스크를 정리하며 풀리므로 루프 안에서 봐야 한다
+        assert md._opt_cache["busy"] is True     # 갱신을 띄웠다
+        for _ in range(300):
+            if not md._opt_cache["busy"]:
+                break
+            await asyncio.sleep(0.01)
+        assert md._opt_cache["data"]["expiry"] == "202608"   # 오늘 것으로 갈아끼웠다
+
+    asyncio.run(_run())
