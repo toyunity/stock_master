@@ -62,6 +62,21 @@ def session_of(now: Optional[dt.datetime] = None) -> str:
     return "live" if OPEN_MIN <= hm < CLOSE_MIN else "closed"
 
 
+def last_close(now: Optional[dt.datetime] = None) -> dt.datetime:
+    """직전 마감 시각(평일 15:45 KST). 오늘 마감을 지났으면 오늘, 아니면 이전 영업일.
+
+    마감 후 캐시가 '다음 개장까지' 유효한지 판단하는 기준이다 — 미결제·당일증감은
+    15:45에 확정되고 그 뒤로 안 변하므로, 마감 이후에 받은 보드는 다시 받을 이유가 없다.
+    공휴일은 보지 않는다(휴장일엔 직전 영업일 값이 그대로 남는다 — 이 앱의 관행)."""
+    now = now or kst.now()
+    cand = now.replace(hour=15, minute=45, second=0, microsecond=0)
+    if now < cand:
+        cand -= dt.timedelta(days=1)
+    while cand.weekday() >= 5:              # 토·일엔 마감이 없다
+        cand -= dt.timedelta(days=1)
+    return cand
+
+
 def month_label(expiry: str) -> str:
     """'202608' → '8월물'. 형식이 아니면 빈 문자열."""
     if not expiry or len(expiry) < 6 or not expiry[:6].isdigit():

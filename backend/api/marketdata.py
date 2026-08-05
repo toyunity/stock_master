@@ -439,6 +439,20 @@ async def _collect_options(client):
             "failed": cf + pf, "ts": time.time()}
 
 
+def _opt_fresh(ts, now, live) -> bool:
+    """캐시가 아직 쓸 만한가 — 스펙 §데이터 흐름 "정규장 3600초 / 그 외 다음 개장까지".
+
+    마감 후에도 **한 번은 받아야 한다.** 미결제·당일증감은 15:45에 확정되고 그 뒤로
+    안 변하며, 장외에도 REST가 마감 스냅샷을 정상 응답한다(2026-08-05 18:40 실측).
+    'live일 때만 수집'으로 두면 마감 후 재기동한 저녁 내내 섹션이 텅 빈다."""
+    if not ts:
+        return False
+    if live:
+        return (time.time() - ts) < _OPT_TTL
+    from backend.flow import options as opt
+    return ts >= opt.last_close(now).timestamp()
+
+
 async def _opt_refresh(client):
     """백그라운드 1회차 — 성공하면 캐시·디스크를 갈아끼우고, 실패하면 직전값을 둔다."""
     try:
@@ -469,10 +483,15 @@ async def get_options(client=None, now=None):
     if client is None:
         return None
     if _opt_cache["data"] is None:
-        _opt_cache["data"] = _opt_load_disk()     # 재기동 직후에도 직전 보드를 보여준다
+        disk = _opt_load_disk()                   # 재기동 직후에도 직전 보드를 보여준다
+        if disk:
+            # 수집 시각도 같이 살린다 — 안 살리면 ts=0이라 재기동할 때마다
+            # '낡았다'고 판단해 780건을 다시 긁는다.
+            _opt_cache["data"] = disk
+            _opt_cache["ts"] = disk.get("ts") or 0.0
     live = opt.session_of(now) == "live"
-    fresh = (time.time() - _opt_cache["ts"]) < _OPT_TTL
-    if live and not fresh and not _opt_cache["busy"]:
+    fresh = _opt_fresh(_opt_cache["ts"], now, live)
+    if not fresh and not _opt_cache["busy"]:
         _opt_cache["busy"] = True
         asyncio.ensure_future(_opt_refresh(client))
     data = _opt_cache["data"]

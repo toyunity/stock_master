@@ -124,3 +124,19 @@ def test_month_label():
     assert opt.month_label("202608") == "8월물"
     assert opt.month_label("202612") == "12월물"
     assert opt.month_label("") == ""
+
+
+def test_last_close_is_the_most_recent_weekday_1545():
+    """직전 마감 시각 — 마감 후 캐시가 '다음 개장까지' 유효한지 판단하는 기준."""
+    def at(y, m, d, h, mi):
+        return dt.datetime(y, m, d, h, mi, tzinfo=KST)
+    # 수요일 18:40 → 같은 날 15:45
+    assert opt.last_close(at(2026, 8, 5, 18, 40)) == at(2026, 8, 5, 15, 45)
+    # 수요일 08:00(개장 전) → 전날(화) 15:45
+    assert opt.last_close(at(2026, 8, 5, 8, 0)) == at(2026, 8, 4, 15, 45)
+    # 토요일 12:00 → 금요일 15:45
+    assert opt.last_close(at(2026, 8, 8, 12, 0)) == at(2026, 8, 7, 15, 45)
+    # 일요일 20:00 → 금요일 15:45(주말엔 마감이 없다)
+    assert opt.last_close(at(2026, 8, 9, 20, 0)) == at(2026, 8, 7, 15, 45)
+    # 월요일 08:00 → 금요일 15:45
+    assert opt.last_close(at(2026, 8, 10, 8, 0)) == at(2026, 8, 7, 15, 45)
