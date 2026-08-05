@@ -22,6 +22,10 @@
 - `H0STCNT0` 46필드/레코드. 사용 인덱스: [0]=code, [1]=HHMMSS, [2]=현재가, [3]=전일대비부호(1/2 상승, 4/5 하락), [5]=전일대비율, [12]=체결량, [13]=누적거래량, [14]=누적거래대금, [18]=체결강도, [21]=CCLD_DVSN(1 매수·5 매도).
 - `H0STPGM0` 11필드/레코드: [0]=code, [1]=HHMMSS, [2]=매도체결량, [3]=매도대금, [4]=매수체결량, [5]=매수대금, [6]=순매수체결량, [7]=순매수대금, [8]=매도호가잔량, [9]=매수호가잔량, [10]=전체순매수호가잔량.
 - 구독: `{"header":{"approval_key":K,"custtype":"P","tr_type":"1"|"0","content-type":"utf-8"},"body":{"input":{"tr_id":T,"tr_key":C}}}`.
+  - **정정(2026-08-06)**: 해지는 `"0"`이 아니라 **`"2"`**다(`1:등록 2:해지`). 여기 적힌 `"0"`이
+    그대로 코드에 들어갔고, 등록만 쓰는 동안 약 한 달을 무증상으로 지나가다 wsbus가 해지를
+    실제로 보내기 시작하자 `OPSP8997 invalid tr_type`으로 터졌다. 이 문서를 참조해 프레임을 다시 짜는
+    사람이 같은 값을 옮기지 않도록 원문은 남기고 정정만 붙인다. 상세: index-futures 스펙 §출하.
 - REST 공통 헤더: authorization Bearer, appkey, appsecret, tr_id, custtype=P.
   - `FHKST01010900` GET `/uapi/domestic-stock/v1/quotations/inquire-investor` params `FID_COND_MRKT_DIV_CODE=J, FID_INPUT_ISCD=code` → `output[]`: stck_bsop_date, prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty (+ stck_clpr).
   - `HHPTJ04160200` GET `/uapi/domestic-stock/v1/quotations/investor-trend-estimate` params `MKSC_SHRN_ISCD=code` → `output2[]`: bsop_hour_gb, frgn_fake_ntby_qty, orgn_fake_ntby_qty, sum_fake_ntby_qty. bsop_hour_gb 매핑: 1→09:30, 2→10:00, 3→11:20, 4→13:20, 5→14:30 (마지막 행이 최신).
