@@ -460,6 +460,11 @@ async def get_options(client=None, now=None):
     최초 백필과 같은 패턴이다. 'stale'은 장중에 TTL이 지났는데 아직 새 값이 없다는
     뜻이고, 마감 후엔 붙이지 않는다(마감은 지연이 아니다 — 선물 칩에서 정한 규칙)."""
     from backend.flow import options as opt
+    if not settings.options_enabled:
+        # 기본 끔(fail-safe). 한 회차가 KIS 호출 최대 1,012건이고 /live 수급과 같은
+        # 키를 나눠 쓴다 — 장중 실측으로 유량이 안전한 게 확인되기 전에는 안 돈다.
+        # 디스크에 남은 직전 보드도 서빙하지 않는다(껐으면 화면에서 통째로 사라져야 한다).
+        return None
     client = client or _client()
     if client is None:
         return None

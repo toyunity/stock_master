@@ -163,6 +163,7 @@ def _isolate_opt_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     monkeypatch.setattr(md, "_OPT_RATE", 1000.0)
     monkeypatch.setattr(kst, "today", lambda: dt.date(2026, 8, 5))
+    monkeypatch.setattr(settings, "options_enabled", True)   # 켠 상태가 이 파일의 기본
     _reset_opt(md)
     yield
     _reset_opt(md)
@@ -277,3 +278,29 @@ def test_get_options_failure_keeps_previous_board(monkeypatch):
     asyncio.run(md._opt_refresh(_Boom()))
     assert md._opt_cache["data"]["expiry"] == "202608"   # 직전값 유지
     assert md._opt_cache["busy"] is False                # 실패해도 잠금은 풀린다
+
+
+# ── 기능 플래그 ────────────────────────────────────────────────────────────
+def test_get_options_is_off_by_default(monkeypatch):
+    """플래그를 안 켜면 옵션 수집이 아예 안 돈다.
+
+    한 회차가 KIS 호출 최대 1,012건이고 /live 수급과 같은 키를 나눠 쓴다 —
+    장중 실측(O8) 전에 자동으로 켜지면 안 된다. 기본값은 끔이다."""
+    from backend.api import marketdata as md
+    from backend.config import settings
+    monkeypatch.setattr(settings, "options_enabled", False)
+    c = _FakeBoard()
+    assert asyncio.run(md.get_options(client=c, now=_LIVE)) is None
+    assert c.at == []                       # KIS를 한 번도 안 부른다
+    assert md._opt_cache["busy"] is False   # 백그라운드 수집도 안 띄운다
+
+
+def test_get_options_off_does_not_read_the_disk_cache(monkeypatch):
+    """꺼져 있으면 디스크에 남은 직전 보드도 서빙하지 않는다 — 화면에서 통째로 사라진다."""
+    from backend.api import marketdata as md
+    from backend.config import settings
+    _install_master(monkeypatch, md, _master_rows())
+    asyncio.run(md._opt_refresh(_FakeBoard()))     # 디스크에 한 회차 저장
+    _reset_opt(md)
+    monkeypatch.setattr(settings, "options_enabled", False)
+    assert asyncio.run(md.get_options(client=_FakeBoard(), now=_CLOSED)) is None

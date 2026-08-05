@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     adr_map: dict[str, str] = {"000660": "SKHY"}  # 원주 코드 → 나스닥 DR 심볼(실거래)
     adr_ratio: float = 10.0
 
+    # 코스피200 옵션 섹션 — 기본 끔(fail-safe). 한 회차가 KIS 호출 최대 1,012건이고
+    # /live 수급과 같은 키를 나눠 쓴다(개인 계정 한도 초당 10건). 장중 실측으로
+    # 유량이 안전한 게 확인되기 전에는 켜지 않는다. 끄면 섹션이 화면에서 통째로 사라진다.
+    options_enabled: bool = False            # SM_OPTIONS_ENABLED
+
     # S9 인증 게이트 (공개 배포 시 필수 — Tailscale Funnel). auth_enabled=True인데
     # 크리덴셜이 없으면 앱이 기동을 거부한다(fail-closed — 공개인데 무방비 방지).
     auth_enabled: bool = False               # SM_AUTH_ENABLED
