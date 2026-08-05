@@ -210,3 +210,44 @@ def test_engine_mirrors_bus_connection_status(monkeypatch):
     eng._sync_status()
     st2 = eng.state.snapshot()["status"]
     assert st2["connected"] is True and st2["note"] == ""
+
+
+def test_close_swallows_the_cancellation_it_caused():
+    """close()가 자기가 취소한 태스크의 CancelledError를 삼켜야 한다.
+
+    `except Exception`은 이걸 **못 잡는다** — CancelledError는 Python 3.8부터
+    BaseException 상속이라 Exception 밖에 있다. 놓치면 FastAPI 종료 훅이
+    'Application shutdown failed'로 끝난다(2026-08-05 실서버 재기동 로그에서
+    실제로 났다). 프로세스는 어차피 죽지만, 뒤따르는 정리 작업이 통째로 건너뛰어진다.
+    """
+    async def go():
+        s = wsbus.WsSession(_FakeClient())
+        s._stop = asyncio.Event()
+
+        async def _forever():
+            await asyncio.sleep(3600)
+
+        s._task = asyncio.ensure_future(_forever())
+        await asyncio.sleep(0)             # 태스크가 실제로 돌기 시작하게
+        await s.close()                    # 여기서 CancelledError가 새면 실패
+        assert s._task is None
+        assert s.status["connected"] is False
+
+    asyncio.run(go())
+
+
+def test_close_all_completes_even_when_the_loop_task_is_running():
+    """종료 훅 경로 전체 — close_all()이 예외 없이 끝나고 싱글턴이 비워진다."""
+    async def go():
+        s = wsbus.WsSession.get(_FakeClient())
+
+        async def _forever():
+            await asyncio.sleep(3600)
+
+        s._stop = asyncio.Event()
+        s._task = asyncio.ensure_future(_forever())
+        await asyncio.sleep(0)
+        await wsbus.WsSession.close_all()
+        assert wsbus.WsSession._inst is None
+
+    asyncio.run(go())

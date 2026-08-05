@@ -64,6 +64,12 @@ class WsSession:
             task.cancel()
             try:
                 await task
+            except asyncio.CancelledError:
+                # 우리가 방금 취소한 것이므로 정상 경로다. **Exception으로는 안 잡힌다** —
+                # CancelledError는 Python 3.8부터 BaseException 상속이라 Exception 밖에
+                # 있다. 놓치면 FastAPI 종료 훅이 'Application shutdown failed'로 끝나고
+                # 뒤따르는 정리가 통째로 건너뛰어진다(2026-08-05 실서버 재기동에서 발생).
+                pass
             except Exception:  # noqa: BLE001 — 정리 경로에선 원인 불문 넘어간다
                 pass
         self._ws, self._sent = None, set()
