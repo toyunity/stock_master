@@ -342,3 +342,22 @@ def test_dashboard_has_collapsed_options_section_hidden_by_default():
     # 증감 차트가 누적보다 **위**에 온다 — 오늘의 신호가 주인공이다
     assert html.index('id="opt-chg"') < html.index('id="opt-oi"')
     assert "loadOptions" in html
+
+
+def test_dashboard_has_collapsed_vkospi_section_that_is_not_open():
+    """VKOSPI 섹션은 **기본 접힘**이고, 펼치기 전엔 조회하지 않는다(지연 로딩).
+
+    다른 섹션(반도체 동향 등)은 즉시 로드지만 이건 다르다 — 안 펼치면 KIS 호출 0건이
+    이 설계의 약속이다."""
+    from backend.report.dashboard import render_dashboard
+    html = render_dashboard([], [], "2026-08-05")
+    assert 'id="volsec"' in html
+    head = html.split('id="volsec"')[1].split(">")[0]
+    assert "open" not in head                       # 기본 접힘
+    assert 'id="vk-chart"' in html and 'id="vk-now"' in html
+    assert "loadVkospi" in html
+    # 최상위에서 즉시 부르는 줄이 없어야 한다. 다른 로더는 `loadSemi(); setInterval(...)`
+    # 처럼 줄 맨 앞에서 바로 부른다 — 이건 토글 핸들러 안에서만 불려야 한다.
+    # (실제 보장은 tests/test_vol_panel_js.py가 fetch 횟수로 잰다. 여기선 값싼 대조.)
+    assert "\nloadVkospi();" not in html
+    assert "addEventListener('toggle'" in html

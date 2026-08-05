@@ -45,13 +45,22 @@ def test_icon_unknown_size_404():
     assert client.get("/icons/icon-999.png").status_code == 404
 
 
-def test_options_route_returns_empty_without_key(monkeypatch):
-    """키가 없으면 빈 dict — 프론트가 섹션을 통째로 숨긴다(에러 토스트 금지)."""
+def test_options_route_returns_empty_when_no_board_has_been_collected(tmp_path, monkeypatch):
+    """수집된 보드가 없으면 빈 dict — 프론트가 섹션을 통째로 숨긴다(에러 토스트 금지).
+
+    **cache_dir를 격리해야 한다.** 안 하면 개발 머신에 실제로 수집된
+    data/cache/options_*.json을 읽어 테스트가 환경에 따라 갈린다(2026-08-05에
+    실제로 그랬다). 배치 분리 이후 표시 경로는 KIS 키와 무관하므로, 이 테스트가
+    확인하는 것은 '키 없음'이 아니라 '수집본 없음'이다."""
     from fastapi.testclient import TestClient
 
+    from backend.api import marketdata as md
     from backend.api.app import create_app
     from backend.config import settings
-    monkeypatch.setattr(settings, "kis_app_key", None)
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "options_enabled", True)
+    md._opt_mem.update({"mtime": 0.0, "data": None})
     with TestClient(create_app()) as c:
         r = c.get("/api/options")
+    md._opt_mem.update({"mtime": 0.0, "data": None})
     assert r.status_code == 200 and r.json() == {}
