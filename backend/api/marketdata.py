@@ -185,6 +185,69 @@ async def _nq_quote(client, fetch=None):
         return None
 
 
+# ── 코스피200 옵션 ─────────────────────────────────────────────────────────
+_OPT_RATE = 5.0     # 초당 발사 상한. 개인 계정 한도는 10건/초인데 /live 수급이
+                    # 2~4건/초를 이미 쓴다 — 절반만 쓴다. 7.3건/초에서 EGW00201이
+                    # 780건 중 6건 났다(2026-08-05 실측).
+_OPT_CONC = 3       # 동시 요청 수(같은 실측의 조합: 동시 3 + 페이싱)
+_OPT_RETRY = 2      # EGW00201 재시도 횟수
+_OPT_BACKOFF = 1.0  # 재시도 첫 대기(초). 매 회 2배 — 테스트가 0으로 덮어쓴다.
+
+
+async def _collect_chain(client, rows, rate=None, conc=None):
+    """옵션 종목 리스트 → (파싱된 행 리스트, 실패 건수). 초당 rate 건을 안 넘는다.
+
+    세마포어만으로는 유량을 못 막는다 — 응답이 빠르면 동시 3으로도 초당 20건이
+    나간다. '직전 발사 예정 시각'을 잠금으로 지켜 간격 자체를 강제한다. 페이싱을
+    세마포어 **안**에서 하는 이유: 예약 직후 곧바로 발사돼야 예약과 실제 발사가
+    어긋나지 않는다(밖에서 하면 세마포어 대기 동안 예약이 밀려 뭉쳐 나간다).
+
+    rate/conc 기본값을 상수로 직접 쓰지 않고 None으로 두는 이유: 기본값은 함수
+    정의 시점에 묶여, 테스트가 _OPT_RATE를 바꿔도 안 먹는다.
+
+    실패는 예외로 올리지 않는다 — 1,012건 중 몇 건은 늘 실패하고, 그건 정상
+    경로다(스펙 §에러 처리). 대신 **몇 건 실패했는지를 반환해 화면이 밝힌다**."""
+    if not rows:
+        return [], 0
+    rate = _OPT_RATE if rate is None else rate
+    conc = _OPT_CONC if conc is None else conc
+    interval = 1.0 / max(rate, 0.001)
+    sem = asyncio.Semaphore(max(1, conc))
+    lock = asyncio.Lock()
+    state = {"next": 0.0, "failed": 0}
+
+    async def pace():
+        async with lock:
+            now = time.monotonic()
+            wait = max(0.0, state["next"] - now)
+            state["next"] = max(now, state["next"]) + interval
+        if wait > 0:
+            await asyncio.sleep(wait)
+
+    async def one(row):
+        delay = _OPT_BACKOFF
+        for attempt in range(_OPT_RETRY + 1):
+            async with sem:
+                await pace()
+                try:
+                    q = await client.option_quote(row["code"])
+                except Exception:
+                    q = None
+            if q is not None:
+                q["code"], q["side"] = row["code"], row.get("side")
+                if not q.get("strike"):
+                    q["strike"] = row.get("strike")   # 응답이 비면 마스터 값으로
+                return q
+            if attempt < _OPT_RETRY and delay:
+                await asyncio.sleep(delay)            # 지수 백오프
+                delay *= 2
+        state["failed"] += 1
+        return None
+
+    out = await asyncio.gather(*(one(r) for r in rows))
+    return [q for q in out if q is not None], state["failed"]
+
+
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)
 _ask_cache: dict = {}     # code -> (ts, dict|None)
 
