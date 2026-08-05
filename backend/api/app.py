@@ -295,6 +295,14 @@ def create_app(settings=None) -> FastAPI:
         from backend.api import marketdata
         return JSONResponse(await marketdata.get_futures() or {})
 
+    @app.get("/api/options")
+    async def options_api():
+        """코스피200 옵션 보드 — 행사가별 미결제·당일증감 + 요약 숫자.
+        한 회차가 수 분이라 서버가 백그라운드로 모으고 여기선 직전값을 곧바로 준다.
+        키없음/콜드면 {} — 프론트가 섹션을 숨긴다."""
+        from backend.api import marketdata
+        return JSONResponse(await marketdata.get_options() or {})
+
     @app.get("/api/fundamentals")
     async def fundamentals_api(request: Request):
         """관심종목 밸류지표(PER/PBR/52주 위치) — 대시보드 카드 칩. 느리게 변해 별도 저빈도 조회."""
