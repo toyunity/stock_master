@@ -361,3 +361,19 @@ def test_dashboard_has_collapsed_vkospi_section_that_is_not_open():
     # (실제 보장은 tests/test_vol_panel_js.py가 fetch 횟수로 잰다. 여기선 값싼 대조.)
     assert "\nloadVkospi();" not in html
     assert "addEventListener('toggle'" in html
+
+
+def test_every_dashboard_section_starts_collapsed():
+    """홈 진입 시 섹션은 전부 접혀 있어야 한다(사용자 요청 2026-08-05).
+
+    <details>의 열림 상태는 새로고침에 안 남는다 — 마크업에 open이 있으면 매번
+    다시 펼쳐진다. 섹션이 넷으로 늘어난 뒤로는 펼친 채로 두면 관심종목 카드가
+    화면 한참 아래로 밀린다. 새 섹션을 추가할 때도 이 불변식을 지킨다."""
+    import re
+
+    from backend.report.dashboard import render_dashboard
+    html = render_dashboard([], [], "2026-08-05")
+    tags = re.findall(r"<details[^>]*>", html)
+    assert tags, "섹션이 하나도 없다"
+    opened = [t for t in tags if re.search(r"\bopen\b", t)]
+    assert opened == [], "펼친 채로 시작하는 섹션이 있다: %s" % opened
