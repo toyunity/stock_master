@@ -884,3 +884,32 @@ def test_chart_has_volume_label():
     from backend.report.live_page import render_live_page
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'id="vol-lb"' in html
+
+
+def test_adr_panel_only_for_stocks_that_have_a_dr():
+    """ADR이 없는 종목엔 패널을 아예 안 그린다(사용자 요청 2026-08-05).
+
+    지금까지는 모든 종목에 패널을 그리고 '데이터 없음 — 조회 실패 또는 미지원 종목.
+    자동 재시도 중'을 띄웠다. 삼성전자·ETF처럼 **DR이 아예 없는 종목**엔 재시도할
+    것도 없는데 영원히 '대기 중'으로 남아 자리만 차지한다.
+
+    어느 종목에 DR이 있는지는 서버가 이미 안다(settings.adr_map) — 렌더 시점에 가른다.
+    'DR은 있는데 조회 실패'는 여전히 패널 안에서 안내한다(그건 재시도가 의미 있다)."""
+    from backend.config import settings
+    from backend.report.live_page import render_live_page
+    have = next(iter(settings.adr_map))              # 000660 SK하이닉스
+    assert 'id="adr-fresh"' in render_live_page(have, "SK하이닉스", "live")
+    for code, nm in (("005930", "삼성전자"), ("411060", "ACE KRX금현물")):
+        html = render_live_page(code, nm, "live")
+        assert 'id="adr-fresh"' not in html, "%s(%s)에 ADR 패널이 남아있다" % (nm, code)
+        # 마크업 앵커가 전부 사라져야 한다(JS 주석의 'ADR'은 남아도 무해하다)
+        for anchor in ('id="adr-usd"', 'id="adr-conv"', 'id="adr-ord"', 'id="adr-note"'):
+            assert anchor not in html, "%s: %s 가 남아있다" % (nm, anchor)
+
+
+def test_adr_absent_page_still_renders_the_rest_of_the_section():
+    """ADR만 빠지고 같은 섹션의 다른 패널(거래소별 거래량 등)은 그대로 남아야 한다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("005930", "삼성전자", "live")
+    assert "거래소별 거래량" in html and 'id="xv-fresh"' in html
+    assert "체결 규모 분포" in html
