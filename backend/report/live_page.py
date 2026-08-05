@@ -456,17 +456,7 @@ __ICONS__
 <details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·거래소·체결 <span class="chev">▾</span></summary>
   <div class="sec-body">
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-globe"/></svg> ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
-      <div class="grid3">
-        <div><div class="lbl" id="adr-usd-lbl">DR 가격($)</div><div class="val" id="adr-usd">–</div></div>
-        <div><div class="lbl">환산가(원)</div><div class="val" id="adr-conv">–</div></div>
-        <div><div class="lbl">원주 현재가</div><div class="val" id="adr-ord">–</div></div>
-      </div>
-      <div class="sig" id="adr-sig"></div>
-      <div class="meta" id="adr-note">환산가 = DR가격 × 전환비율 × USD/KRW — 미국 시장이 매긴
-      SK하이닉스 값을 원화로 환산. 원주보다 비싸면(+, 적색) 미국 프리미엄.</div>
-    </div>
+__ADR_PANEL__
     <div class="panel">
       <h2><svg class="hic"><use href="#i-split"/></svg> 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
       <div class="grid3">
@@ -1197,8 +1187,12 @@ function render(S){
     document.getElementById('sb-note').textContent='대차잔고: 데이터 없음 — 소스(금융투자협회·예탁결제원) 응답 실패 또는 미공시. 자동 재시도 중.';
   }
   // ── ADR 환산가·괴리율(P1-4): 환산·괴리율은 서버 스냅샷 계산값 ──
+  // DR이 없는 종목엔 패널 자체가 없다(서버가 settings.adr_map으로 가른다) —
+  // 그때 getElementById는 null이라 아래 접근이 전부 TypeError가 되고, 그러면
+  // 이 뒤의 공매도·체결 렌더까지 통째로 죽는다. 앵커 하나로 먼저 막는다.
   const A=S.adr;
-  if(A){
+  if(!document.getElementById('adr-fresh')){ /* ADR 없는 종목 — 건너뛴다 */ }
+  else if(A){
     document.getElementById('adr-usd-lbl').textContent=esc(A.sym)+' ($)';
     document.getElementById('adr-usd').textContent='$'+A.usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const cv=document.getElementById('adr-conv');
@@ -1467,6 +1461,30 @@ try{document.querySelectorAll('details.sec').forEach(function(d){
 _MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}
 
 
+_ADR_PANEL = """    <div class="panel">
+      <h2><svg class="hic"><use href="#i-globe"/></svg> ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
+      <div class="grid3">
+        <div><div class="lbl" id="adr-usd-lbl">DR 가격($)</div><div class="val" id="adr-usd">–</div></div>
+        <div><div class="lbl">환산가(원)</div><div class="val" id="adr-conv">–</div></div>
+        <div><div class="lbl">원주 현재가</div><div class="val" id="adr-ord">–</div></div>
+      </div>
+      <div class="sig" id="adr-sig"></div>
+      <div class="meta" id="adr-note">환산가 = DR가격 × 전환비율 × USD/KRW — 미국 시장이 매긴
+      원주 값을 원화로 환산. 원주보다 비싸면(+, 적색) 미국 프리미엄.</div>
+    </div>"""
+
+
+def _adr_panel(code: str) -> str:
+    """DR이 있는 종목에만 ADR 패널을 그린다.
+
+    없는 종목(삼성전자·ETF 등)에도 그리면 '데이터 없음 — 조회 실패 또는 미지원 종목.
+    자동 재시도 중'이 영원히 남는다. 재시도할 게 없는데 대기 중처럼 보이는 건 거짓말이고,
+    자리만 차지한다. 어느 종목에 DR이 있는지는 서버가 이미 안다(settings.adr_map).
+    'DR은 있는데 조회 실패'는 여전히 패널 안에서 안내한다 — 그건 재시도가 의미 있다."""
+    from backend.config import settings
+    return _ADR_PANEL if code in getattr(settings, "adr_map", {}) else ""
+
+
 def render_live_page(code: str, name: str, mode: str, email=None) -> str:
     import json
 
@@ -1487,6 +1505,7 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
+            .replace("__ADR_PANEL__", _adr_panel(code))
             .replace("__CODE__", escape(code))
             .replace("__NAME__", escape(name))
             .replace("__MODE__", escape(mode.upper()))
