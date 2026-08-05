@@ -26,9 +26,16 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const snap = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];  // [0]=차트 라이브러리, [1]=페이지 로직
+// 실제 페이지에 존재하는 id만 인정한다 — 제거된 패널의 id를 getElementById가 계속
+// 유령 엘리먼트로 만들어주면(구 하니스), 그 id에 접근하는 죽은 JS 참조를 이 테스트가
+// 못 잡는다(2026-08-04: '왜 움직였나·배우기' 섹션 제거 하니스 강화). 실 브라우저처럼
+// 없는 id는 null을 돌려줘, 그 뒤 .textContent= 등에서 TypeError로 렌더가 죽어야 잡힌다.
+const validIds = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
 const els = {};
 global.document = {
-  getElementById: id => els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}),
+  getElementById: id => validIds.has(id)
+    ? (els[id] || (els[id] = {textContent:'', innerHTML:'', className:'', style:{}}))
+    : null,
   querySelectorAll: () => [],
 };
 global.__lines = [];  // createPriceLine 기록 — 감시선 렌더 검증(P1-8)
@@ -44,14 +51,13 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl','tm-reasons'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh',
-                  'tm-headline','tm-comment','tm-fresh'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -139,11 +145,6 @@ def _full_snapshot():
         "glob": {"seln": 831835, "shnu": 739909, "ntby": -91926,
                  "seln_rlim": 10.46, "shnu_rlim": 9.31},
         "asof": "16:31:13"})
-    s.set_timing({"stance": "buy", "tone": "good", "headline": "🟢 매수 우호",
-                  "comment": "상승추세+수급 유입 — 매수 우호, 20일선 눌림목 분할 접근",
-                  "reasons": ["정배열(현재가>20일>60일>120일)", "외인·기관 3일 연속 순매수"],
-                  "entry_hint": "20일선 2,180,000원 눌림목 지지 확인 시 분할",
-                  "overheated": False, "confidence": 2, "asof": "13:20"})
     s.set_status(connected=True, note="")
     return s.snapshot()
 
@@ -207,11 +208,6 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
     assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
-    # 매매 타이밍 패널: 판정 헤드라인·코멘트·근거가 채워짐(참고용 라벨)
-    assert "매수" in texts["tm-headline"] and "확신도" in texts["tm-headline"]
-    assert "수급 유입" in texts["tm-comment"]
-    assert int(filled["tm-reasons"]) > 0            # 근거 목록 렌더
-    assert "참고용" in texts["tm-fresh"]
     # 확정 밴드 · 태그(설계 2026-07-20)
     page = html_p.read_text(encoding="utf-8")
     assert "tag-fixed" in page and "tag-live" in page
@@ -664,6 +660,119 @@ def test_candle_chart_preserves_view_on_autorefresh(tmp_path):
     assert c["FIT_after_init"] == 1       # 최초 로드는 fit(전체 보기)
     assert c["FIT_after_refresh"] == 1     # 60초 자동 갱신은 뷰 보존(fit 안 함)
     assert c["FIT_after_switch"] == 2      # 타임프레임 전환은 fit
+
+
+# ── 기업 체력(차트 위 접힘 섹션): loadFin의 fetch 경로 ──────────────────────
+# render() 스모크는 이 경로를 안 건드린다(loadFin은 fetch 구동). 'HTML에 문자열이
+# 있다'는 검사는 생산자가 없어도 통과하므로(2026-08 stale 배지 실사고), 실제로 실행해
+# 요약 줄·쉬운말 목록이 만들어지는지와 데이터가 없을 때 섹션이 숨는지를 계측한다.
+_FIN_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const payload = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
+const els = {};
+const mk = id => ({__id:id, textContent:'', innerHTML:'', className:'', style:{},
+                   querySelectorAll: () => []});
+global.document = {
+  hidden:false,
+  getElementById: id => els[id] || (els[id] = mk(id)),
+  querySelectorAll: () => [], addEventListener: () => {},
+};
+global.window = { addEventListener: () => {} };
+global.location = { href:'' };
+global.setTimeout = () => 0; global.clearTimeout = () => {}; global.setInterval = () => {};
+function MockES(){ this.readyState=0; this.close=function(){}; }
+MockES.CONNECTING=0; MockES.OPEN=1; MockES.CLOSED=2; global.EventSource = MockES;
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){return {};}}),
+  timeScale: () => ({fitContent(){}}), applyOptions(){},
+})};
+global.fetch = async (u) => (String(u).indexOf('/api/financials/') >= 0)
+  ? {ok:true, status:200, json: async () => payload}
+  : {ok:false, status:500, json: async () => ({})};
+eval(code);
+const flush = () => new Promise(r => setImmediate(r));
+(async () => {
+  for (let i=0;i<6;i++) await flush();   // loadFin의 fetch→json 마이크로태스크 배수
+  // 미접촉 엘리먼트는 빈 문자열로 보고한다(화면에 아무것도 안 뜬 것과 같은 상태)
+  const txt = id => String(els[id] ? els[id].textContent : '');
+  const htm = id => String(els[id] ? els[id].innerHTML : '');
+  console.log('DISPLAY=' + String((els['finsec']||{style:{}}).style.display));
+  console.log('DIGEST=' + txt('fin-digest'));
+  console.log('BODY=' + htm('fin'));
+})();
+"""
+
+
+def _fin_harness(tmp_path, payload):
+    import json as _json
+    from backend.report.live_page import render_live_page
+    html_p, pay_p, js_p = (tmp_path / "live.html", tmp_path / "fin.json",
+                           tmp_path / "fin.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    pay_p.write_text(_json.dumps(payload), encoding="utf-8")
+    js_p.write_text(_FIN_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(pay_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+_FIN_PAYLOAD = {
+    "valuation": {"per": 31.24, "pbr": 10.55, "w52_pos": 58.2},
+    "financials": [{"period": "2026-03", "roe": 61.16, "debt": 35.56}],
+    "explains": {"per": "PER 31.24 — 이익의 31.24배, 비싼 편이에요",
+                 "w52": "52주 58.2% — 1년 범위 중간쯤",
+                 "roe": "ROE 61.16% — 자본 대비 잘 버는 편",
+                 "debt": "부채비율 35.56% — 빚 적은 편, 안정적",
+                 "pbr": "PBR 10.55 — 순자산의 10.55배, 비싼 편"},
+    "concepts": {"per": {"title": "PER (주가수익비율)", "body": "주가가 순이익의 몇 배인지."},
+                 "roe": {"title": "ROE (자기자본이익률)", "body": "자기 돈으로 얼마 버는지."}},
+}
+
+
+@needs_node
+def test_fin_panel_fills_digest_and_explanations(tmp_path):
+    out = _fin_harness(tmp_path, _FIN_PAYLOAD)
+    assert out["DISPLAY"] == ""                       # 데이터 있으면 섹션 노출
+    # 접힌 줄 요약: 밸류·수익성·안정성 한 개씩(가로 1줄에 들어가는 3개)
+    assert out["DIGEST"] == "PER 31.2 · ROE 61% · 부채 36%"
+    body = out["BODY"]
+    for n in ("PER", "PBR", "52주", "ROE", "부채"):
+        assert n in body                              # 숫자 요약에 5지표 전부
+    assert "2026-03 기준" in body                     # 재무 기준 분기 명시
+    assert "잘 버는 편" in body and "빚 적은 편" in body   # 지표별 쉬운말
+    assert body.count("<li>") == 5                    # 5줄 전부 렌더
+    assert 'id="cexp-per"' in body and "주가수익비율" in body   # ⓘ 개념 설명 동봉
+
+
+@needs_node
+def test_fin_panel_hides_itself_when_no_data(tmp_path):
+    # 키 없음·조회 실패·재무 미제공 → '기업 체력'이라 써놓고 열면 빈 화면인 상태를 만들지 않는다
+    out = _fin_harness(tmp_path, {"valuation": None, "financials": [],
+                                  "explains": {}, "concepts": {}})
+    assert out["DISPLAY"] == "none"
+    assert out["DIGEST"] == "" and out["BODY"] == ""
+
+
+def test_fin_section_sits_above_chart_and_is_collapsed():
+    # 배치·기본 접힘은 실행이 아니라 마크업의 사실 — bake 스크린샷은 details.sec을
+    # 강제로 열기 때문에 이 두 가지를 증명하지 못한다.
+    import re
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert html.index('id="finsec"') < html.index('id="pchart"')   # 차트 위
+    tag = re.search(r'<details[^>]*id="finsec"[^>]*>', html).group(0)
+    assert " open" not in tag                                       # 기본 접힘
+    assert 'style="display:none"' in tag                            # 데이터 오기 전 깜빡임 방지
 
 
 # ── 감시선 편집기: 저장 경로(POST payload 구성·무효 줄 필터·응답 반영) ──────

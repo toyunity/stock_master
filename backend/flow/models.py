@@ -174,8 +174,6 @@ class FlowState:
         # 거래소별 거래량·거래원 창구(각 60s 갱신, 실패 시 이전 값 유지)
         self._exvol: Optional[dict] = None
         self._member: Optional[dict] = None
-        # 매매 타이밍 판정(이평 20/60/120 × 수급) — 60초 주기 재계산, 당일 한정
-        self._timing: Optional[dict] = None
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -287,9 +285,6 @@ class FlowState:
     def set_shortsale(self, d: dict) -> None:
         self._shortsale = {"rows": list(d.get("rows") or []), "asof": d.get("asof")}
 
-    def set_timing(self, d: Optional[dict]) -> None:
-        self._timing = d
-
     def set_status(self, **kw) -> None:
         self._status.update(kw)
 
@@ -311,7 +306,6 @@ class FlowState:
         self._estimate_rows = []
         self._est_detail = {"asof": None, "rows": [],
                             "etc_qty": None, "etc_value": None}
-        self._timing = None    # 당일 수급 기반 — 전일 판정이 남지 않게
 
     def _stall_snapshot(self) -> dict:
         """마지막 실체결/프로그램 수신 후 경과 — 정지 판정은 서버가 한다(P0-2).
@@ -364,7 +358,6 @@ class FlowState:
                        "signal": credit_signal(self._credit["rows"])},
             "shortsale": {"rows": list(self._shortsale["rows"]),
                           "asof": self._shortsale["asof"]},
-            "timing": self._timing,
             "status": dict(self._status),
         }
 

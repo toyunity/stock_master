@@ -299,13 +299,11 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/financials/{code}")
     async def financials_api(code: str):
-        """단일 종목 재무 체력(ROE·부채·매출성장) + 밸류 — /live 상세. 6자리 코드만."""
+        """단일 종목 기업 체력(PER·PBR·52주·ROE·부채) + 쉬운말 — /live 접힘 패널. 6자리 코드만."""
         from backend.api import marketdata
         if not _CODE_RE.match(code):
             return Response(status_code=404)
-        detail = await marketdata.get_stock_detail(code)
-        detail.update(await marketdata.get_stock_read(code))   # outlook+situation+phase+has_adr
-        return JSONResponse(detail)
+        return JSONResponse(await marketdata.get_stock_detail(code))
 
     @app.get("/api/outlook")
     async def outlook_api(request: Request):

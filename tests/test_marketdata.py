@@ -56,27 +56,6 @@ def test_get_fundamentals_maps_skips_failure_and_caches(monkeypatch):
     assert sorted(c.fun_calls) == ["A", "BAD"]
 
 
-def test_get_stock_detail_assembles_and_caches():
-    from backend.api import marketdata as md
-    md._detail_cache.clear()
-
-    class C:
-        def __init__(self):
-            self.calls = 0
-        async def fundamentals(self, code):
-            self.calls += 1
-            return {"per": 31.24, "w52_pos": 58.2}
-        async def financials(self, code):
-            return [{"period": "2026-03", "roe": 61.16, "debt": 35.56}] * 6
-
-    c = C()
-    d = asyncio.run(md.get_stock_detail("000660", client=c))
-    assert d["valuation"] == {"per": 31.24, "w52_pos": 58.2}
-    assert len(d["financials"]) == 4 and d["financials"][0]["roe"] == 61.16   # 최근 4분기로 컷
-    asyncio.run(md.get_stock_detail("000660", client=c))                       # 캐시
-    assert c.calls == 1
-
-
 def test_get_top_view_joins_names_and_caches():
     from backend.api import marketdata as md
     md._topview_cache["ts"], md._topview_cache["data"] = 0.0, None
@@ -114,60 +93,6 @@ def test_get_outlook_assembles_and_caches(monkeypatch):
     assert o["direction"] == "up" and o["reasons"]
     o2 = asyncio.run(md.get_outlook("000660", client=c))      # 60초 캐시
     assert o2 is o
-
-
-def test_get_stock_read_bundles_outlook_situation_phase(monkeypatch):
-    from backend.api import marketdata as md
-    md._read_cache.clear()
-    md._detail_cache.clear()
-
-    async def fake_signals(code, client):
-        return {"is_semi": True, "has_adr": True, "session": "us_closed",
-                "us": {"sox_rate": -1.6}, "adr": {"overnight_rate": -0.3},
-                "flow": {"frgn_net": -1, "orgn_net": -1},
-                "momentum": {"rate": -12.1, "overheated": False}}
-    monkeypatch.setattr(md, "_gather_signals", fake_signals)
-
-    class C:
-        async def fundamentals(self, code):
-            return {"per": 31.0, "w52_pos": 58.0}
-        async def financials(self, code):
-            return [{"roe": 61.0, "debt": 36.0}]
-    r = asyncio.run(md.get_stock_read("000660", client=C()))
-    assert r["outlook"]["direction"] == "down"
-    assert r["situation"]["sentences"]
-    assert r["phase"] in ("장중", "장 종료", "정규장 마감 · 나스닥 DR 거래 중")
-    assert r["has_adr"] is True
-
-
-def test_get_stock_detail_has_concepts_and_has_adr():
-    from backend.api import marketdata as md
-    md._detail_cache.clear()
-
-    class C:
-        async def fundamentals(self, code):
-            return {"per": 31.0}
-        async def financials(self, code):
-            return [{"roe": 61.0, "debt": 36.0}]
-    d = asyncio.run(md.get_stock_detail("000660", client=C()))
-    assert d["concepts"]["per"]["title"]         # 개념 설명 번들
-    assert "has_adr" in d
-
-
-def test_get_stock_detail_includes_explains():
-    """상세에 값 인식형 쉬운말(explains)이 붙는다 — 순수, 네트워크 없음."""
-    from backend.api import marketdata as md
-    md._detail_cache.clear()
-
-    class C:
-        async def fundamentals(self, code):
-            return {"per": 31.24, "pbr": 10.55, "w52_pos": 58.0}
-        async def financials(self, code):
-            return [{"period": "2026-03", "roe": 61.0, "debt": 36.0}]
-    d = asyncio.run(md.get_stock_detail("000660", client=C()))
-    assert "비싼 편" in d["explains"]["per"]
-    assert "잘 버는" in d["explains"]["roe"]
-    assert "적은 편" in d["explains"]["debt"]
 
 
 def test_get_asking_caches():
@@ -215,6 +140,11 @@ def test_routes_smoke_without_key(tmp_path, monkeypatch):
     assert c.get("/api/market").status_code == 200 and c.get("/api/market").json() == {}
     assert c.get("/api/fundamentals").status_code == 200 and c.get("/api/fundamentals").json() == {}
     assert c.get("/api/futures").status_code == 200 and c.get("/api/futures").json() == {}
+    # 기업 체력: 키 없으면 {} (200) — /live가 섹션을 숨김. 코드 형식은 여전히 검증
+    assert c.get("/api/financials/000660").status_code == 200
+    assert c.get("/api/financials/000660").json() == {}
+    assert c.get("/api/financials/00066").status_code == 404      # 6자리 아님
+    assert c.get("/api/financials/abcdef").status_code == 404
 
 
 class _FakeFut:
@@ -529,3 +459,82 @@ def test_get_futures_nasdaq_uses_short_ttl_regardless_of_korean_session():
     assert c.calls == 1                  # K200은 300초 TTL 안이라 전광판을 다시 부르지 않았다
     assert d2["nq"]["price"] == 28404.25
     assert d2["k200"]["price"] == 885.25
+
+
+# ── 기업 체력(밸류 + 재무) — /live 차트 위 접힘 패널 ──
+
+def test_get_stock_detail_assembles_and_caches():
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class C:
+        def __init__(self):
+            self.calls = 0
+        async def fundamentals(self, code):
+            self.calls += 1
+            return {"per": 31.24, "w52_pos": 58.2}
+        async def financials(self, code):
+            return [{"period": "2026-03", "roe": 61.16, "debt": 35.56}] * 6
+
+    c = C()
+    d = asyncio.run(md.get_stock_detail("000660", client=c))
+    assert d["valuation"] == {"per": 31.24, "w52_pos": 58.2}
+    assert len(d["financials"]) == 4 and d["financials"][0]["roe"] == 61.16   # 최근 4분기로 컷
+    asyncio.run(md.get_stock_detail("000660", client=c))                       # 캐시
+    assert c.calls == 1
+
+
+def test_get_stock_detail_includes_explains_and_concepts():
+    """숫자와 함께 값 인식형 쉬운말·개념 설명이 붙는다 — 순수, 네트워크 없음."""
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class C:
+        async def fundamentals(self, code):
+            return {"per": 31.24, "pbr": 10.55, "w52_pos": 58.0}
+        async def financials(self, code):
+            return [{"period": "2026-03", "roe": 61.0, "debt": 36.0}]
+    d = asyncio.run(md.get_stock_detail("000660", client=C()))
+    assert "비싼 편" in d["explains"]["per"]
+    assert "잘 버는" in d["explains"]["roe"]
+    assert "적은 편" in d["explains"]["debt"]
+    assert d["concepts"]["per"]["title"] and d["concepts"]["debt"]["body"]
+    # 제거된 섹션의 잔재(오늘현황·내일예상·초보가이드·장단계)를 다시 끌고 오지 않는다
+    assert set(d) == {"valuation", "financials", "explains", "concepts"}
+
+
+def test_get_stock_detail_survives_failure_with_last_good():
+    """조회 실패 시 직전 성공값 유지, 첫 조회부터 실패면 빈 dict(패널이 숨음)."""
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class Boom:
+        async def fundamentals(self, code):
+            raise RuntimeError("KIS down")
+        async def financials(self, code):
+            return []
+    assert asyncio.run(md.get_stock_detail("000660", client=Boom())) == {}
+
+    class OK:
+        async def fundamentals(self, code):
+            return {"per": 12.0}
+        async def financials(self, code):
+            return [{"period": "2026-03", "roe": 8.0, "debt": 40.0}]
+    good = asyncio.run(md.get_stock_detail("000660", client=OK()))
+    md._detail_cache["000660"] = (0.0, good)          # TTL 만료 강제
+    assert asyncio.run(md.get_stock_detail("000660", client=Boom())) == good
+
+
+def test_get_stock_detail_omits_missing_metrics():
+    """재무·밸류가 비면 explains 키가 아예 없다 — 모르는 값을 0으로 지어내지 않는다."""
+    from backend.api import marketdata as md
+    md._detail_cache.clear()
+
+    class Empty:
+        async def fundamentals(self, code):
+            return None
+        async def financials(self, code):
+            return []
+    d = asyncio.run(md.get_stock_detail("000660", client=Empty()))
+    assert d["valuation"] is None and d["financials"] == []
+    assert d["explains"] == {}
