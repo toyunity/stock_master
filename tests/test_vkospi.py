@@ -77,3 +77,71 @@ def test_index_daily_uses_correct_tr_path_and_params():
                               "FID_INPUT_DATE_1": "20260805",
                               "FID_PERIOD_DIV_CODE": "D"}
     assert d["now"]["price"] == 78.55
+
+
+# ── TTL 캐시 + 라우트 ──────────────────────────────────────────────────────
+import pytest  # noqa: E402
+
+
+class _FakeVk:
+    """index_daily 호출 횟수를 세는 가짜 클라이언트."""
+
+    def __init__(self, fail=False):
+        self.calls, self.fail = 0, fail
+
+    async def index_daily(self, iscd, date):
+        self.calls += 1
+        assert iscd == "0503"          # 4자리 — 5자리를 넘기면 조용히 0.00이 온다
+        if self.fail:
+            raise RuntimeError("KIS 죽음")
+        return {"now": {"price": 78.55, "change": -3.5, "rate": -4.27, "sign": "down"},
+                "days": [{"d": "20260804", "v": 82.05}, {"d": "20260805", "v": 78.55}]}
+
+
+@pytest.fixture(autouse=True)
+def _reset_vk():
+    from backend.api import marketdata as md
+    md._vk_cache.update({"ts": 0.0, "data": None})
+    yield
+    md._vk_cache.update({"ts": 0.0, "data": None})
+
+
+def test_get_vkospi_returns_now_and_days_and_caches():
+    from backend.api import marketdata as md
+    c = _FakeVk()
+    d = asyncio.run(md.get_vkospi(client=c))
+    assert d["now"]["price"] == 78.55 and len(d["days"]) == 2
+    assert d["ts"] > 0
+    asyncio.run(md.get_vkospi(client=c))          # 60초 캐시
+    assert c.calls == 1
+
+
+def test_get_vkospi_keeps_last_value_on_failure():
+    """조회가 실패해도 직전값을 보여준다 — 빈 섹션보다 낫다."""
+    from backend.api import marketdata as md
+    asyncio.run(md.get_vkospi(client=_FakeVk()))
+    md._vk_cache["ts"] = 0.0                       # TTL 만료
+    d = asyncio.run(md.get_vkospi(client=_FakeVk(fail=True)))
+    assert d["now"]["price"] == 78.55
+
+
+def test_get_vkospi_empty_when_cold_and_failing():
+    from backend.api import marketdata as md
+    assert asyncio.run(md.get_vkospi(client=_FakeVk(fail=True))) == {}
+
+
+def test_get_vkospi_empty_without_key(monkeypatch):
+    from backend.api import marketdata as md
+    monkeypatch.setattr(md, "_client", lambda: None)
+    assert asyncio.run(md.get_vkospi()) == {}
+
+
+def test_vkospi_route_returns_empty_without_key(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.api.app import create_app
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    with TestClient(create_app()) as c:
+        r = c.get("/api/vkospi")
+    assert r.status_code == 200 and r.json() == {}

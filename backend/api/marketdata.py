@@ -51,6 +51,39 @@ async def get_indices(client=None):
     return _idx_cache["data"]
 
 
+_VK_TTL = 60.0            # 변동성지수 60초. 지연 로딩이라 폭주 위험이 낮다.
+_vk_cache = {"ts": 0.0, "data": None}
+
+
+async def get_vkospi(client=None, now=None):
+    """코스피200 변동성지수(VKOSPI) — 현재값 + 최근 100거래일. 60초 캐시.
+
+    한 번의 호출이 현재값과 이력을 둘 다 준다(TR이 output1/output2로 함께 준다).
+    화면에서는 **섹션을 펼칠 때만** 부르므로(지연 로딩) 대시보드를 열 때마다 나가는
+    호출이 늘지 않는다. 장중/장외를 나누지 않는다 — 한 건짜리 호출에 세션 규칙을
+    새로 만들 값어치가 없고, 옵션 마감(15:45)이 이 지수에도 그대로 적용되는지는
+    확인하지 않았다(추측하지 않는다).
+
+    실패하면 직전값을 그대로 준다. 콜드 상태로 실패하면 {} → 섹션이 통째로 숨는다."""
+    from backend.flow import kis, kst
+    client = client or _client()
+    if client is None:
+        return _vk_cache["data"] or {}
+    if _vk_cache["data"] is not None and time.time() - _vk_cache["ts"] < _VK_TTL:
+        return _vk_cache["data"]
+    try:
+        d = await client.index_daily(kis.VKOSPI_ISCD,
+                                     (now or kst.now()).strftime("%Y%m%d"))
+    except Exception:
+        return _vk_cache["data"] or {}
+    if not d or not d.get("days"):
+        return _vk_cache["data"] or {}
+    out = dict(d)
+    out["ts"] = time.time()
+    _vk_cache["ts"], _vk_cache["data"] = out["ts"], out
+    return out
+
+
 _FUT_TTL_LIVE, _FUT_TTL_IDLE = 30.0, 300.0   # 세션 활성 30초 / 비활성 5분
 _fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}}
 _FUT_LABEL = {"night": "야간선물"}

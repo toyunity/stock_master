@@ -287,6 +287,13 @@ def create_app(settings=None) -> FastAPI:
         from backend.api import marketdata
         return JSONResponse(await marketdata.get_indices() or {})
 
+    @app.get("/api/vkospi")
+    async def vkospi_api():
+        """코스피200 변동성지수 — 현재값 + 최근 100거래일. 섹션을 펼칠 때만 호출된다.
+        키없음/실패면 {} — 프론트가 섹션을 숨긴다."""
+        from backend.api import marketdata
+        return JSONResponse(await marketdata.get_vkospi() or {})
+
     @app.get("/api/futures")
     async def futures_api():
         """지수 선물 칩 2종 — K200(주간↔야간 세션 전환) + 나스닥100 대용 QQQ ETF.
