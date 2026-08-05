@@ -32,6 +32,7 @@ _DAILY_SEC = 1800    # 일별 확정 재조회 간격(장 종료 후 당일분 �
 _LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재연결 churn이
                      # KIS 서버측 절단(EOF)을 유발하므로(실측) 즉시 해체 금지
 _FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 비지 않게)
+_STATUS_SEC = 1      # 공유 세션(wsbus)의 연결 상태를 화면 상태로 옮겨 적는 주기
 
 
 def _program_backfill_ok() -> bool:
@@ -53,6 +54,8 @@ class FlowEngine:
         self._stop_task = None   # 지연 정지 예약
         self._client = None      # KisClient 재사용(approval_key 메모리 캐시 유지)
         self._day = kst.today()  # 당일 한정 패널의 기준일(날짜 변경 감지용, KST)
+        self._bus = None         # 공유 웹소켓 세션(wsbus) — 연결은 저쪽이 소유
+        self._ws_regs = []       # 이 엔진이 버스에 걸어둔 (tr_id, handler)
 
     @classmethod
     def get(cls, code: str) -> "FlowEngine":
@@ -114,6 +117,9 @@ class FlowEngine:
             except (asyncio.CancelledError, Exception):
                 pass
             self._task = None
+        # 취소가 _ws_link의 finally보다 먼저 닿을 수 있어 여기서 한 번 더 반납한다
+        # (_ws_detach는 멱등). 안 하면 화면을 닫은 종목의 구독이 버스에 남는다.
+        await self._ws_detach()
 
     def _rollover_if_new_day(self) -> None:
         """엔진·FlowState는 레지스트리에 영속 → 서버가 주말을 넘겨 떠 있으면
@@ -146,7 +152,7 @@ class FlowEngine:
             await DemoSource(self.state).run(stop)
             return
         await asyncio.gather(self._poll_rest(client, stop),
-                             self._ws_loop(client, stop),
+                             self._ws_link(client, stop),
                              self._ws_fallback(client, stop))
 
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
@@ -275,59 +281,54 @@ class FlowEngine:
             except Exception:
                 log.warning("REST 시세 폴백 실패 — 다음 주기 재시도", exc_info=True)
 
-    async def _ws_loop(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
-        import random
+    async def _ws_link(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
+        """실시간 등록을 잡고 정지 신호까지 유지한다 — 연결은 wsbus가 단독 소유한다.
 
-        import websockets
-        # KIS는 1키 1세션 — 프로세스 재시작 직후엔 이전 세션 정리 전까지
-        # 접속을 EOF로 거부한다(실측). 짧은 백오프로 두드리면 보호가 연장되므로
-        # 5초에서 시작해 지터를 섞는다.
-        backoff = 5
-        while not stop.is_set():
-            try:
-                key = await client.approval_key()
-                ccnl_tr, pgm_tr = kis.ws_tr_ids(settings.market_div)
-                async with websockets.connect(kis.WS_URL, ping_interval=None) as ws:
-                    await ws.send(kis.build_subscribe(key, ccnl_tr, self.code))
-                    await ws.send(kis.build_subscribe(key, pgm_tr, self.code))
-                    self.state.set_status(connected=True, note="")
-                    backoff = 5
-                    while not stop.is_set():
-                        raw = await asyncio.wait_for(ws.recv(), timeout=60)
-                        if kis.is_pingpong(raw):
-                            await ws.send(raw)  # 원문 그대로 에코(연결 유지 필수)
-                            continue
-                        parsed = kis.split_frames(raw)
-                        if not parsed:
-                            continue
-                        kind, payload = parsed
-                        if kind == "json":
-                            err = kis.subscribe_error(payload)
-                            if err:  # 구독 거부 — 길게 물러나 재시도
-                                backoff = max(backoff, 30)
-                                # 승인키 만료(OPSP0011)면 캐시 폐기 → 다음 재접속서 재발급.
-                                # (좀비 ALREADY는 새 승인키로 안 나으므로 대기만)
-                                if kis.is_invalid_approval(err):
-                                    client.reset_approval()
-                                raise RuntimeError(f"구독 거부: {err}")
-                            continue
-                        if kind != "data":
-                            continue
-                        tr_id, records = payload
-                        for rec in records:
-                            if tr_id in ("H0STCNT0", "H0NXCNT0", "H0UNCNT0"):
-                                self.state.apply_tick(kis.parse_ccnl(rec))
-                            elif tr_id in ("H0STPGM0", "H0NXPGM0", "H0UNPGM0"):
-                                self.state.apply_program(kis.parse_program(rec))
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                log.warning("KIS 웹소켓 끊김 — %ds 후 재접속", backoff, exc_info=True)
-                self.state.set_status(connected=False,
-                                      note=f"실시간 연결 끊김 — {backoff}초 후 재접속")
+        KIS 제약은 세션 수(1키 1세션)라, 예전처럼 엔진마다 웹소켓을 열면 두 번째
+        종목이 OPSP8996 ALREADY IN USE로 영구 차단된다(2026-08-05 운영 실측).
+        여기선 등록만 하고, 연결 상태는 버스에서 주기적으로 옮겨 적는다."""
+        await self._ws_attach(client)
+        try:
+            while not stop.is_set():
                 try:
-                    await asyncio.wait_for(stop.wait(),
-                                           timeout=backoff + random.uniform(0, 3))
+                    await asyncio.wait_for(stop.wait(), timeout=_STATUS_SEC)
                 except asyncio.TimeoutError:
-                    pass
-                backoff = min(backoff * 2, 60)
+                    self._sync_status()
+        finally:
+            await self._ws_detach()
+
+    async def _ws_attach(self, client: "kis.KisClient") -> None:
+        """세션 버스에 체결·프로그램 두 건을 등록한다(같은 종목코드가 tr_key)."""
+        from backend.flow import wsbus
+        ccnl_tr, pgm_tr = kis.ws_tr_ids(settings.market_div)
+        self._bus = wsbus.WsSession.get(client)
+        self._bus.start()
+        self._ws_regs = [(ccnl_tr, self._on_ccnl), (pgm_tr, self._on_program)]
+        for tr_id, handler in self._ws_regs:
+            await self._bus.register(tr_id, self.code, handler)
+        self._sync_status()
+
+    async def _ws_detach(self) -> None:
+        """등록을 반납한다. 두 번 불러도 안전하다(정지 경로가 둘이라 멱등이어야 한다)."""
+        regs, self._ws_regs = self._ws_regs, []
+        if self._bus is None:
+            return
+        for tr_id, handler in regs:
+            try:
+                await self._bus.unregister(tr_id, self.code, handler)
+            except Exception:
+                log.warning("웹소켓 등록 반납 실패 — 재접속이 정리함", exc_info=True)
+
+    def _sync_status(self) -> None:
+        """연결 상태의 진실은 버스에 있다. 화면 배지와 REST 폴백 판단이 이 값을 본다
+        (_ws_fallback가 snapshot()['status']['connected']로 폴백 여부를 정한다)."""
+        if self._bus is None:
+            return
+        self.state.set_status(connected=self._bus.status["connected"],
+                              note=self._bus.status["note"])
+
+    def _on_ccnl(self, rec: list) -> None:
+        self.state.apply_tick(kis.parse_ccnl(rec))
+
+    def _on_program(self, rec: list) -> None:
+        self.state.apply_program(kis.parse_program(rec))

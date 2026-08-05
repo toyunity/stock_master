@@ -423,7 +423,7 @@ class KisClient:
         """무효 승인키(OPSP0011)를 폐기 — 다음 approval_key()가 /oauth2/Approval로 재발급한다.
 
         승인키는 파일 캐시가 아니라 메모리(self._approval)에만 있어, 만료 시 이 리셋이 유일한
-        재발급 경로다. WS 재접속 루프가 OPSP0011을 만나면 호출한다(engine._ws_loop)."""
+        재발급 경로다. WS 재접속 루프가 OPSP0011을 만나면 호출한다(wsbus.WsSession._run)."""
         self._approval = None
 
     def _client_factory(self):

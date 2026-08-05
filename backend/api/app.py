@@ -115,12 +115,18 @@ def create_app(settings=None) -> FastAPI:
     @app.on_event("shutdown")
     async def _stop_engines():
         """종료 시 웹소켓을 클로즈 프레임과 함께 정리 — 좀비 세션(KIS 'ALREADY' 거부의
-        원인, 실측 2026-07-10)을 남기지 않는다."""
+        원인, 실측 2026-07-10)을 남기지 않는다. 엔진은 등록만 반납하고, 연결 자체를
+        닫는 건 공유 세션(wsbus)의 몫이므로 엔진을 모두 세운 뒤 마지막에 닫는다."""
+        from backend.flow import wsbus
         for eng in list(FlowEngine._registry.values()):
             try:
                 await eng.shutdown()
             except Exception:
                 pass
+        try:
+            await wsbus.WsSession.close_all()
+        except Exception:
+            pass
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
