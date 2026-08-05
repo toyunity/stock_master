@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import logging
+import time
 from pathlib import Path
 
 from backend.config import settings
@@ -157,6 +158,8 @@ def main():
     sh = sub.add_parser("shortbal", help="대차잔고 수동 수집/조회 (T+1 공시, 협회→예탁원 폴백)")
     sh.add_argument("--code", default="000660", help="6자리 종목코드 (기본 SK하이닉스)")
     sh.add_argument("--days", type=int, default=20, help="최근 거래일 수")
+    sub.add_parser("collect-options",
+                   help="코스피200 옵션 보드 수집(배치) — data/cache/options_<만기>.json에 저장")
     sv = sub.add_parser("serve", help="웹앱 서버 실행(아이폰 등에서 접속)")
     sv.add_argument("--host", default="0.0.0.0", help="기본 0.0.0.0(같은 WiFi 기기 접속 허용)")
     sv.add_argument("--port", type=int, default=8000)
@@ -185,6 +188,30 @@ def main():
                 chg = f"{r['chg']:+,}주" if r.get("chg") is not None else "–"
                 print(f"  {r['date']}  잔고 {r['qty']:>12,}주"
                       f"  전일대비 {chg:>12}  금액 {r['value'] / 1e12:.2f}조")
+    elif args.cmd == "collect-options":
+        # 옵션 수집 배치 — 웹서버와 분리된 프로세스로 돈다(launchd 일정).
+        # 1키1세션(웹소켓)과 무관하다: 이 경로는 REST 전용이라 서버의 실시간 세션을
+        # 건드리지 않는다. 공유되는 건 앱키의 초당 호출 한도뿐이고 상한은 코드가 지킨다.
+        import asyncio
+        import sys as _sys
+        from backend.api import marketdata
+        from backend.flow import kst
+        if not settings.options_enabled:
+            print("옵션 수집 꺼짐 (SM_OPTIONS_ENABLED=false) — 아무것도 하지 않음")
+            return
+        t0 = time.time()
+        d = asyncio.run(marketdata.collect_options())
+        if not d:
+            print("옵션 수집 실패 — 저장 안 함 (마스터/만기/시세 중 하나를 못 받음)")
+            _sys.exit(1)
+        n = len(d["calls"]) + len(d["puts"])
+        s = d["summary"]
+        print("[%s] 옵션 수집 완료 — %s(%s) %d종목 · %.0f초 · %.2f건/초 · 실패 %d건"
+              % (kst.now().strftime("%m-%d %H:%M:%S"), d["expiry"], d["label"], n,
+                 time.time() - t0, n / max(time.time() - t0, 0.001), d["failed"]))
+        print("  풋콜 %s · ATM IV %s%% · 풋 벽 %s(지수 ±%s%%) · 오늘 콜 %+d 풋 %+d"
+              % (s["pcr"] and round(s["pcr"], 2), s["atm_iv"], s["put_wall"],
+                 s["wall_pct"], s["call_chg_sum"], s["put_chg_sum"]))
     elif args.cmd == "glossary":
         from backend.report.render import render_glossary_page
         out = render_glossary_page("docs/glossary.html")

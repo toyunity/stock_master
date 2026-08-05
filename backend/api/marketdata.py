@@ -353,16 +353,22 @@ def _opt_save_disk(data):
         pass                     # 캐시 저장 실패가 화면을 죽이면 안 된다
 
 
-def _opt_load_disk():
-    """가장 최근에 저장된 보드 하나를 읽는다(만기별 파일 중 mtime 최신). 없으면 None."""
+def _opt_latest_path():
+    """만기별 파일 중 가장 최근에 쓰인 것. 없으면 None."""
     import glob
-    import json
     import os
+    paths = glob.glob(os.path.join(settings.cache_dir, _OPT_FILE % "*"))
+    return max(paths, key=os.path.getmtime) if paths else None
+
+
+def _opt_load_disk():
+    """가장 최근에 저장된 보드 하나를 읽는다. 없거나 깨졌으면 None."""
+    import json
     try:
-        paths = glob.glob(os.path.join(settings.cache_dir, _OPT_FILE % "*"))
-        if not paths:
+        path = _opt_latest_path()
+        if path is None:
             return None
-        with open(max(paths, key=os.path.getmtime), encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
@@ -453,53 +459,65 @@ def _opt_fresh(ts, now, live) -> bool:
     return ts >= opt.last_close(now).timestamp()
 
 
-async def _opt_refresh(client):
-    """백그라운드 1회차 — 성공하면 캐시·디스크를 갈아끼우고, 실패하면 직전값을 둔다."""
-    try:
-        data = await _collect_options(client)
-        if data:
-            _opt_cache["ts"], _opt_cache["data"] = time.time(), data
-            _opt_save_disk(data)
-    except Exception:
-        pass
-    finally:
-        _opt_cache["busy"] = False        # 실패해도 반드시 풀린다(안 풀면 영영 안 돈다)
+async def collect_options(client=None):
+    """**배치 진입점** — 한 회차를 받아 디스크에 쓴다. `cli collect-options`가 부른다.
 
+    수집을 웹서버에서 떼어낸 이유(2026-08-05 결정):
+      · 웹 요청이 트리거일 때는 **아침에 처음 여는 사람이 2.6분을 기다린다**.
+        배치가 미리 받아두면 열자마자 거기 있다.
+      · 서버 재기동이 수집 주기를 흔들지 않는다.
+      · 수집 실패가 웹앱 경로에 아예 닿지 않는다.
+    1키1세션(웹소켓) 제약과는 무관하다 — 옵션 수집은 REST 전용이다. 공유되는 건
+    앱키의 **초당 호출 한도**뿐이고, 서버 안에서 돌 때와 합계가 같다.
 
-async def get_options(client=None, now=None):
-    """코스피200 옵션 보드 — 대시보드 섹션용. 키없음이면 None, 콜드+수집중이면 {}.
-
-    한 회차가 최대 1,012건·약 3.5분이라 **요청을 붙잡지 않는다** — 캐시가 만료돼도
-    직전값을 즉시 돌려주고 갱신은 백그라운드로 돌린다('collecting': True). 대차잔고
-    최초 백필과 같은 패턴이다. 'stale'은 장중에 TTL이 지났는데 아직 새 값이 없다는
-    뜻이고, 마감 후엔 붙이지 않는다(마감은 지연이 아니다 — 선물 칩에서 정한 규칙)."""
-    from backend.flow import options as opt
-    if not settings.options_enabled:
-        # 기본 끔(fail-safe). 한 회차가 KIS 호출 최대 1,012건이고 /live 수급과 같은
-        # 키를 나눠 쓴다 — 장중 실측으로 유량이 안전한 게 확인되기 전에는 안 돈다.
-        # 디스크에 남은 직전 보드도 서빙하지 않는다(껐으면 화면에서 통째로 사라져야 한다).
-        return None
+    성공하면 저장한 dict, 못 받았으면 None. 예외는 호출부(CLI)로 올린다."""
     client = client or _client()
     if client is None:
         return None
-    if _opt_cache["data"] is None:
-        disk = _opt_load_disk()                   # 재기동 직후에도 직전 보드를 보여준다
-        if disk:
-            # 수집 시각도 같이 살린다 — 안 살리면 ts=0이라 재기동할 때마다
-            # '낡았다'고 판단해 780건을 다시 긁는다.
-            _opt_cache["data"] = disk
-            _opt_cache["ts"] = disk.get("ts") or 0.0
-    live = opt.session_of(now) == "live"
-    fresh = _opt_fresh(_opt_cache["ts"], now, live)
-    if not fresh and not _opt_cache["busy"]:
-        _opt_cache["busy"] = True
-        asyncio.ensure_future(_opt_refresh(client))
-    data = _opt_cache["data"]
-    if data is None:
+    data = await _collect_options(client)
+    if data:
+        _opt_save_disk(data)
+    return data
+
+
+_opt_mem = {"mtime": 0.0, "data": None}    # 파일 재파싱 방지(14KB × 매 요청)
+
+
+def _opt_read(now=None):
+    """디스크에 있는 보드를 읽는다 — **서버는 수집하지 않는다**. 파일이 바뀔 때만 재파싱."""
+    import os
+    try:
+        path = _opt_latest_path()
+        if path is None:
+            return None
+        mt = os.path.getmtime(path)
+    except OSError:
+        return None
+    if _opt_mem["data"] is None or mt != _opt_mem["mtime"]:
+        _opt_mem["mtime"], _opt_mem["data"] = mt, _opt_load_disk()
+    return _opt_mem["data"]
+
+
+async def get_options(client=None, now=None):
+    """코스피200 옵션 보드 — 대시보드 섹션용. **디스크만 읽는다(수집하지 않음).**
+
+    수집은 배치(`cli collect-options`)가 launchd 일정으로 한다. 여기서 KIS를 부르면
+    아침 첫 방문자가 2.6분을 기다리게 되고, 서버 재기동마다 수집이 다시 돈다.
+
+    'stale'은 **장중인데 배치가 한 시간 넘게 안 돈** 상태다(배치가 밀렸다는 신호).
+    마감 후엔 안 붙인다 — 보드는 15:45에 확정되고 그 뒤로 안 변하므로 지연이 아니다.
+    파일이 없으면 {} → 프론트가 섹션을 통째로 숨긴다."""
+    from backend.flow import options as opt
+    if not settings.options_enabled:
+        # 기본 끔(fail-safe). 껐으면 디스크에 남은 보드도 서빙하지 않는다 —
+        # 화면에서 통째로 사라지는 게 맞다.
+        return None
+    data = _opt_read(now)
+    if not data:
         return {}
+    live = opt.session_of(now) == "live"
     out = dict(data)
-    out["collecting"] = _opt_cache["busy"]
-    out["stale"] = bool(live and not fresh)
+    out["stale"] = bool(live and not _opt_fresh(data.get("ts") or 0.0, now, live))
     return out
 
 
