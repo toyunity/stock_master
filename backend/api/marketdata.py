@@ -248,6 +248,154 @@ async def _collect_chain(client, rows, rate=None, conc=None):
     return [q for q in out if q is not None], state["failed"]
 
 
+_OPT_TTL = 3600.0        # 장중 1시간. 회차당 1,012건·약 3.5분이라 더 자주 돌 이유가 없다.
+_OPT_FILE = "options_%s.json"
+_opt_cache = {"ts": 0.0, "data": None, "busy": False}
+
+
+def _opt_path(expiry):
+    import os
+    return os.path.join(settings.cache_dir, _OPT_FILE % expiry)
+
+
+def _opt_save_disk(data):
+    """수집 결과를 디스크에 남긴다 — 서버 재기동에도 직전 보드가 살아 있어야 한다."""
+    import json
+    import os
+    try:
+        os.makedirs(settings.cache_dir, exist_ok=True)
+        with open(_opt_path(data["expiry"]), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass                     # 캐시 저장 실패가 화면을 죽이면 안 된다
+
+
+def _opt_load_disk():
+    """가장 최근에 저장된 보드 하나를 읽는다(만기별 파일 중 mtime 최신). 없으면 None."""
+    import glob
+    import json
+    import os
+    try:
+        paths = glob.glob(os.path.join(settings.cache_dir, _OPT_FILE % "*"))
+        if not paths:
+            return None
+        with open(max(paths, key=os.path.getmtime), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+async def _pick_expiry(client, rows, today):
+    """근월물과 잔존일수 — 마스터로 고르고 **한 건만 찔러 확인**한다.
+
+    만기일 계산(둘째 목요일)은 공휴일로 앞당겨지는 경우를 못 본다. 전 종목 3.5분을
+    돌고 나서 '이미 만기였다'를 알면 늦으므로, 체인 한가운데 한 종목만 조회해
+    잔존일수를 본다. 음수면 다음 월물로 넘어간다. 프로브가 실패하면(장외 등) 계산값을
+    그대로 쓴다 — best effort지 게이트가 아니다."""
+    from backend.flow import optmaster as om
+    months = [m for m in sorted({r["expiry"] for r in rows})
+              if om.expiry_date(m) >= today][:2]
+    for m in months:
+        ch = om.chain(rows, m)
+        pool = ch["calls"] or ch["puts"]
+        if not pool:
+            continue
+        try:
+            q = await client.option_quote(pool[len(pool) // 2]["code"])
+        except Exception:
+            q = None
+        if q is None:
+            return m, None                       # 프로브 실패 → 계산값 채택
+        if (q.get("remain_days") or 0) >= 0:
+            return m, q.get("remain_days")
+    return (months[0], None) if months else (None, None)
+
+
+def _opt_pack(rows):
+    """행 리스트 → [[행사가, 미결제, 당일증감], ...] (행사가 오름차순).
+
+    1,012행을 dict로 보내면 JSON이 120KB를 넘는다 — 화면이 쓰는 건 이 셋뿐이라
+    3튜플로 줄인다(약 20KB). 순서는 응답의 'cols'가 밝힌다."""
+    return [[r.get("strike"), r.get("oi") or 0, r.get("oi_chg") or 0]
+            for r in sorted(rows, key=lambda x: x.get("strike") or 0.0)
+            if r.get("strike")]
+
+
+async def _collect_options(client):
+    """한 회차 전체 수집 — 마스터 → 만기 → 현물 → 콜/풋 전 종목. 실패하면 None."""
+    from backend.flow import kst, optmaster as om, options as opt
+    rows = await asyncio.get_event_loop().run_in_executor(
+        None, om.load, settings.cache_dir)
+    if not rows:
+        return None
+    expiry, remain = await _pick_expiry(client, rows, kst.today())
+    if not expiry:
+        return None
+    ch = om.chain(rows, expiry)
+    if not ch["calls"] and not ch["puts"]:
+        return None
+    # 코스피200 현물 — 스펙은 단건 시세 output3에 딸려 온다고 했지만 그 필드명이
+    # 실측으로 기록되지 않았다. 추측한 이름이 빗나가면 spot=0이 되고, spot이 0이면
+    # wall()·atm_iv()가 통째로 무의미해진다. 이미 검증된 index("2001")을 쓴다(1건).
+    try:
+        spot = (await client.index("2001") or {}).get("price")
+    except Exception:
+        spot = None
+    calls, cf = await _collect_chain(client, ch["calls"])
+    puts, pf = await _collect_chain(client, ch["puts"])
+    if not calls and not puts:
+        return None
+    if remain is None:
+        got = [r.get("remain_days") for r in (calls + puts) if r.get("remain_days")]
+        remain = got[0] if got else None
+    return {"expiry": expiry, "label": opt.month_label(expiry),
+            "remain_days": remain, "spot": spot,
+            "cols": ["strike", "oi", "oi_chg"],
+            "calls": _opt_pack(calls), "puts": _opt_pack(puts),
+            "summary": opt.summarize(calls, puts, spot),
+            "failed": cf + pf, "ts": time.time()}
+
+
+async def _opt_refresh(client):
+    """백그라운드 1회차 — 성공하면 캐시·디스크를 갈아끼우고, 실패하면 직전값을 둔다."""
+    try:
+        data = await _collect_options(client)
+        if data:
+            _opt_cache["ts"], _opt_cache["data"] = time.time(), data
+            _opt_save_disk(data)
+    except Exception:
+        pass
+    finally:
+        _opt_cache["busy"] = False        # 실패해도 반드시 풀린다(안 풀면 영영 안 돈다)
+
+
+async def get_options(client=None, now=None):
+    """코스피200 옵션 보드 — 대시보드 섹션용. 키없음이면 None, 콜드+수집중이면 {}.
+
+    한 회차가 최대 1,012건·약 3.5분이라 **요청을 붙잡지 않는다** — 캐시가 만료돼도
+    직전값을 즉시 돌려주고 갱신은 백그라운드로 돌린다('collecting': True). 대차잔고
+    최초 백필과 같은 패턴이다. 'stale'은 장중에 TTL이 지났는데 아직 새 값이 없다는
+    뜻이고, 마감 후엔 붙이지 않는다(마감은 지연이 아니다 — 선물 칩에서 정한 규칙)."""
+    from backend.flow import options as opt
+    client = client or _client()
+    if client is None:
+        return None
+    if _opt_cache["data"] is None:
+        _opt_cache["data"] = _opt_load_disk()     # 재기동 직후에도 직전 보드를 보여준다
+    live = opt.session_of(now) == "live"
+    fresh = (time.time() - _opt_cache["ts"]) < _OPT_TTL
+    if live and not fresh and not _opt_cache["busy"]:
+        _opt_cache["busy"] = True
+        asyncio.ensure_future(_opt_refresh(client))
+    data = _opt_cache["data"]
+    if data is None:
+        return {}
+    out = dict(data)
+    out["collecting"] = _opt_cache["busy"]
+    out["stale"] = bool(live and not fresh)
+    return out
+
+
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)
 _ask_cache: dict = {}     # code -> (ts, dict|None)
 
