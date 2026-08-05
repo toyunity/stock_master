@@ -722,3 +722,30 @@ def test_cached_chip_relabels_across_session_boundary():
                                    now=dt.datetime(2026, 7, 30, 12, 0, tzinfo=KST)))
     assert d["k200"]["label"] == "K200선물" and d["k200"]["session"] == "day"
     assert d["k200"]["closed"] is False
+
+
+def test_night_tick_is_rejected_when_wildly_off_the_rest_price(monkeypatch):
+    """틱 가격이 REST 값과 터무니없이 다르면 쓰지 않는다.
+
+    H0MFCNT0의 필드 순서는 KIS 공식 예제를 옮긴 것이고 저장소에 독립 근거가
+    없다. 인덱스가 하나만 어긋나도 누적거래량(141272) 같은 값이 가격 자리에
+    조용히 들어앉는다 — 오버나잇 변동은 아무리 커도 이 정도가 아니다.
+    묵묵히 틀린 값을 보여주느니 REST 값으로 강등한다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    md._night_tick = {"price": 141272.0, "rate": -0.2}      # 거래량이 가격 자리에
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert d["k200"]["price"] == 885.25                     # REST 값으로 강등
+    md._night_tick = None
+
+
+def test_night_tick_allows_a_large_but_plausible_overnight_move(monkeypatch):
+    """진짜 급등락(±10%)은 그대로 통과해야 한다 — 방어가 과하면 실시간이 죽는다."""
+    from backend.api import marketdata as md
+    _reset_fut(md)
+    _install_bus(monkeypatch, md, _FakeBus())
+    md._night_tick = {"price": 885.25 * 1.10, "rate": 10.0}
+    d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
+    assert abs(d["k200"]["price"] - 885.25 * 1.10) < 0.01
+    md._night_tick = None

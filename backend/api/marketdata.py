@@ -56,8 +56,29 @@ _fut_cache = {"k200": {"ts": 0.0, "data": None}, "nq": {"ts": 0.0, "data": None}
 _FUT_LABEL = {"night": "야간선물"}
 
 _NGT_TR = "H0MFCNT0"   # KRX 야간선물 실시간체결
+_NGT_SANE = 0.30       # 틱 가격이 REST 값과 이 비율 넘게 벌어지면 안 쓴다(아래 참조)
 _night_tick = None     # 최신 야간 틱(WS) — 없으면 REST 값으로 조용히 강등
 _night_reg = None      # 현재 등록된 야간선물 종목코드(월물 롤오버 감지용)
+
+
+def _night_price(rest_price):
+    """실시간 틱 가격을 쓸 수 있으면 (price, rate), 아니면 None.
+
+    **필드 순서를 못 믿기 때문에 있는 관문이다.** H0MFCNT0의 인덱스는 KIS 공식
+    예제를 옮긴 것이고 이 저장소에 독립 근거가 없다 — 하나만 어긋나도
+    누적거래량(예: 141272)이 가격 자리에 조용히 들어앉는다. 오버나잇 변동이
+    아무리 커도 30%를 넘지는 않으므로, 그 밖이면 매핑이 틀렸다고 보고 REST 값을
+    쓴다. 틀린 값을 자신 있게 보여주느니 덜 새로운 값을 보여준다."""
+    t = _night_tick
+    if not t or not t.get("price"):
+        return None
+    if rest_price:
+        if abs(t["price"] - rest_price) / rest_price > _NGT_SANE:
+            log.warning("야간 틱 가격 %.2f가 REST %.2f와 %d%% 넘게 벌어짐 — "
+                        "H0MFCNT0 필드 매핑 의심, REST 값 사용",
+                        t["price"], rest_price, int(_NGT_SANE * 100))
+            return None
+    return t["price"], t.get("rate")
 
 
 def _on_night_tick(rec):
@@ -144,11 +165,11 @@ async def _k200_leg(client, fx, ses, ttl):
             # 등록도 여기서 확인한다 — 안 그러면 야간 개장 후 캐시가 만료될 때까지
             # (최대 5분) 실시간이 안 붙는다. 이미 등록돼 있으면 즉시 반환된다.
             await _ensure_night_ws(client, out.get("code"))
-            if _night_tick and _night_tick.get("price"):
-                # 틱은 캐시보다 새롭다 — 안 얹으면 실시간을 달아 놓고도 화면이
-                # 30초에 한 번만 움직인다.
-                out["price"] = _night_tick["price"]
-                out["rate"] = _night_tick["rate"]
+            # 틱은 캐시보다 새롭다 — 안 얹으면 실시간을 달아 놓고도 화면이
+            # 30초에 한 번만 움직인다.
+            live = _night_price(out.get("price"))
+            if live:
+                out["price"], out["rate"] = live
         return out
     front = None
     try:
@@ -176,9 +197,9 @@ async def _k200_leg(client, fx, ses, ttl):
         # 야간 세션가는 전광판(REST)이 15:45 종가에 멈춰 있을 수 있다(G2 미측정) —
         # 실시간 틱이 있으면 그걸 덮어쓴다. 없으면 REST 값 그대로 간다.
         await _ensure_night_ws(client, k200.get("code"))
-        if _night_tick and _night_tick.get("price"):
-            k200["price"] = _night_tick["price"]
-            k200["rate"] = _night_tick["rate"]
+        live = _night_price(k200.get("price"))
+        if live:
+            k200["price"], k200["rate"] = live
     slot["ts"], slot["data"] = time.time(), k200    # 캐시엔 closed/stale을 굽지 않는다(매번 재판정)
     out = dict(k200)
     out["closed"] = _fut_closed(ses)
