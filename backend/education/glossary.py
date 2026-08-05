@@ -92,3 +92,86 @@ def terms_in(text: str):
     found = [t for t in found
              if not any(t.key != other and t.key in other for other in found_keys)]
     return found
+
+
+# ── 값 인식형 쉬운말 리더 — 지금 값을 초보 문장 한 줄로. 순수 함수. ──
+# /live '기업 체력' 패널 전용(5개). 수급·호가용 리더는 소비처가 없어 복원하지 않는다.
+from typing import Optional
+
+
+def _g(v) -> str:
+    return "%g" % v
+
+
+def read_per(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v <= 0:
+        return "PER — 적자거나 계산 불가라 PER로는 판단이 어려워요"
+    if v < 10:
+        return "PER %s — 이익 대비 싼 편이에요 (업종마다 달라요)" % _g(v)
+    if v < 20:
+        return "PER %s — 보통 수준이에요" % _g(v)
+    if v < 40:
+        return "PER %s — 이익의 %s배, 비싼 편이에요" % (_g(v), _g(v))
+    return "PER %s — 매우 비쌈(기대가 크게 반영)" % _g(v)
+
+
+def read_pbr(v) -> Optional[str]:
+    if v is None or v <= 0:
+        return None
+    if v < 1:
+        return "PBR %s — 순자산보다 싸게 거래돼요" % _g(v)
+    if v < 2:
+        return "PBR %s — 보통 수준" % _g(v)
+    return "PBR %s — 순자산의 %s배, 비싼 편" % (_g(v), _g(v))
+
+
+def read_w52_pos(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v >= 80:
+        return "52주 %s%% — 1년 고점 부근" % _g(v)
+    if v <= 20:
+        return "52주 %s%% — 1년 저점 부근" % _g(v)
+    return "52주 %s%% — 1년 범위 중간쯤" % _g(v)
+
+
+def read_roe(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v >= 15:
+        return "ROE %s%% — 자본 대비 잘 버는 편" % _g(v)
+    if v >= 5:
+        return "ROE %s%% — 보통" % _g(v)
+    return "ROE %s%% — 수익성 약한 편" % _g(v)
+
+
+def read_debt(v) -> Optional[str]:
+    if v is None:
+        return None
+    if v < 50:
+        return "부채비율 %s%% — 빚 적은 편, 안정적" % _g(v)
+    if v < 150:
+        return "부채비율 %s%% — 보통 수준" % _g(v)
+    return "부채비율 %s%% — 빚 많은 편, 주의" % _g(v)
+
+
+# ── 지표 개념 설명(ⓘ 탭 펼침용) — 초보 눈높이. 값 인식형 read_*와 짝. ──
+_CONCEPTS = {
+    "per": {"title": "PER (주가수익비율)",
+            "body": "주가가 회사가 1년에 버는 순이익의 몇 배인지 나타내요. 낮을수록 이익에 비해 싸고, 높을수록 '앞으로 더 잘 벌 것'이란 기대가 실린 거예요. 업종마다 평균이 달라서(성장주는 원래 높음) 같은 업종끼리 비교해야 정확해요."},
+    "pbr": {"title": "PBR (주가순자산비율)",
+            "body": "주가가 회사가 가진 순자산(자본)의 몇 배인지예요. 1보다 낮으면 장부상 자산보다 싸게 거래된다는 뜻이고, 높으면 그만큼 프리미엄이 붙은 거예요."},
+    "w52": {"title": "52주 위치",
+            "body": "최근 1년(52주) 최고가~최저가 범위에서 지금 가격이 어디쯤인지 %로 본 거예요. 100%에 가까우면 1년 중 비싼 편, 0%에 가까우면 싼 편이에요. 위치만으로 판단하긴 어렵고 흐름과 함께 봐야 해요."},
+    "roe": {"title": "ROE (자기자본이익률)",
+            "body": "회사가 자기 돈(자본)으로 1년에 얼마를 벌었는지 %로 본 거예요. 높을수록 돈을 효율적으로 잘 버는 회사예요. 보통 15% 이상이면 우량한 편으로 봐요."},
+    "debt": {"title": "부채비율",
+             "body": "회사가 진 빚이 자기자본 대비 몇 %인지예요. 낮을수록 재무가 안정적이고, 너무 높으면(보통 200% 이상) 이자·상환 부담이 커요. 설비산업은 원래 높은 편이라 업종도 함께 봐야 해요."},
+}
+
+
+def concept(key):
+    """지표 키 → {title, body} 개념 설명. 없으면 None."""
+    return _CONCEPTS.get(key)

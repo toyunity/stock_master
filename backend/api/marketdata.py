@@ -11,6 +11,7 @@ import datetime as dt
 import time
 
 from backend.config import settings
+from backend.education import glossary
 from backend.signals import nextday
 
 _IDX_TTL = 30.0            # 지수 30초
@@ -202,6 +203,47 @@ async def get_asking(code, client=None):
         return (hit[1] if hit else {}) or {}
     _ask_cache[code] = (time.time(), a)
     return a or {}
+
+
+_DETAIL_TTL = 300.0
+_detail_cache: dict = {}   # code -> (ts, dict)
+
+
+async def get_stock_detail(code, client=None):
+    """단일 종목 기업 체력 — {'valuation':{per,pbr,w52_pos,...}, 'financials':[분기...],
+    'explains':{지표→쉬운말}, 'concepts':{지표→개념설명}}. 5분 캐시.
+
+    /live '기업 체력' 접힘 패널 전용. 밸류·재무는 일/분기 단위로만 바뀌어 폴링하지
+    않는다(페이지당 1회). 키없음/실패면 빈 dict(패널이 통째로 숨음)."""
+    client = client or _client()
+    if client is None:
+        return {}
+    hit = _detail_cache.get(code)
+    if hit and time.time() - hit[0] < _DETAIL_TTL:
+        return hit[1]
+    try:
+        val = await client.fundamentals(code)
+        fin = await client.financials(code)
+    except Exception:
+        return (hit[1] if hit else {})
+    data = {"valuation": val, "financials": (fin or [])[:4],   # 최근 4분기
+            "explains": _explains(val, fin),                    # 값 인식형 쉬운말(순수)
+            "concepts": {k: glossary.concept(k)
+                         for k in ("per", "pbr", "w52", "roe", "debt")}}
+    _detail_cache[code] = (time.time(), data)
+    return data
+
+
+def _explains(val, fin) -> dict:
+    """valuation+financials → 지표 쉬운말 맵(값 없으면 키 생략). 순수·네트워크 없음."""
+    v = val or {}
+    f = (fin or [{}])[0] if fin else {}
+    out = {"per": glossary.read_per(v.get("per")),
+           "pbr": glossary.read_pbr(v.get("pbr")),
+           "w52": glossary.read_w52_pos(v.get("w52_pos")),
+           "roe": glossary.read_roe(f.get("roe")),
+           "debt": glossary.read_debt(f.get("debt"))}
+    return {k: x for k, x in out.items() if x}
 
 
 _OUTLOOK_TTL = 60.0

@@ -41,6 +41,17 @@ __BASE_CSS__
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
 .ob{margin-top:8px}
+/* 기업 체력(접힘) — 접힌 줄엔 숫자 요약, 펼치면 지표별 쉬운말 + ⓘ 개념 */
+.findig{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--text-2);
+  font-variant-numeric:tabular-nums;letter-spacing:0;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.finlead{font-size:12.5px;color:var(--text-2);line-height:1.6;padding:10px 0 2px}
+.fin{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);font-weight:500}
+.finex li{margin:3px 0}
+.finex li .qi{cursor:pointer;color:var(--primary);font-weight:800;margin-left:6px;user-select:none}
+.finex .cexp{margin-top:3px;font-size:11.5px;color:var(--text-2);line-height:1.5;display:none}
+.finex .cexp.on{display:block}
 .obbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2)}
 .obbid{background:var(--up)}.obask{background:var(--down)}
 .obtxt{font-size:12px;color:var(--text-2);margin-top:3px;font-weight:600}
@@ -262,6 +273,17 @@ __ICONS__
 
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
 <div class="note" id="note"></div>
+
+<details class="sec" id="finsec" style="display:none">
+  <summary><svg class="hic secic"><use href="#i-bars"/></svg> 기업 체력
+    <span class="findig" id="fin-digest"></span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="finlead">이 회사가 <b>얼마에 거래되는지(밸류)</b>와 <b>얼마나 잘 버는지·빚은 얼마나 되는지</b>를
+      지표마다 쉬운 말로 풀었습니다. ⓘ를 누르면 그 지표의 뜻이 펼쳐집니다.
+      분기 실적 기준이라 <b>실시간이 아닙니다</b> — 오늘 등락이 아니라 회사 체력을 볼 때 씁니다.</div>
+    <div class="fin" id="fin"></div>
+  </div>
+</details>
 
 <div class="panel">
   <h2><svg class="hic"><use href="#i-chart"/></svg> 가격 차트 <span class="fresh" id="pc-fresh">· 불러오는 중</span></h2>
@@ -535,6 +557,41 @@ const eok=n=>n==null?'–':(n>0?'+':'')+(n/1e8).toLocaleString('ko-KR',{maximumF
 const cls=n=>n>0?'up':(n<0?'down':'flat');
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const sgn={up:'▲',down:'▼',flat:''};
+
+// ── 기업 체력(밸류 + 재무) — /api/financials/{code} 1회 로드. ──
+// 분기 실적·일 단위로만 바뀌어 폴링하지 않는다. 차트 위 접힘 섹션:
+// 접힌 줄엔 숫자 3개 요약(PER·ROE·부채), 펼치면 지표별 쉬운말 + ⓘ 개념 설명.
+// 값이 하나도 없으면(키 없음·조회 실패·재무 미제공) 섹션을 통째로 숨긴다 —
+// '기업 체력'이라 써놓고 열면 비어 있는 화면을 만들지 않는다.
+async function loadFin(){
+  const sec=document.getElementById('finsec');
+  try{
+    const r=await fetch('/api/financials/'+CODE); if(!r.ok){sec.style.display='none';return;}
+    const d=await r.json()||{}; const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
+    const bits=[],dig=[];
+    if(v.per!=null){bits.push('PER <span class="n">'+v.per.toFixed(1)+'</span>');dig.push('PER '+v.per.toFixed(1));}
+    if(v.pbr!=null)bits.push('PBR <span class="n">'+v.pbr.toFixed(1)+'</span>');
+    if(v.w52_pos!=null)bits.push('52주 <span class="n">'+Math.round(v.w52_pos)+'%</span>');
+    if(f.roe!=null){bits.push('ROE <span class="n">'+f.roe.toFixed(0)+'%</span>');dig.push('ROE '+f.roe.toFixed(0)+'%');}
+    if(f.debt!=null){bits.push('부채 <span class="n">'+f.debt.toFixed(0)+'%</span>');dig.push('부채 '+f.debt.toFixed(0)+'%');}
+    if(!bits.length){ sec.style.display='none'; return; }
+    const ex=d.explains||{}, co=d.concepts||{};
+    let h=bits.join('  ·  ')+(f.period?'  ('+esc(f.period)+' 기준)':'');
+    const rows=['per','w52','roe','debt','pbr'].filter(k=>ex[k]).map(function(k){
+      const c=co[k]; let li='<li>'+esc(ex[k]);
+      if(c) li+='<span class="qi" data-k="'+k+'">ⓘ</span>'
+        +'<div class="cexp" id="cexp-'+k+'"><b>'+esc(c.title)+'</b> — '+esc(c.body)+'</div>';
+      return li+'</li>';
+    });
+    if(rows.length) h+='<ul class="finex">'+rows.join('')+'</ul>';
+    document.getElementById('fin').innerHTML=h;
+    document.getElementById('fin-digest').textContent=dig.join(' · ');
+    sec.style.display='';
+    sec.querySelectorAll('.qi').forEach(function(q){ q.onclick=function(){
+      const e=document.getElementById('cexp-'+q.dataset.k); if(e)e.classList.toggle('on'); }; });
+  }catch(e){ if(sec)sec.style.display='none'; }
+}
+loadFin();
 
 // ── 인라인 SVG 스파크라인(차트 인스턴스 아님 — 스냅샷 rows에서 직접) ──
 function spark(vals,color){

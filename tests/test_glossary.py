@@ -31,3 +31,51 @@ def test_terms_in_excludes_substring_false_positive():
     assert "과매수" in keys
     assert "RSI" in keys
     assert "매수" not in keys   # 과매수의 부분문자열이라 제외돼야 함
+
+
+# ── 값 인식형 쉬운말 리더 — /live '기업 체력' 패널 전용 5종 ──
+from backend.education.glossary import (
+    read_per, read_pbr, read_w52_pos, read_roe, read_debt, concept)
+
+
+def test_read_per_bands():
+    assert read_per(None) is None
+    assert "적자" in read_per(0)                 # <=0
+    assert "싼 편" in read_per(8)
+    assert "보통" in read_per(15)
+    assert "비싼 편" in read_per(31)
+    assert "매우 비쌈" in read_per(80)
+
+
+def test_read_w52_and_debt_bands():
+    assert read_w52_pos(None) is None
+    assert "고점 부근" in read_w52_pos(85)
+    assert "저점 부근" in read_w52_pos(12)
+    assert "중간쯤" in read_w52_pos(50)
+    assert read_debt(None) is None
+    assert "적은 편" in read_debt(36)            # 안정
+    assert "보통" in read_debt(120)
+    assert "많은 편" in read_debt(180)
+
+
+def test_read_roe_and_pbr_bands():
+    assert read_roe(None) is None
+    assert "잘 버는" in read_roe(61)
+    assert "보통" in read_roe(9)
+    assert "약한" in read_roe(2)
+    assert read_pbr(None) is None
+    assert read_pbr(0) is None                   # 0/음수 PBR은 무의미 → 표시하지 않음
+    assert "순자산보다 싸게" in read_pbr(0.8)
+    assert "비싼 편" in read_pbr(3.2)
+
+
+def test_concept_returns_beginner_explanation():
+    per = concept("per")
+    assert per and "PER" in per["title"] and "순이익" in per["body"]
+    for k in ("pbr", "w52", "roe", "debt"):
+        c = concept(k)
+        assert c and c["title"] and len(c["body"]) > 20   # 실제 설명 존재
+    assert concept("nope") is None
+    # 소비처가 사라진 지표(수급·호가·ADR·지수)는 복원하지 않는다 — 죽은 설명 방지
+    for k in ("bid_ratio", "flow", "adr", "index"):
+        assert concept(k) is None
