@@ -256,23 +256,32 @@ function issuesHtml(s){
   return h+'</div>';
 }
 function cardHtml(s){
+  // 미국 티커는 국내 전용 블록을 통째로 뺀다 — 모르는 값을 '–'로 자리만 잡아두지 않는다.
+  //  · PER·PBR·52주: /api/fundamentals가 KIS 국내 TR이라 US는 못 받는다
+  //  · 내일 예상: 수급·ADR 기반이라 US엔 근거가 없다
+  //  · /live 링크: 상세는 6자리 숫자만 받아 'SKHY'로 들어가면 404다 — 깨진 링크보다 없는 게 낫다
+  const isUS = s.market === 'US';
   let h='<div class="card '+esc(s.action)+'">';
   // 헤더 행: 이름·판정 태그(좌) · 큰 가격/등락(우)
+  const nameHtml = isUS ? '<span class="name">'+esc(s.name)+'</span>'
+                        : '<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>';
   h+='<div class="cardhd"><div class="chinfo">'
-    +'<span class="nrow"><a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>'
+    +'<span class="nrow">'+nameHtml
     +'<span class="vtag vtag-'+esc(s.action)+'">'+esc(s.action_ko)+'</span>'
     +(s.advice?'<span class="vtag vtag-ok">검증</span>':'')+'</span>'
-    +'<span class="code">'+esc(s.code)+' 📡</span></div>';
-  if(s.close!=null) h+='<div class="chprice cpx" data-code="'+esc(s.code)+'"><b>'+won(s.close)+'</b> '+chg(s.change)+'</div>';   // loadPrices가 갱신
+    +'<span class="code">'+esc(s.code)+(isUS?' 🇺🇸':' 📡')+'</span></div>';
+  if(s.close!=null) h+='<div class="chprice'+(isUS?'':' cpx')+'" data-code="'+esc(s.code)+'"><b>'
+    +(isUS?('$'+Number(s.close).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))
+          :won(s.close))+'</b> '+chg(s.change)+'</div>';   // KR만 loadPrices가 갱신(cpx)
   h+='</div>';
-  // 지표 스트립: PER·PBR·52주·신뢰도(계기 셀 — 앞 3개는 loadFundamentals가 채움)
+  // 지표 스트립 — US는 신뢰도만 남긴다(앞 3개는 국내 TR)
   h+='<div class="mstrip">'
-    +'<div class="mc"><div class="mk">PER</div><div class="mv" data-code="'+esc(s.code)+'" data-m="per">–</div></div>'
+    +(isUS?'':'<div class="mc"><div class="mk">PER</div><div class="mv" data-code="'+esc(s.code)+'" data-m="per">–</div></div>'
     +'<div class="mc"><div class="mk">PBR</div><div class="mv" data-code="'+esc(s.code)+'" data-m="pbr">–</div></div>'
-    +'<div class="mc"><div class="mk">52주</div><div class="mv" data-code="'+esc(s.code)+'" data-m="w52">–</div></div>'
+    +'<div class="mc"><div class="mk">52주</div><div class="mv" data-code="'+esc(s.code)+'" data-m="w52">–</div></div>')
     +'<div class="mc"><div class="mk">신뢰도</div><div class="mv star">'+stars(s.confidence)+'</div></div>'
     +'</div>';
-  h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';      // 내일 예상 — loadOutlook이 채움
+  if(!isUS) h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';   // 내일 예상 — loadOutlook이 채움
   if(s.candles&&s.candles.length) h+='<div class="chart" id="chart-'+esc(s.code)+'"></div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -666,12 +675,14 @@ def to_candles(df, days: int = 120) -> list:
     return out
 
 
-def assemble_stock(signal, issues, candles, price, names=None) -> dict:
+def assemble_stock(signal, issues, candles, price, names=None, market="KR") -> dict:
     """신호 + 이슈 + 캔들 + 현재가를 대시보드 종목 dict로 합친다.
-    names(universe code→name)가 있으면 표시 이름을 그것으로(신규 종목 대응)."""
+    names(universe code→name)가 있으면 표시 이름을 그것으로(신규 종목 대응).
+    market은 카드 렌더가 국내 전용 블록(밸류지표·내일예상·/live 링크)을 가르는 데 쓴다."""
     from backend.news.names import resolve_name
     iv = _issues_view(issues)
-    return {"code": signal.code, "name": resolve_name(signal.code, names),
+    return {"market": market,
+            "code": signal.code, "name": resolve_name(signal.code, names),
             "action": signal.action, "action_ko": _ACTION_KO[signal.action],
             "confidence": signal.confidence, "advice": signal.advice,
             "reasons": list(signal.reasons), "backtest": _bt_view(signal.backtest),

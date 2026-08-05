@@ -17,6 +17,7 @@ from backend.news.match import attach_issues
 from backend.news.names import STOCK_NAMES
 from backend.report.dashboard import render_dashboard, to_candles, assemble_stock
 from backend.market.universe import get_universe, price_map, name_map
+from backend.flow.adr import us_market_open
 
 log = logging.getLogger(__name__)
 
@@ -114,26 +115,116 @@ def _live_prices(codes) -> dict:
         loop.close()
 
 
-def build_dashboard(codes, cache_dir, source=None, history_days=400,
+def _ohlcv_price(df):
+    """OHLCV → {close, change} — US 카드의 기본 가격원. 추가 호출이 0건이고 차트와
+    같은 데이터라 어긋날 수 없다. 행이 하나뿐이면 등락률은 None(0%로 꾸미지 않는다).
+    빈 프레임이면 None → 호출부가 가격 없는 카드로 둔다."""
+    if df is None or len(df) == 0:
+        return None
+    closes = [float(c) for c in df["Close"] if c == c]      # NaN 제외
+    if not closes:
+        return None
+    last = closes[-1]
+    prev = closes[-2] if len(closes) > 1 else None
+    chg = None if not prev else (last - prev) / prev * 100
+    return {"close": last, "change": chg}
+
+
+def _prev_close(df, today) -> "float | None":
+    """오늘 이전 마지막 종가. 실시간 시세에 등락률이 없을 때 이걸로 계산한다.
+    OHLCV에 이미 오늘 행이 있으면 그건 전일 종가가 아니므로 건너뛴다."""
+    if df is None or len(df) == 0:
+        return None
+    for ts, v in reversed(list(zip(df.index, df["Close"]))):
+        try:
+            d = ts.date()
+        except AttributeError:
+            d = None
+        if d is not None and d >= today:
+            continue
+        if v == v:                      # NaN 제외
+            return float(v)
+    return None
+
+
+def _us_live_prices(syms) -> dict:
+    """미국 정규장 중에만 부르는 실시간 시세 — 위젯이 쓰는 usquote.price_us 재사용.
+    build_dashboard(sync)용 래퍼. 실패는 조용히 생략 → OHLCV 종가로 강등된다."""
+    import asyncio
+
+    async def _run():
+        try:
+            from backend.flow import usquote
+            from backend.flow.candles import _get_client
+            client = _get_client()
+        except Exception:
+            return {}
+        out = {}
+        for s in syms:
+            try:
+                q = await usquote.price_us(client, s)
+            except Exception:
+                q = None
+            if q and q.get("price"):
+                out[s] = {"close": q["price"], "change": q.get("rate")}
+        return out
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_run())
+    except Exception:
+        return {}
+    finally:
+        loop.close()
+
+
+def build_dashboard(items, cache_dir, source=None, history_days=400,
                     force: bool = False, with_news: bool = True, pwa: bool = False,
                     chart_days: int = 120) -> str:
-    """대시보드(종목별 차트 + 검색 + 카드) 자기완결 HTML. CLI/웹앱 공용."""
+    """대시보드(종목별 차트 + 검색 + 카드) 자기완결 HTML. CLI/웹앱 공용.
+
+    items는 [{code, market}] 또는 코드 문자열 리스트(구 호출부 호환 — 전부 KR로 본다).
+    US 티커도 카드가 된다: FDR이 OHLCV를 주므로 지표·신호·캔들이 국내와 같은 경로로
+    돌고, 가격만 다르게 구한다(국내=마스터/KIS, 미국=OHLCV 종가 또는 미국장 중 usquote)."""
+    norm = [{"code": i, "market": "KR"} if isinstance(i, str) else dict(i) for i in items]
+    codes = [i["code"] for i in norm]
+    mkt = {i["code"]: (i.get("market") or "KR") for i in norm}
+    kr = [c for c in codes if mkt[c] == "KR"]
+    us = [c for c in codes if mkt[c] == "US"]
+
     adapter = PriceAdapter(OHLCVCache(cache_dir), source=source)
     end = dt.date.today()
     start = end - dt.timedelta(days=history_days)
-    signals, candles = [], {}
+    signals, candles, frames = [], {}, {}
     for code in codes:
         df = adapter.get_ohlcv(code, start.isoformat(), end.isoformat(), force=force)
+        frames[code] = df
         signals.append(evaluate_with_gate(add_indicators(df), code))
         candles[code] = to_candles(df, chart_days)
     universe = get_universe(cache_dir)
     nm = name_map(universe)
-    issues = _collect_issues(codes, nm) if with_news else {}
+    issues = _collect_issues(kr, nm) if with_news else {}   # 뉴스·공시는 국내 소스뿐
     pm = price_map(universe)
     if _kr_market_open():   # 세션 중엔(UN 기본: 프리·정규·NXT 애프터) 관심종목을 KIS 실시간
                              # 현재가로 덮어씀(StockListing=전일 종가)
-        pm.update(_live_prices(codes))
-    stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code), nm)
+        pm.update(_live_prices(kr))
+    for c in us:            # 기본은 OHLCV 종가 — 추가 호출 0건
+        p = _ohlcv_price(frames.get(c))
+        if p:
+            pm[c] = p
+    if us and us_market_open():   # 미국 정규장 중에만 실시간으로 덮어쓴다 —
+        for c, q in _us_live_prices(us).items():   # 대시보드는 요청마다 다시 그려지므로
+            q = dict(q)                            # 페이지 로드마다 해외 호출이 붙으면 안 된다
+            if q.get("change") is None:
+                # KIS 해외 현재가는 등락률이 비어 오는 경우가 있다(2026-08-05 실측:
+                # SKHY 가격 151.77 / rate None). 가격만 새것이고 등락률이 '–'로 남지
+                # 않게, 이미 받은 OHLCV의 전일 종가로 채운다(추가 호출 0건).
+                prev = _prev_close(frames.get(c), end)
+                if prev and q.get("close"):
+                    q["change"] = (q["close"] - prev) / prev * 100
+            pm[c] = q
+    stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code),
+                             nm, market=mkt.get(s.code, "KR"))
               for s in signals]
     return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa)
 
