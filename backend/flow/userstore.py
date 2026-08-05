@@ -142,6 +142,14 @@ def get_kr_codes(email) -> list:
     return [i["code"] for i in get_watchlist(email) if i["market"] == "KR"]
 
 
+def get_dash_items(email) -> list:
+    """대시보드 카드용 — KR·US를 **순서 그대로** 담는다(get_kr_codes와 달리 안 거른다).
+
+    카드 목록만 이걸 쓴다. /api/fundamentals·/api/outlook·/api/prices는 KIS 국내
+    TR이라 여전히 get_kr_codes가 맞다 — US 코드를 넘기면 조회가 실패한다."""
+    return [dict(i) for i in get_watchlist(email)]
+
+
 def get_lines(email, code) -> list:
     """코드의 감시선 목록(계정별). 파일에 코드 키가 있으면 파일값(빈 배열=전부 지운 상태 영속),
     없으면 마스터 계정만 config 시드. 비마스터는 폴백 금지(마스터 실매도가 유출 방지)."""
