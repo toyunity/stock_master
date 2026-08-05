@@ -205,7 +205,7 @@ __ICONS__
 </header>
 <div class="sub">참고용(매매 권유 아님) · <a href="/scanner">🔍 수급 스캐너</a></div>
 __REFRESH__
-<details class="sec" id="semi" open style="display:none">
+<details class="sec" id="semi" style="display:none">
   <summary><svg class="hic secic"><use href="#i-cpu"/></svg> 반도체 동향 <span class="seccap" id="semi-fresh"></span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="conf" id="semi-flow"></div>
@@ -215,7 +215,7 @@ __REFRESH__
     국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
   </div>
 </details>
-<details class="sec" open>
+<details class="sec">
   <summary><svg class="hic secic"><use href="#i-target"/></svg> 관심종목 관리 <span class="seccap">검색·추가·순서·보유</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="manage" id="manage"></div>
