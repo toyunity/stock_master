@@ -140,3 +140,73 @@ def test_get_returns_one_session_per_process():
         assert a is b
     finally:
         wsbus.WsSession._inst = None
+
+
+# ── FlowEngine 연동 — 엔진은 연결을 소유하지 않고 등록만 한다 ──
+
+class _Bus:
+    """등록/해제만 기록하는 가짜 버스(연결 없음)."""
+
+    def __init__(self, connected=True, note=""):
+        self.reg, self.unreg, self.started = [], [], 0
+        self.status = {"connected": connected, "note": note}
+
+    def start(self):
+        self.started += 1
+
+    async def register(self, tr_id, tr_key, handler):
+        self.reg.append((tr_id, tr_key, handler))
+
+    async def unregister(self, tr_id, tr_key, handler):
+        self.unreg.append((tr_id, tr_key))
+
+
+def _engine(monkeypatch, bus):
+    monkeypatch.setattr(wsbus.WsSession, "get", classmethod(lambda cls, client: bus))
+    from backend.flow.engine import FlowEngine
+    FlowEngine._registry.pop("005930", None)
+    return FlowEngine("005930")
+
+
+def test_engine_registers_both_tr_ids_and_releases_on_stop(monkeypatch):
+    """엔진은 체결·프로그램 두 건을 등록하고, 멈출 때 둘 다 해제한다."""
+    bus = _Bus()
+    eng = _engine(monkeypatch, bus)
+    asyncio.run(eng._ws_attach(_FakeClient()))
+    assert bus.started == 1
+    assert sorted(t for t, _k, _h in bus.reg) == ["H0UNCNT0", "H0UNPGM0"]
+    assert {k for _t, k, _h in bus.reg} == {"005930"}
+    asyncio.run(eng._ws_detach())
+    assert sorted(t for t, _k in bus.unreg) == ["H0UNCNT0", "H0UNPGM0"]
+
+
+def test_engine_handlers_feed_state(monkeypatch):
+    """등록한 핸들러가 실제로 체결·프로그램을 FlowState에 넣는다."""
+    bus = _Bus()
+    eng = _engine(monkeypatch, bus)
+    asyncio.run(eng._ws_attach(_FakeClient()))
+    by_tr = {tr: h for tr, _k, h in bus.reg}
+    # H0STCNT0 계열 레코드(0=코드, 1=체결시각, 2=현재가 …)
+    by_tr["H0UNCNT0"](["005930", "133005", "71000", "2", "500", "0.71",
+                       "70500", "71200", "70400", "70900", "71000", "10",
+                       "1234567", "890", "1", "2", "3", "4", "5", "6",
+                       "7", "8", "120.5"])
+    by_tr["H0UNPGM0"](["005930", "133005", "1", "2", "3", "4", "-5", "-6"])
+    snap = eng.state.snapshot()
+    assert snap["market"]["price"] == 71000        # 체결 반영
+    assert snap["program"]["net_qty"] == -5        # 프로그램 반영
+
+
+def test_engine_mirrors_bus_connection_status(monkeypatch):
+    """상태 문구는 버스가 진실이다 — 엔진이 자기 판단으로 '연결됨'을 쓰면
+    폴백(_ws_fallback)이 끊긴 줄 모르고 화면을 안 채운다."""
+    bus = _Bus(connected=False, note="실시간 연결 끊김 — 30초 후 재접속")
+    eng = _engine(monkeypatch, bus)
+    asyncio.run(eng._ws_attach(_FakeClient()))
+    st = eng.state.snapshot()["status"]
+    assert st["connected"] is False and "재접속" in st["note"]
+
+    bus.status = {"connected": True, "note": ""}
+    eng._sync_status()
+    st2 = eng.state.snapshot()["status"]
+    assert st2["connected"] is True and st2["note"] == ""
