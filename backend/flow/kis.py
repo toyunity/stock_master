@@ -310,6 +310,44 @@ def parse_index(js: dict) -> Optional[dict]:
             "sign": _SIGN.get(str(o.get("prdy_vrss_sign", "")), "")}
 
 
+VKOSPI_ISCD = "0503"   # 코스피200 변동성지수.
+# 지수 마스터(idxcode.mst)에는 5자리 '00503 VKOSPI'로 있지만 **API는 4자리**다
+# (00001 종합→0001, 22001 KOSPI200→2001과 같은 규칙). 00503을 그대로 넣으면
+# rt_cd=0에 값이 0.00으로 와서 에러 없이 조용히 틀린다(2026-08-05 실측).
+
+
+def parse_index_daily(js) -> Optional[dict]:
+    """inquire-index-daily-price(FHPUP02120000) → {'now': {...}|None, 'days': [...]}.
+
+    **이력은 output2에 있다**(output은 None이다). 응답은 최신순이라 차트가 왼쪽부터
+    그릴 수 있게 **여기서 뒤집는다** — 정렬 방향을 프론트까지 끌고 가지 않는다.
+    값이 비거나 숫자가 아닌 행은 버린다: 차트에 0이 찍히면 없던 급락이 보인다."""
+    if not isinstance(js, dict) or js.get("rt_cd") != "0":
+        return None
+    days = []
+    for r in (js.get("output2") or []):
+        d = (r.get("stck_bsop_date") or "").strip()
+        raw = (r.get("bstp_nmix_prpr") or "").strip()
+        if not d or not raw:
+            continue
+        try:
+            v = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        days.append({"d": d, "v": v})
+    if not days:
+        return None
+    days.sort(key=lambda x: x["d"])            # 최신순 → 오래된 순
+    o = js.get("output1") or {}
+    now = None
+    if o:
+        now = {"price": _f(o.get("bstp_nmix_prpr")),
+               "change": _f(o.get("bstp_nmix_prdy_vrss")),
+               "rate": _f(o.get("bstp_nmix_prdy_ctrt")),
+               "sign": _SIGN.get(str(o.get("prdy_vrss_sign", "")), "")}
+    return {"now": now, "days": days}
+
+
 def parse_financials(js: dict) -> list:
     """financial-ratio(FHKST66430300) output → 최근 분기 배열(신순). 초보용 핵심만:
     period(YYYY-MM)·roe·eps·debt(부채비율)·sales_growth(매출성장률). 실패는 []."""
@@ -494,6 +532,18 @@ class KisClient:
                              "FHPUP02100000",
                              {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd})
         return parse_index(js)
+
+    async def index_daily(self, iscd: str, date: str) -> Optional[dict]:
+        """일별 지수(FHPUP02120000) — 한 번에 현재값 + 100거래일 이력.
+
+        경로가 `inquire-index-daily-price`다. `inquire-daily-indexprice`는 존재하지
+        않아 JSON이 아닌 응답이 오고 파싱에서 터진다(2026-08-05 실측)."""
+        js = await self._get(
+            "/uapi/domestic-stock/v1/quotations/inquire-index-daily-price",
+            "FHPUP02120000",
+            {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd,
+             "FID_INPUT_DATE_1": date, "FID_PERIOD_DIV_CODE": "D"})
+        return parse_index_daily(js)
 
     async def futures_board(self, cls_code: str) -> list:
         """지수선물 전광판 — 월물 목록과 시세가 한 콜에 같이 온다(FHPIF05030200).
