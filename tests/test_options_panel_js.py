@@ -49,8 +49,10 @@ function textPx(s){
   return Math.round(w);
 }
 function mk(id){
+  // addEventListener는 실제 DOM 엘리먼트에 항상 있다. 없으면 같은 페이지의 다른
+  // 패널(VKOSPI 섹션이 toggle을 건다)이 여기서 터져 스크립트 전체가 죽는다.
   const e = {id, textContent:'', innerHTML:'', className:'', style:{},
-             clientWidth: 340};
+             clientWidth: 340, open: false, addEventListener: () => {}};
   if (id === 'opt-dig') {           // 접힌 줄 — 390px 화면의 실측 가용폭
     let t = '';
     Object.defineProperty(e, 'textContent', {set(v){ t = v; }, get(){ return t; }});
