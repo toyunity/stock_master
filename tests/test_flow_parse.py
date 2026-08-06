@@ -4,6 +4,7 @@
 - H0STCNT0(실시간 체결가) 46필드, H0STPGM0(종목별 프로그램매매) 11필드
 - 데이터 프레임 '0|TRID|N|f1^f2^...' (N레코드 연접), JSON 프레임(ACK/PINGPONG)
 """
+import asyncio
 import json
 
 from backend.flow.kis import (
@@ -146,3 +147,91 @@ def test_build_subscribe_roundtrip():
     # 해지는 "2"다. "0"을 보내면 KIS가 OPSP8997 invalid tr_type으로 거부하고,
     # 그 거부가 공유 세션 전체를 끊는다(2026-08-06 실측 로그).
     assert off["header"]["tr_type"] == "2"
+
+
+# ── 토큰·승인키 발급 직렬화 ────────────────────────────────────────
+# 2026-08-06 19:24 실사고: 토큰이 24시간 만료되는 찰나에 서버의 동시 KIS 호출이
+# 각자 캐시 미스를 보고 각자 발급해 **알림톡이 4통** 날아갔다.
+
+def _client(tmp_path, issued):
+    from backend.flow.kis import KisClient
+
+    class C(KisClient):
+        async def _issue_token(self):
+            issued.append(1)
+            await asyncio.sleep(0.01)          # 실제 HTTP처럼 양보 지점을 만든다
+            return {"access_token": "TOK%d" % len(issued), "expires_in": 86400}
+
+    return C("k", "s", str(tmp_path))
+
+
+def test_concurrent_token_calls_issue_only_once(tmp_path):
+    """만료 순간에 10개가 동시에 물어도 발급은 1회여야 한다."""
+    import asyncio as aio
+    issued = []
+    c = _client(tmp_path, issued)
+
+    async def go():
+        return await aio.gather(*[c.token() for _ in range(10)])
+
+    toks = aio.run(go())
+    assert len(issued) == 1, "발급 %d회 — 락이 없거나 이중검사가 빠졌다" % len(issued)
+    assert set(toks) == {"TOK1"}               # 전원이 같은 토큰을 받았다
+
+
+def test_second_call_uses_the_disk_cache(tmp_path):
+    """한 번 받은 뒤엔 파일 캐시로 끝난다(다음 프로세스도 재발급 안 함)."""
+    import asyncio as aio
+    issued = []
+    c = _client(tmp_path, issued)
+    aio.run(c.token())
+    aio.run(c.token())
+    assert len(issued) == 1
+    # 새 클라이언트(=재기동 흉내)도 같은 파일을 읽어 발급하지 않는다
+    c2 = _client(tmp_path, issued)
+    assert aio.run(c2.token()) == "TOK1" and len(issued) == 1
+
+
+def test_expired_cache_still_issues(tmp_path):
+    """만료된 캐시는 당연히 새로 받아야 한다 — 락이 발급을 막아버리면 안 된다."""
+    import asyncio as aio
+    import json as _json
+    import time as _time
+    issued = []
+    c = _client(tmp_path, issued)
+    (tmp_path / "kis_token.json").write_text(
+        _json.dumps({"token": "OLD", "expires_at": _time.time() - 1}), encoding="utf-8")
+    assert aio.run(c.token()) == "TOK1" and len(issued) == 1
+
+
+def test_concurrent_approval_key_calls_issue_only_once(tmp_path, monkeypatch):
+    """승인키도 같다 — 재기동 직후 여러 화면이 동시에 붙으면 겹친다."""
+    import asyncio as aio
+    from backend.flow.kis import KisClient
+    calls = []
+
+    class C(KisClient):
+        pass
+
+    c = C("k", "s", str(tmp_path))
+
+    class _R:
+        def raise_for_status(self): pass
+        def json(self): return {"approval_key": "AK"}
+
+    class _Cli:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **kw):
+            calls.append(1)
+            await aio.sleep(0.01)
+            return _R()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: _Cli())
+
+    async def go():
+        return await aio.gather(*[c.approval_key() for _ in range(8)])
+
+    keys = aio.run(go())
+    assert len(calls) == 1 and set(keys) == {"AK"}

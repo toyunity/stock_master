@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -424,22 +425,56 @@ class KisClient:
         self.div = market_div  # UN=KRX+NXT 통합(기본), J=KRX 전용, NX=NXT 전용
         self._token_path = Path(cache_dir) / "kis_token.json"
         self._approval: Optional[str] = None
+        self._issue_lock = None      # asyncio.Lock — 첫 사용 때 만든다(아래 _lock 참조)
 
-    # 토큰은 24h 유효·발급 1회/분 제한 + 매 발급마다 알림톡 → 캐시가 필수다.
-    async def token(self) -> str:
+    def _lock(self):
+        """발급 직렬화용 Lock. **생성자가 아니라 여기서 만든다.**
+
+        Python 3.9의 `asyncio.Lock()`은 생성 시점의 이벤트 루프에 묶인다. KisClient는
+        루프 밖(모듈 임포트·CLI)에서도 만들어지므로 생성자에서 만들면 나중에
+        'attached to a different loop'로 터진다."""
+        if self._issue_lock is None:
+            self._issue_lock = asyncio.Lock()
+        return self._issue_lock
+
+    def _cached_token(self) -> Optional[str]:
         try:
             c = json.loads(self._token_path.read_text(encoding="utf-8"))
             if c.get("token") and c.get("expires_at", 0) > time.time() + 60:
                 return c["token"]
         except (OSError, ValueError):
             pass
-        js = await self._issue_token()
-        tok = js["access_token"]
-        self._token_path.parent.mkdir(parents=True, exist_ok=True)
-        self._token_path.write_text(json.dumps(
-            {"token": tok, "expires_at": time.time() + int(js.get("expires_in", 86400))}
-        ), encoding="utf-8")
-        return tok
+        return None
+
+    # 토큰은 24h 유효·발급 1회/분 제한 + 매 발급마다 알림톡 → 캐시가 필수다.
+    async def token(self) -> str:
+        """캐시된 접근토큰. 만료됐으면 **한 번만** 발급한다.
+
+        락이 없을 때 실제로 난 사고(2026-08-06 19:24): 토큰이 24시간 만료되는 그
+        찰나에 서버의 동시 KIS 호출들이 **각자** 캐시 미스를 보고 각자 발급해
+        **알림톡이 4통** 날아갔다. 대시보드 한 번에 KIS 경로가 여러 개 병렬로 나가므로
+        만료 순간에 겹치는 건 예외가 아니라 정상 동작이다.
+
+        락을 잡은 뒤 캐시를 **다시 읽는다** — 기다리는 동안 앞선 코루틴이 이미
+        받아왔으면 그걸 쓴다(이중 검사). 이게 없으면 락은 발급을 줄 세우기만 하고
+        횟수는 그대로다."""
+        tok = self._cached_token()
+        if tok:
+            return tok
+        async with self._lock():
+            tok = self._cached_token()          # 대기 중에 남이 받아왔을 수 있다
+            if tok:
+                return tok
+            js = await self._issue_token()
+            tok = js["access_token"]
+            self._token_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._token_path.with_name(self._token_path.name + ".tmp")
+            tmp.write_text(json.dumps(
+                {"token": tok,
+                 "expires_at": time.time() + int(js.get("expires_in", 86400))}
+            ), encoding="utf-8")
+            os.replace(tmp, self._token_path)   # 원자적 — 남이 반쪽 파일을 읽지 않게
+            return tok
 
     async def _issue_token(self) -> dict:
         import httpx
@@ -454,20 +489,27 @@ class KisClient:
         return js
 
     async def approval_key(self) -> str:
+        """웹소켓 승인키. 토큰과 같은 이유로 **발급을 직렬화한다**(token() 주석 참조).
+
+        여기 캐시는 메모리뿐이라(프로세스 수명) 파일 재확인이 없고, 락을 잡은 뒤
+        `self._approval`을 다시 본다 — 기다리는 사이 남이 받아왔으면 그걸 쓴다."""
         if self._approval:
             return self._approval
-        import httpx
-        async with httpx.AsyncClient(timeout=10) as cli:
-            r = await cli.post(f"{self.base}/oauth2/Approval", json={
-                "grant_type": "client_credentials",
-                "appkey": self.appkey, "secretkey": self.appsecret})  # 필드명 secretkey!
-            r.raise_for_status()
-            js = r.json()
-        key = js.get("approval_key")
-        if not key:
-            raise RuntimeError(f"KIS approval_key 발급 실패: {js}")
-        self._approval = key
-        return key
+        async with self._lock():
+            if self._approval:
+                return self._approval
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as cli:
+                r = await cli.post(f"{self.base}/oauth2/Approval", json={
+                    "grant_type": "client_credentials",
+                    "appkey": self.appkey, "secretkey": self.appsecret})  # 필드명 secretkey!
+                r.raise_for_status()
+                js = r.json()
+            key = js.get("approval_key")
+            if not key:
+                raise RuntimeError(f"KIS approval_key 발급 실패: {js}")
+            self._approval = key
+            return key
 
     def reset_approval(self) -> None:
         """무효 승인키(OPSP0011)를 폐기 — 다음 approval_key()가 /oauth2/Approval로 재발급한다.
