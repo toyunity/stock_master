@@ -118,3 +118,19 @@ def test_dashboard_us_card_links_to_the_detail_page(cli):
           "news": [], "disclosures": [], "candles": []}
     html = render_dashboard([us], [], "2026-08-06")
     assert "'<a class=\"name\" href=\"/live/'" in html or "/live/" in html
+
+
+def test_no_placeholder_survives_the_render():
+    """치환 안 된 __PLACEHOLDER__가 남아 있으면 안 된다.
+
+    실제로 났던 사고(2026-08-06): `lib`을 읽어놓고 `.replace("__LIB__", lib)`를
+    빠뜨려 차트 라이브러리가 통째로 안 실렸다. 브라우저에선
+    `ReferenceError: __LIB__ is not defined`로 스크립트가 즉사해 화면이 '불러오는 중'에
+    멈췄는데, **node 실행 테스트는 LightweightCharts를 가짜로 주입하기 때문에 통과했다.**
+    가짜가 채워주는 자리는 가짜 테스트로 지킬 수 없다 — 렌더 결과를 직접 본다."""
+    import re
+    from backend.report.live_page import render_live_page
+    from backend.report.us_page import render_us_page
+    for html in (render_us_page("SKHY", "SKHY"), render_live_page("005930", "삼성전자", "demo")):
+        left = set(re.findall(r"__[A-Z][A-Z0-9_]*__", html))
+        assert not left, left

@@ -302,4 +302,5 @@ def render_us_page(sym: str, name: str, email=None) -> str:
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
             .replace("__NAME__", escape(name))
-            .replace("__SYM__", escape(sym)))
+            .replace("__SYM__", escape(sym))
+            .replace("__LIB__", lib))
