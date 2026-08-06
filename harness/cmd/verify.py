@@ -12,6 +12,7 @@ _ART = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts")
 # (name, kind, source): kind route=데모경로 / baked=/live 베이킹 / html=직접 HTML
 SCREENS = [
     ("live", "baked", "/live/000660"),
+    ("uslive", "route", "/live/SKHY"),   # 미국 상세 — 데모서버는 KIS 미접촉이라 차트만 빈다
     ("dashboard", "route", "/"),
     ("scanner", "route", "/scanner"),
     ("widget", "route", "/widget-setup"),
