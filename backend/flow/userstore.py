@@ -152,22 +152,26 @@ def get_dash_items(email) -> list:
 
 def get_lines(email, code) -> list:
     """코드의 감시선 목록(계정별). 파일에 코드 키가 있으면 파일값(빈 배열=전부 지운 상태 영속),
-    없으면 마스터 계정만 config 시드. 비마스터는 폴백 금지(마스터 실매도가 유출 방지)."""
+    없으면 마스터 계정만 config 시드. 비마스터는 폴백 금지(마스터 실매도가 유출 방지).
+
+    가격 정밀도는 코드로 시장을 판정해 watch에 넘긴다 — US는 센트가 살아야 한다
+    (`market_of`가 이 파일의 저장 규칙과 같은 정규식을 쓰므로 판정이 갈리지 않는다)."""
     from backend.flow import watch
     email = norm_email(email)
+    mkt = market_of(code) or "KR"
     d = _load(email)
     lines = (d.get("watch_lines") or {}).get(code)
     if isinstance(lines, list):
-        return watch._clean(lines)
+        return watch._clean(lines, mkt)
     if email == default_account():
-        return watch._clean(settings.watch_lines.get(code) or [])   # 마스터만 config 시드
-    return []                                                        # 비마스터: 폴백 금지
+        return watch._clean(settings.watch_lines.get(code) or [], mkt)   # 마스터만 config 시드
+    return []                                                            # 비마스터: 폴백 금지
 
 
 def set_lines(email, code, lines) -> list:
     """검증 후 계정 파일에 원자적 저장. 위반 시 ValueError. 빈 배열도 영속."""
     from backend.flow import watch
-    norm = watch._validate_lines(lines)
+    norm = watch._validate_lines(lines, market_of(code) or "KR")
     d = _load(norm_email(email))
     wl = d.get("watch_lines")
     if not isinstance(wl, dict):

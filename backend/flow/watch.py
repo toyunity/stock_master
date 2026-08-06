@@ -48,7 +48,23 @@ def _finite_pos(price) -> bool:
     return price > 0
 
 
-def _clean(lines) -> list:
+def _round_price(price, market: str = "KR"):
+    """시장별 가격 정밀도 — 국내는 원 단위 정수, 미국은 센트(소수 2자리).
+
+    원래는 무조건 `int(round(...))`였다. 원화 전용 기능일 땐 맞았지만 US 티커가
+    관심종목에 들어오면서 **$153.16 감시선이 153으로 잘려 저장됐다** — 예외도
+    경고도 없이. 가격이 3달러 어긋난 감시선은 안 걸리느니만 못하다.
+
+    미국이라도 정수 달러면 `150.0`이 아니라 `150`으로 돌려준다(화면 표기 정돈).
+    센트 아래는 버린다 — 미국 주식 호가 단위가 센트라 그 밑은 의미가 없다."""
+    v = float(price)
+    if market != "US":
+        return int(round(v))
+    v = round(v, 2)
+    return int(v) if v == int(v) else v
+
+
+def _clean(lines, market: str = "KR") -> list:
     """반환용 정규화 — 무효 줄은 조용히 버림(파일/config 폴백값 방어)."""
     out = []
     for item in (lines or []):
@@ -56,7 +72,7 @@ def _clean(lines) -> list:
             continue
         label = ("" if item.get("label") is None else str(item.get("label"))).strip()
         if 1 <= len(label) <= MAX_LABEL:
-            out.append({"price": int(round(float(item["price"]))), "label": label})
+            out.append({"price": _round_price(item["price"], market), "label": label})
     return out
 
 
@@ -69,9 +85,12 @@ def get_lines(code: str) -> list:
     return _clean(settings.watch_lines.get(code) or [])
 
 
-def _validate_lines(lines) -> list:
+def _validate_lines(lines, market: str = "KR") -> list:
     """감시선 검증·정규화(저장 무관). 위반 시 ValueError(사용자 노출 메시지).
-    계정별 저장(userstore)과 전역 저장(set_lines)이 동일 규칙을 공유한다."""
+    계정별 저장(userstore)과 전역 저장(set_lines)이 동일 규칙을 공유한다.
+
+    `market`은 가격 정밀도만 가른다(_round_price 참조). 기본 KR — 시장을 안 넘기는
+    기존 호출부(전역 set_lines 등)의 동작이 안 바뀌게."""
     if not isinstance(lines, list):
         raise ValueError("감시선 목록(배열)이 필요해요")
     if len(lines) > MAX_LINES:
@@ -86,7 +105,7 @@ def _validate_lines(lines) -> list:
         label = ("" if item.get("label") is None else str(item.get("label"))).strip()
         if not (1 <= len(label) <= MAX_LABEL):
             raise ValueError("%d번째 줄: 라벨은 1~%d자여야 해요" % (n, MAX_LABEL))
-        norm.append({"price": int(round(float(item["price"]))), "label": label})
+        norm.append({"price": _round_price(item["price"], market), "label": label})
     return norm
 
 

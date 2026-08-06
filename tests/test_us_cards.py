@@ -77,11 +77,14 @@ def test_us_quote_is_not_called_when_the_us_market_is_closed(monkeypatch, tmp_pa
     assert calls["n"] == 1
 
 
-def test_us_card_hides_kr_only_blocks_and_the_live_link():
-    """US 카드엔 밸류지표·내일예상·/live 링크가 없어야 한다.
+def test_us_card_hides_kr_only_blocks():
+    """US 카드엔 밸류지표·내일예상이 없어야 한다.
 
-    /live는 6자리 숫자만 받아 SKHY로 들어가면 404다 — 깨진 링크보다 없는 게 낫다.
-    PER/PBR/52주는 KIS 국내 TR이라 US는 받을 수 없고, 내일예상은 수급·ADR 기반이다."""
+    PER/PBR/52주는 KIS 국내 TR이라 US는 받을 수 없고, 내일예상은 수급·ADR 기반이다.
+
+    **`/live` 링크는 2026-08-06부터 US에도 건다** — 그전엔 상세가 6자리 숫자만 받아
+    404였지만, 이제 US 전용 화면(us_page)으로 갈라진다. 링크 유무는 test_us_page.py가
+    화면 쪽에서 지킨다."""
     from backend.report.dashboard import render_dashboard
     us = {"code": "SKHY", "name": "SKHY", "market": "US", "action": "hold",
           "action_ko": "관망", "confidence": 1, "advice": False,

@@ -82,3 +82,43 @@ def test_set_preserves_order(iso):
     saved = watch.set_lines("000660", [
         {"price": 300, "label": "c"}, {"price": 100, "label": "a"}, {"price": 200, "label": "b"}])
     assert [l["label"] for l in saved] == ["c", "a", "b"]
+
+
+# ── 시장별 가격 정밀도 ────────────────────────────────────────────
+# 감시선 가격을 무조건 정수로 반올림하던 규칙은 원화 전용이었다.
+# US 티커에 $153.16 감시선을 걸면 153으로 잘려 저장됐다(조용한 데이터 손상).
+
+def test_kr_price_stays_integer_won(iso):
+    """국내는 원 단위 정수 — 소수 입력도 반올림한다(기존 동작 보존)."""
+    saved = watch._validate_lines([{"price": 71234.6, "label": "절대선"}], market="KR")
+    assert saved == [{"price": 71235, "label": "절대선"}]
+    assert isinstance(saved[0]["price"], int)
+
+
+def test_us_price_keeps_cents(iso):
+    """미국은 센트가 살아야 한다 — $153.16을 153으로 저장하면 감시선이 무의미해진다."""
+    saved = watch._validate_lines([{"price": 153.16, "label": "절대선"}], market="US")
+    assert saved == [{"price": 153.16, "label": "절대선"}]
+
+
+def test_us_price_rounds_to_cents_not_beyond(iso):
+    """소수 셋째 자리는 버린다 — 호가 단위가 센트라 그 아래는 의미가 없다."""
+    assert watch._validate_lines([{"price": 12.3456, "label": "a"}],
+                                 market="US")[0]["price"] == 12.35
+
+
+def test_us_whole_dollar_has_no_trailing_decimal_noise(iso):
+    """정수 달러는 150.0이 아니라 150으로 — 화면 표기가 지저분해지지 않게."""
+    p = watch._validate_lines([{"price": 150, "label": "a"}], market="US")[0]["price"]
+    assert p == 150 and isinstance(p, int)
+
+
+def test_default_market_is_kr(iso):
+    """market을 안 넘기는 기존 호출부(전역 set_lines 등)는 국내 규칙 그대로."""
+    assert watch._validate_lines([{"price": 99.9, "label": "a"}])[0]["price"] == 100
+
+
+def test_clean_honors_market_too(iso):
+    """읽기 경로(_clean)도 같은 규칙 — 저장은 됐는데 읽을 때 잘리면 소용없다."""
+    assert watch._clean([{"price": 153.16, "label": "a"}], market="US") == \
+        [{"price": 153.16, "label": "a"}]

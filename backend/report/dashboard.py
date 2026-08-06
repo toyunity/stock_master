@@ -259,12 +259,12 @@ function cardHtml(s){
   // 미국 티커는 국내 전용 블록을 통째로 뺀다 — 모르는 값을 '–'로 자리만 잡아두지 않는다.
   //  · PER·PBR·52주: /api/fundamentals가 KIS 국내 TR이라 US는 못 받는다
   //  · 내일 예상: 수급·ADR 기반이라 US엔 근거가 없다
-  //  · /live 링크: 상세는 6자리 숫자만 받아 'SKHY'로 들어가면 404다 — 깨진 링크보다 없는 게 낫다
+  // 상세 링크는 국내·미국 모두 건다(2026-08-06~). 미국은 /live가 US 전용 화면으로
+  // 갈라져 가격 차트·감시선만 그린다 — 예전엔 404라 링크를 뺐었다.
   const isUS = s.market === 'US';
   let h='<div class="card '+esc(s.action)+'">';
   // 헤더 행: 이름·판정 태그(좌) · 큰 가격/등락(우)
-  const nameHtml = isUS ? '<span class="name">'+esc(s.name)+'</span>'
-                        : '<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>';
+  const nameHtml = '<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>';
   h+='<div class="cardhd"><div class="chinfo">'
     +'<span class="nrow">'+nameHtml
     +'<span class="vtag vtag-'+esc(s.action)+'">'+esc(s.action_ko)+'</span>'

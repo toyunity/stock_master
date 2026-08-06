@@ -112,3 +112,22 @@ def test_migration_promotes_globals(tmp_path, monkeypatch):
     assert [i["code"] for i in us.get_watchlist(M)] == ["005930", "000660"]
     assert us.get_lines(M, "000660")[0]["price"] == 1853000
     assert us.email_for_token("e" * 32) == M          # env 토큰 → 마스터 고정
+
+
+# ── US 감시선 정밀도 ──────────────────────────────────────────────
+# get_lines/set_lines가 코드로 시장을 판정해 watch에 넘겨야 한다.
+# 안 그러면 저장은 계정별로 잘 되는데 가격만 조용히 정수로 잘린다.
+
+def test_us_watch_line_keeps_cents_through_userstore():
+    from backend.flow import userstore
+    saved = userstore.set_lines("a@b.com", "SKHY",
+                                [{"price": 153.16, "label": "절대선"}])
+    assert saved == [{"price": 153.16, "label": "절대선"}]
+    assert userstore.get_lines("a@b.com", "SKHY") == [{"price": 153.16, "label": "절대선"}]
+
+
+def test_kr_watch_line_still_integer_through_userstore():
+    from backend.flow import userstore
+    saved = userstore.set_lines("a@b.com", "000660",
+                                [{"price": 71234.6, "label": "절대선"}])
+    assert saved == [{"price": 71235, "label": "절대선"}]

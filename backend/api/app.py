@@ -140,12 +140,44 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/live/{code}", response_class=HTMLResponse)
     def live(code: str, request: Request):
-        """실시간 수급 화면 — KIS 키 있으면 LIVE, 없으면 DEMO(시뮬레이션)."""
-        if not _CODE_RE.match(code):
-            return HTMLResponse("종목 코드는 6자리 숫자입니다", status_code=404)
+        """상세 화면 — 국내는 실시간 수급, 미국은 가격·감시선 전용(설계 2026-08-06).
+
+        경로를 나누지 않고 여기서 가른다. `/us/{sym}`를 따로 두면 감시선 편집기·
+        인증 게이트·뒤로가기를 두 벌 유지하게 된다. 판정은 userstore.market_of
+        하나로 — 관심종목 저장이 쓰는 규칙과 같아야 "저장은 됐는데 화면은 404"가 안 난다."""
+        from backend.flow import userstore
+        market = userstore.market_of(code)
+        if market == "US":
+            from backend.report.us_page import render_us_page
+            from backend.flow.usquote import us_name
+            return HTMLResponse(render_us_page(code.upper(), us_name(code.upper()),
+                                               _req_email(request, settings)))
+        if market != "KR":
+            return HTMLResponse("종목 코드는 6자리 숫자(국내) 또는 티커(미국)입니다",
+                                status_code=404)
         eng = FlowEngine.get(code)
         return HTMLResponse(render_live_page(code, eng.state.name, eng.mode,
                                              _req_email(request, settings)))
+
+    @app.get("/api/usprice/{sym}")
+    async def us_price_api(sym: str):
+        """미국 현재가 — **정규장 중에만** 준다(장외엔 204 No Content).
+
+        장외에도 부르면 화면이 열릴 때마다 KIS 해외 TR이 나간다. 장이 닫혀 있으면
+        일봉 종가가 최신이고 그게 차트와도 일치하므로, 조회할 이유 자체가 없다."""
+        from backend.flow import adr, userstore, usquote
+        if userstore.market_of(sym) != "US":
+            return Response(status_code=404)
+        if not adr.us_market_open():
+            return Response(status_code=204)
+        client = marketdata._client()
+        if client is None:
+            return Response(status_code=204)
+        try:
+            q = await usquote.price_us(client, sym.upper())
+        except Exception:
+            q = None
+        return JSONResponse(q or {}, status_code=200 if q else 204)
 
     @app.get("/api/live/{code}/stream")
     async def _live_stream(code: str):
@@ -153,9 +185,18 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/candles/{code}")
     async def candles_api(code: str, tf: str = "5m"):
-        """봉 차트 — tf: 1m/5m/15m(당일 분봉, LIVE는 KIS·데모는 합성) | 1d(일봉 120)."""
-        if not _CODE_RE.match(code):
+        """봉 차트 — tf: 1m/5m/15m(당일 분봉, LIVE는 KIS·데모는 합성) | 1d(일봉 120).
+
+        일봉은 FDR 경로라 미국 티커도 된다. **분봉은 KIS 국내 TR 전용**이라 미국은
+        400으로 거절한다 — 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이 시장엔 아예
+        없다'가 화면에서 구분되지 않는다."""
+        from backend.flow import userstore
+        market = userstore.market_of(code)
+        if market is None:
             return Response(status_code=404)
+        if market == "US" and tf != "1d":
+            return JSONResponse({"error": "미국 종목은 일봉(1d)만 제공해요 — "
+                                          "분봉은 국내 전용입니다"}, status_code=400)
         if tf not in candles.TIMEFRAMES:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
                                 status_code=400)
@@ -201,19 +242,20 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/watch/{code}")
     def watch_get(code: str, request: Request):
-        """감시선(참조선) 조회(계정별) — 파일 저장값 우선, 없으면 마스터만 config 폴백."""
-        if not _CODE_RE.match(code):
-            return Response(status_code=404)
+        """감시선(참조선) 조회(계정별) — 파일 저장값 우선, 없으면 마스터만 config 폴백.
+        국내·미국 공용(가격 정밀도는 userstore가 코드로 판정해 가른다)."""
         from backend.flow import userstore
+        if userstore.market_of(code) is None:
+            return Response(status_code=404)
         return JSONResponse({"lines": userstore.get_lines(_req_email(request, settings), code)})
 
     @app.post("/api/watch/{code}")
     async def watch_set(code: str, request: Request):
         """감시선 저장(계정별) — body {"lines":[{"price":num,"label":str}, ...]}.
         검증 실패 400(사용자 메시지), 성공 시 정규화된 {"lines": [...]}."""
-        if not _CODE_RE.match(code):
-            return Response(status_code=404)
         from backend.flow import userstore
+        if userstore.market_of(code) is None:
+            return Response(status_code=404)
         try:
             body = await request.json()
         except Exception:
