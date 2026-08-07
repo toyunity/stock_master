@@ -293,6 +293,8 @@ __ICONS__
     <button class="tf" data-tf="15m">15분</button>
     <button class="tf" data-tf="60m">60분</button>
     <button class="tf" data-tf="1d">일봉</button>
+    <button class="tf" data-tf="1w">주봉</button>
+    <button class="tf" data-tf="1mo">월봉</button>
     <button class="tf" id="notifbtn" style="display:none">🔔 감시선 알림 허용</button>
   </div>
   <div class="marow">
@@ -729,7 +731,7 @@ function updateLiveCandle(M){
   if(nowLine){try{nowLine.applyOptions({price:price,color:_col});}catch(e){}}
   try{pseries.applyOptions({priceLineColor:_col,priceLineWidth:2});}catch(e){}   // 현재가 축 태그 방향색
   var ce=document.getElementById('pc-count');
-  if(TF==='1d'||!lastCandle||lastCandleTf!==TF){if(ce)ce.textContent='';return;} // 일봉·미로드 제외
+  if(isDay(TF)||!lastCandle||lastCandleTf!==TF){if(ce)ce.textContent='';return;} // 일·주·월봉·미로드 제외
   var n={'1m':1,'5m':5,'15m':15,'60m':60}[TF]; if(!n){if(ce)ce.textContent='';return;}
   var p=(KTIME||'00:00:00').split(':'), mm=(+p[0])*60+(+p[1]);
   var bmin=bucketMin(mm,n), bh=Math.floor(bmin/60), bm=bmin%60;
@@ -776,7 +778,10 @@ function placeExt(){
 (function(){var _ts=pchart.timeScale();
   if(_ts.subscribeVisibleTimeRangeChange)_ts.subscribeVisibleTimeRangeChange(placeExt);})();
 let TF='5m', tfSeq=0;
-const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','60m':'당일 60분봉','1d':'일봉 120일'};
+const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','60m':'당일 60분봉',
+  '1d':'일봉 120일','1w':'주봉 120주','1mo':'월봉 120개월'};
+// 일 단위 봉(시간 라벨이 날짜 문자열) — 분봉과 시간축 처리·갱신 주기가 갈린다
+const isDay=tf=>tf==='1d'||tf==='1w'||tf==='1mo';
 async function loadCandles(fit){
   // fit=true일 때만 전체 보기로 맞춘다(최초 로드·타임프레임 전환). 60초 자동 갱신은
   // fit=false로 사용자의 확대/이동 뷰를 보존(실사고: 갱신마다 초기화).
@@ -788,7 +793,7 @@ async function loadCandles(fit){
     const d=await r.json();
     if(seq!==tfSeq)return;
     if(!d.candles.length){document.getElementById('pc-fresh').textContent='· 데이터 없음(장전이거나 조회 실패)';return;}
-    var _mapped=d.candles.map(c=>({time:tf==='1d'?c.t:toTs(c.t,d.date),
+    var _mapped=d.candles.map(c=>({time:isDay(tf)?c.t:toTs(c.t,d.date),
       open:c.open,high:c.high,low:c.low,close:c.close}));
     pseries.setData(_mapped);
     // 최고/최저 자동 주석: 전체 로드 기간 고정 · 현재가(마지막 종가) 대비 % · 오버레이 라벨(placeExt).
@@ -806,9 +811,9 @@ async function loadCandles(fit){
     placeExt();
     // 실시간 봉 갱신 기준: 마지막 로드 봉(틱마다 이 봉의 고저종을 pseries.update로 갱신)
     lastCandle=_mapped.length?Object.assign({},_mapped[_mapped.length-1]):null; lastCandleTf=tf;
-    // 거래량 히스토그램(상승=적/하락=청 반투명). 일봉은 vol 0이라 비어 보임(분봉에서 의미).
+    // 거래량 히스토그램(상승=적/하락=청 반투명). FDR 일·주·월봉은 vol이 실리고 분봉은 당일 집계.
     if(volSeries){volSeries.setData(d.candles.map(function(c){return {
-      time:tf==='1d'?c.t:toTs(c.t,d.date), value:c.vol||0,
+      time:isDay(tf)?c.t:toTs(c.t,d.date), value:c.vol||0,
       color:(c.close>=c.open?'rgba(229,52,47,.5)':'rgba(31,102,224,.5)')};}));}
     lastVol=d.candles.length?(d.candles[d.candles.length-1].vol||0):0;   // 최근 봉 거래량(라벨은 renderSS)
     // 이평선: 데이터 세팅 + 봉주기별 사용 가능 여부로 버튼 활성화.
@@ -818,7 +823,7 @@ async function loadCandles(fit){
       var key='ma'+n, has=d.candles.some(function(c){return c[key]!=null;});
       if(pchart.addLineSeries&&maSeries[n]){
         maSeries[n].setData(has?d.candles.filter(function(c){return c[key]!=null;})
-          .map(function(c){return {time:tf==='1d'?c.t:toTs(c.t,d.date), value:c[key]};}):[]);
+          .map(function(c){return {time:isDay(tf)?c.t:toTs(c.t,d.date), value:c[key]};}):[]);
       }
       if(!has)_na.push(n);
     });
@@ -827,7 +832,8 @@ async function loadCandles(fit){
       btn.disabled=!has; btn.classList.toggle('na',!has);
     });
     document.querySelectorAll('.ma-hint').forEach(function(h){
-      h.textContent=_na.length?('이평 · '+_na.join('/')+'봉은 표본 부족(일봉에서 전부 표시)')
+      h.textContent=_na.length?('이평 · '+_na.join('/')+'봉은 표본 부족'
+          +(isDay(tf)?'':'(일봉에서 전부 표시)'))
         :'봉 이동평균 · 켜고 끄기';
     });
     // 공매도 오버레이: 일봉에서만(일별 T+1 데이터) — 버튼 활성화 + 재정렬
@@ -836,12 +842,12 @@ async function loadCandles(fit){
       b.classList.toggle('na',!_ssOk); if(!_ssOk)b.classList.remove('on');});
     if(!_ssOk)ssOn=false;
     renderSS();
-    pchart.applyOptions({timeScale:{timeVisible:tf!=='1d'}});
+    pchart.applyOptions({timeScale:{timeVisible:!isDay(tf)}});
     if(fit)pchart.timeScale().fitContent();
     syncVol();   // 거래량 차트 시간축을 캔들과 정렬
     const lastT=d.candles[d.candles.length-1].t;
     document.getElementById('pc-fresh').textContent='· '+TF_KO[tf]+' · 기준 '
-      +lastT+(tf==='1d'?'':' (KST) · 60초 자동 갱신');
+      +lastT+(isDay(tf)?'':' (KST) · 60초 자동 갱신');
   }catch(e){console.error(e);}
 }
 // [data-tf]로 한정 — 세션 탭(#sz-tabs, data-ses)·알림 버튼도 .tf 클래스를 쓰므로
@@ -865,7 +871,7 @@ document.querySelectorAll('.ss-btn').forEach(function(b){b.onclick=function(){
 document.querySelectorAll('.fit-btn').forEach(function(b){b.onclick=function(){
   try{pchart.timeScale().fitContent();}catch(e){} syncVol();};});
 loadCandles(true);
-setInterval(()=>{if(TF!=='1d')loadCandles(false);},60000);
+setInterval(()=>{if(!isDay(TF))loadCandles(false);},60000);
 function nextSlot(){
   // 잠정치 발표 슬롯(±10분): 외국인 09:30~, 기관 10:00~ — 다음 예상 시점 안내.
   // 기준 시각은 서버 KST(KTIME) — 클라이언트 로컬 시계 금지(P0-3)

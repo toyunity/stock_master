@@ -1,7 +1,9 @@
-"""봉 차트 데이터(분봉 파싱·집계·데모 합성·라우트) 테스트."""
+"""봉 차트 데이터(분봉 파싱·집계·주·월봉·데모 합성·라우트) 테스트."""
 import asyncio
+import datetime as dt
 
-from backend.flow.candles import _attach_ma, _session_window, aggregate, get_candles
+from backend.flow.candles import (_attach_ma, _session_window, aggregate,
+                                  aggregate_daily, get_candles)
 from backend.flow.kis import parse_minute_candles
 
 
@@ -87,6 +89,74 @@ def test_clip_drops_wrapped_previous_session_rows():
     assert len(_clip(bars, "15:30:00")) == 4
 
 
+# ── 주봉·월봉 ─────────────────────────────────────────────────────
+
+def _day(t, o=100, h=110, l=90, c=105, v=10):  # noqa: E741
+    return {"t": t, "open": o, "high": h, "low": l, "close": c, "vol": v}
+
+
+def test_aggregate_daily_weekly_iso_buckets():
+    # 2026-07-31(금, ISO 31주) / 2026-08-03(월, 32주) — 날짜는 이어져도 주가 갈리면 딴 봉
+    bars = [_day("2026-07-30", o=100, c=101),
+            _day("2026-07-31", h=130, l=80, c=99, v=7),
+            _day("2026-08-03", o=99, c=98)]
+    agg = aggregate_daily(bars, "1w")
+    assert len(agg) == 2
+    w0 = agg[0]
+    assert w0["t"] == "2026-07-31"                    # 라벨 = 버킷 마지막 거래일
+    assert w0["open"] == 100 and w0["close"] == 99    # 시가=첫날, 종가=마지막날
+    assert w0["high"] == 130 and w0["low"] == 80      # 구간 극값
+    assert w0["vol"] == 17                            # 거래량 합산
+    assert agg[1]["t"] == "2026-08-03" and agg[1]["close"] == 98
+
+
+def test_aggregate_daily_monthly_buckets():
+    bars = [_day("2026-07-01", o=100), _day("2026-07-31", c=120, h=140),
+            _day("2026-08-03", o=120, c=118)]
+    agg = aggregate_daily(bars, "1mo")
+    assert [b["t"] for b in agg] == ["2026-07-31", "2026-08-03"]
+    assert agg[0]["open"] == 100 and agg[0]["close"] == 120 and agg[0]["high"] == 140
+    assert agg[1]["close"] == 118
+
+
+def test_need_refetch_sees_start_coverage():
+    """PriceAdapter의 사각지대 고정 — end 커버리지만 보므로 대시보드가 만든 400일
+    캐시도 그대로 반환된다. 이걸 못 거르면 주·월봉이 1.5년치로 조용히 쪼그라든다."""
+    import pandas as pd
+    from backend.flow.candles import _need_refetch
+    start = dt.date(2011, 8, 7)
+    short = pd.DataFrame({"Close": [1.0, 1.0]},
+                         index=pd.to_datetime(["2026-01-02", "2026-08-06"]))
+    assert _need_refetch(short, start) is True        # 400일짜리 → 다시 받아야 한다
+    long_ = pd.DataFrame({"Close": [1.0, 1.0]},
+                         index=pd.to_datetime(["2011-08-10", "2026-08-06"]))
+    assert _need_refetch(long_, start) is False       # 시작까지 덮으면 캐시로 충분
+    assert _need_refetch(None, start) is True
+    assert _need_refetch(short.iloc[0:0], start) is True
+
+
+def test_get_candles_weekly_and_monthly(monkeypatch):
+    """주·월봉은 장기 일봉을 집계하고 이동평균을 붙여 최근 120봉만 내린다 — 네트워크 0."""
+    import backend.flow.candles as cd
+    days, cur, i = [], dt.date(2020, 1, 1), 0
+    while len(days) < 900:                            # 평일만 — 합성 3.5년
+        if cur.weekday() < 5:
+            days.append(_day(cur.isoformat(), o=100 + i, c=101 + i))
+            i += 1
+        cur += dt.timedelta(days=1)
+    monkeypatch.setattr(cd, "_long_daily_bars", lambda code: days)
+    loop = asyncio.new_event_loop()
+    try:
+        w = loop.run_until_complete(cd.get_candles("000660", "1w"))
+        m = loop.run_until_complete(cd.get_candles("000660", "1mo"))
+    finally:
+        loop.close()
+    assert w["tf"] == "1w" and len(w["candles"]) == 120   # 181주 → 최근 120주만
+    assert m["tf"] == "1mo" and 0 < len(m["candles"]) <= 120
+    assert w["candles"][-1]["ma5"] is not None            # 이동평균 부착
+    assert w["candles"][5]["vol"] == 50                   # 온전한 한 주 = 거래일 5일 합
+
+
 def test_get_candles_demo_mode_synthesizes(monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "kis_app_key", None)
@@ -117,14 +187,19 @@ def test_candles_api_routes(monkeypatch):
     monkeypatch.setattr(appmod.candles, "get_candles", fake)
     r = client.get("/api/candles/000660?tf=5m")
     assert r.status_code == 200 and r.json()["tf"] == "5m"
+    assert client.get("/api/candles/000660?tf=1w").status_code == 200
+    assert client.get("/api/candles/000660?tf=1mo").status_code == 200
     assert client.get("/api/candles/12ab?tf=5m").status_code == 404
     assert client.get("/api/candles/000660?tf=3h").status_code == 400
+    # 월봉이 '1M'이었다면 소문자 정규화 한 번에 1분봉과 겹친다 — '1M'은 영원히 400이어야 한다
+    assert client.get("/api/candles/000660?tf=1M").status_code == 400
 
 
 def test_live_page_has_chart_and_collapsed_panels():
     from backend.report.live_page import render_live_page
     html = render_live_page("000660", "SK하이닉스", "demo")
     assert "pchart" in html and "일봉" in html and "5분" in html  # 봉 주기 선택
+    assert 'data-tf="1w"' in html and 'data-tf="1mo"' in html    # 주봉·월봉 탭
     assert html.count("<details") >= 3  # 일별/기관세부/체결 기본 접힘
     assert "<summary" in html
 

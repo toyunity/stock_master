@@ -49,6 +49,21 @@ def test_us_daily_candles_route_is_open(cli, monkeypatch):
     assert r.status_code == 200 and len(r.json()["candles"]) == 1
 
 
+def test_us_weekly_monthly_candles_route_is_open(cli, monkeypatch):
+    """주·월봉도 FDR 집계 경로(KIS 무관)라 US로 열린다 — 네트워크는 안 탄다(주입)."""
+    from backend.flow import candles
+    monkeypatch.setattr(candles, "_long_daily_bars",
+                        lambda code: [{"t": "2026-08-03", "open": 1, "high": 2,
+                                       "low": 1, "close": 2, "vol": 10},
+                                      {"t": "2026-08-04", "open": 2, "high": 3,
+                                       "low": 2, "close": 3, "vol": 20}])
+    for tf in ("1w", "1mo"):
+        r = cli.get(f"/api/candles/SKHY?tf={tf}")
+        assert r.status_code == 200, tf
+        assert len(r.json()["candles"]) == 1          # 같은 주·같은 달 → 한 봉으로 합침
+        assert r.json()["candles"][0]["vol"] == 30
+
+
 def test_us_minute_candles_are_refused_not_faked(cli):
     """분봉은 KIS 국내 전용이다. 빈 배열로 얼버무리지 않고 400으로 거절한다 —
     '차트가 비었다'와 '이 시장엔 없다'는 화면에서 구분돼야 한다."""
@@ -106,6 +121,14 @@ def test_us_page_has_no_minute_timeframe_buttons(cli):
     """분봉이 없으므로 탭도 없다 — 눌렀는데 빈 차트보다 버튼이 없는 게 낫다."""
     html = cli.get("/live/SKHY").text
     assert "tf=5m" not in html and ">5분<" not in html
+
+
+def test_us_page_has_daily_weekly_monthly_tabs(cli):
+    """일·주·월봉 탭은 있다(분봉만 없다) — 기본 선택은 일봉."""
+    html = cli.get("/live/SKHY").text
+    assert 'data-tf="1w"' in html and 'data-tf="1mo"' in html
+    assert ">주봉<" in html and ">월봉<" in html
+    assert 'class="tf-btn on" type="button" data-tf="1d"' in html
 
 
 def test_dashboard_us_card_links_to_the_detail_page(cli):

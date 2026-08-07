@@ -185,17 +185,18 @@ def create_app(settings=None) -> FastAPI:
 
     @app.get("/api/candles/{code}")
     async def candles_api(code: str, tf: str = "5m"):
-        """봉 차트 — tf: 1m/5m/15m(당일 분봉, LIVE는 KIS·데모는 합성) | 1d(일봉 120).
+        """봉 차트 — tf: 1m/5m/15m/60m(당일 분봉, LIVE는 KIS·데모는 합성) |
+        1d/1w/1mo(일·주·월봉 120, FDR 경로).
 
-        일봉은 FDR 경로라 미국 티커도 된다. **분봉은 KIS 국내 TR 전용**이라 미국은
-        400으로 거절한다 — 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이 시장엔 아예
-        없다'가 화면에서 구분되지 않는다."""
+        일·주·월봉은 FDR 경로라 미국 티커도 된다. **분봉은 KIS 국내 TR 전용**이라
+        미국은 400으로 거절한다 — 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이
+        시장엔 아예 없다'가 화면에서 구분되지 않는다."""
         from backend.flow import userstore
         market = userstore.market_of(code)
         if market is None:
             return Response(status_code=404)
-        if market == "US" and tf != "1d":
-            return JSONResponse({"error": "미국 종목은 일봉(1d)만 제공해요 — "
+        if market == "US" and tf not in ("1d", "1w", "1mo"):
+            return JSONResponse({"error": "미국 종목은 일·주·월봉만 제공해요 — "
                                           "분봉은 국내 전용입니다"}, status_code=400)
         if tf not in candles.TIMEFRAMES:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},

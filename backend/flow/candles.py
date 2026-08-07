@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-"""봉 차트 데이터 — 당일 분봉(1/5/15분) + 일봉.
+"""봉 차트 데이터 — 당일 분봉(1/5/15분) + 일봉 + 주봉·월봉.
 
 분봉: KIS FHKST03010200(호출당 30봉, 기준시각 역방향, 당일만 제공 — 실측)을
 기준시각을 당기며 페이지네이션해 하루치를 조립(60s 캐시), 5/15분은 서버 집계.
 일봉: 기존 FDR 캐시 어댑터(대시보드와 동일 경로, 120일).
+주·월봉: 일봉 15년(FDR, 키 불필요)을 ISO 주/연-월로 서버 집계 — KIS TR을 안 쓰므로
+국내·미국 티커 모두 같은 경로다.
 키 없으면(데모) 시드 랜덤워크로 당일 분봉을 합성해 화면은 항상 동작한다.
 """
 
@@ -27,9 +29,13 @@ _GAP = 0.2          # 연속 호출 간헐 500 완화(실측)
 _MAX_CALLS = 26     # UN(08:00~20:00) 최대 720분/30봉 = 24콜 + 여유
 _min_cache: dict = {}   # code -> (ts, bars)
 _daily_cache: dict = {}  # code -> (ts, candles)
+_long_cache: dict = {}   # code -> (ts, 일봉 15년) — 주·월봉 공용 원료(네이버 호출 상한)
 _client = None
 
-TIMEFRAMES = ("1m", "5m", "15m", "60m", "1d")
+# '1mo'인 이유: 월봉을 '1M'으로 적으면 1분봉 '1m'과 대소문자만 다르다 —
+# 소문자 정규화 한 번이면 분봉이 월봉으로 둔갑하므로 처음부터 겹칠 수 없는 철자를 쓴다.
+TIMEFRAMES = ("1m", "5m", "15m", "60m", "1d", "1w", "1mo")
+_LONG_YEARS = 15    # 주봉 ma120(240주≈4.6년)은 다 차고, 월봉 ma120(240개월)은 표본 부족 안내로 처리
 
 
 def _attach_ma(bars: list) -> list:
@@ -80,6 +86,68 @@ def aggregate(bars: list, n: int) -> list:
             c["close"] = b["close"]
             c["vol"] += b["vol"]
     return [out[k] for k in sorted(out)]
+
+
+def aggregate_daily(bars: list, tf: str) -> list:
+    """일봉 → 주봉('1w', ISO 주)·월봉('1mo', 연-월). 시가=첫 거래일, 종가=마지막 거래일,
+    고저=구간 극값, 거래량=합. 시간 라벨은 버킷의 마지막 거래일(형성 중인 봉은 오늘)."""
+    out: dict = {}
+    order: list = []
+    for b in bars:
+        d = dt.date.fromisoformat(b["t"])
+        key = d.isocalendar()[:2] if tf == "1w" else (d.year, d.month)
+        c = out.get(key)
+        if c is None:
+            out[key] = {"t": b["t"], "open": b["open"], "high": b["high"],
+                        "low": b["low"], "close": b["close"], "vol": b.get("vol", 0)}
+            order.append(key)
+        else:
+            c["high"] = max(c["high"], b["high"])
+            c["low"] = min(c["low"], b["low"])
+            c["close"] = b["close"]
+            c["vol"] += b.get("vol", 0)
+            c["t"] = b["t"]
+    return [out[k] for k in order]
+
+
+def _need_refetch(cached, start) -> bool:
+    """PriceAdapter는 end 커버리지만 본다 — 대시보드가 만든 400일짜리 캐시도 end만
+    덮으면 그대로 반환되므로, 장기 조회는 시작 커버리지를 여기서 직접 확인한다.
+    상장이 늦어 이력이 원래 짧은 종목은 구분할 수 없어 매번 재조회가 되는데,
+    _long_cache(1시간)가 상한을 걸어 네이버 부담은 종목당 시간당 1회다."""
+    import pandas as pd
+    return not (cached is not None and len(cached)
+                and cached.index.min() <= pd.Timestamp(start) + pd.Timedelta(days=31))
+
+
+def _long_daily_bars(code: str) -> list:
+    """주·월봉 원료 — 일봉 15년(FDR 경로, 키 불필요). 1시간 메모리 캐시."""
+    now = time.time()
+    hit = _long_cache.get(code)
+    if hit and now - hit[0] < 3600:
+        return hit[1]
+    from backend.adapters.cache import OHLCVCache
+    from backend.adapters.prices import PriceAdapter
+    from backend.report.dashboard import to_candles
+    end = dt.date.today()
+    start = end - dt.timedelta(days=_LONG_YEARS * 365)
+    cache = OHLCVCache(settings.cache_dir)
+    df = PriceAdapter(cache).get_ohlcv(code, start.isoformat(), end.isoformat(),
+                                       force=_need_refetch(cache.get(code), start))
+    bars = [{"t": c["time"], "open": c["open"], "high": c["high"],
+             "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
+            for c in to_candles(df, 10 ** 6)]
+    _long_cache[code] = (now, bars)
+    return bars
+
+
+def _wm_candles(code: str, tf: str) -> list:
+    """주봉/월봉 120개 — 전체 구간에서 이동평균을 계산한 뒤 최근 120봉만 노출."""
+    try:
+        return _attach_ma(aggregate_daily(_long_daily_bars(code), tf))[-120:]
+    except Exception:
+        log.warning("주·월봉 조회 실패(%s %s)", code, tf, exc_info=True)
+        return []
 
 
 def _clip(bars: list, latest_t: str, earliest_t: str = "09:00:00") -> list:
@@ -176,6 +244,9 @@ async def get_candles(code: str, tf: str) -> dict:
     if tf == "1d":
         return {"tf": tf, "date": kdate,
                 "candles": await asyncio.to_thread(_daily_candles, code)}
+    if tf in ("1w", "1mo"):
+        return {"tf": tf, "date": kdate,
+                "candles": await asyncio.to_thread(_wm_candles, code, tf)}
     live = (settings.kis_app_key and settings.kis_app_secret
             and settings.flow_mode != "demo")
     if live:

@@ -6,7 +6,8 @@ from __future__ import annotations
 1,500줄짜리 live_page에 `if market=="US"`를 흩뿌리면 US 화면을 얻는 대신 국내 화면의
 회귀 위험을 산다. 두 화면은 공유 CSS(dashboard._BASE_CSS)로 묶고 마크업만 가른다.
 
-그리는 것: 히어로(가격·등락) · 일봉 차트(120봉, 이평·감시선 겹침) · 감시선 편집기.
+그리는 것: 히어로(가격·등락) · 일·주·월봉 차트(각 120봉, 이평·감시선 겹침) · 감시선 편집기.
+주·월봉은 서버가 FDR 일봉 15년을 집계한 것(candles.aggregate_daily)이라 KIS 무관.
 안 그리는 것: 수급·공매도·대차·신용·거래원·재무·호가·실시간체결(전부 국내 전용) ·
 분봉 탭(KIS 국내 TR 전용).
 
@@ -41,6 +42,11 @@ __PWA_HEAD__
   background:transparent;color:var(--text-2);cursor:pointer}
 .ma-btn.on{border-color:var(--iris);color:var(--iris)}
 .ma-btn:disabled{opacity:.35;cursor:default}
+/* 봉주기 탭 — .ma-btn과 모양은 같지만 클래스를 분리한다: .ma-btn 셀렉터의
+   활성화 토글·클릭 핸들러(data-ma 파싱)가 탭에 잘못 걸리면 안 된다 */
+.tf-btn{font-size:12px;padding:4px 9px;border-radius:3px;border:1px solid var(--border-2);
+  background:transparent;color:var(--text-2);cursor:pointer}
+.tf-btn.on{border-color:var(--iris);color:var(--iris)}
 </style>
 __NAV_LOADER__
 </head><body>
@@ -61,8 +67,13 @@ __ICONS__
 
 <details class="sec" open>
   <summary><svg class="hic secic"><use href="#i-chart"/></svg> 가격 차트
-    <span class="seccap">일봉 120</span><span class="chev">▾</span></summary>
+    <span class="seccap" id="tf-cap">일봉 120</span><span class="chev">▾</span></summary>
   <div class="sec-body">
+    <div class="ma-row">
+      <button class="tf-btn on" type="button" data-tf="1d">일봉</button>
+      <button class="tf-btn" type="button" data-tf="1w">주봉</button>
+      <button class="tf-btn" type="button" data-tf="1mo">월봉</button>
+    </div>
     <div class="chartwrap"><div id="pchart"></div></div>
     <div class="ma-row" id="ma-row">
       <button class="ma-btn" type="button" data-ma="20">20일</button>
@@ -93,7 +104,7 @@ __ICONS__
 </details>
 
 <div class="nomore">이 화면에 없는 것: <b>수급·공매도·대차·신용·거래원·재무·호가·실시간 체결</b>은
-<b>국내 종목에만</b> 있는 데이터입니다. 분봉도 국내 전용이라 일봉만 그립니다.</div>
+<b>국내 종목에만</b> 있는 데이터입니다. 분봉도 국내 전용이라 일·주·월봉만 그립니다.</div>
 
 <div class="disc">__DISCLAIMER__ 미국 시세는 일별 종가(FinanceDataReader) 기준이며,
 미국 정규장 중에는 한국투자증권 해외시세로 갱신합니다. 표시 시각은 현지 거래일 기준.</div>
@@ -138,10 +149,15 @@ function renderWatchLines(){
   }).filter(Boolean);
 }
 
+let TF='1d', tfSeq=0;
+const TF_CAP={'1d':'일봉 120','1w':'주봉 120','1mo':'월봉 120'};
+const TF_UNIT={'1d':'일','1w':'주','1mo':'개월'};
 async function loadCandles(){
+  const seq=++tfSeq, tf=TF;  // 탭 연타 경합 방지 — 마지막 요청만 반영(국내 화면과 동일)
   try{
-    const r=await fetch('/api/candles/'+SYM+'?tf=1d'); if(!r.ok)throw 0;
-    const d=await r.json(); const cs=(d&&d.candles)||[];
+    const r=await fetch('/api/candles/'+SYM+'?tf='+tf); if(!r.ok)throw 0;
+    const d=await r.json(); if(seq!==tfSeq)return;
+    const cs=(d&&d.candles)||[];
     if(!cs.length)throw 0;
     pseries.setData(cs.map(c=>({time:c.t,open:c.open,high:c.high,low:c.low,close:c.close})));
     // 이평선 — 표본이 없으면(신규 상장 등) 버튼을 비활성으로 두고 이유를 적는다.
@@ -154,19 +170,24 @@ async function loadCandles(){
       if(!has)na.push(n);
     });
     document.querySelectorAll('.ma-btn').forEach(function(b){
-      const ok=na.indexOf(+b.getAttribute('data-ma'))<0;
+      const n=b.getAttribute('data-ma'), ok=na.indexOf(+n)<0;
       b.disabled=!ok; if(!ok)b.classList.remove('on');
+      b.textContent=n+TF_UNIT[tf];   // 20일 ↔ 20주 ↔ 20개월 — 주봉에서 '20일'은 거짓말이다
     });
     const hint=document.getElementById('ma-hint');
     if(hint)hint.textContent=na.length
-      ?(na.join('/')+'일선은 거래일이 모자라 아직 안 그려집니다')
+      ?(na.join('/')+TF_UNIT[tf]+'선은 '+(tf==='1d'?'거래일':'봉')+'이 모자라 아직 안 그려집니다')
       :'이동평균 켜고 끄기';
     renderWatchLines();
     try{pchart.timeScale().fitContent();}catch(e){}
     // 가격은 차트와 같은 데이터에서 뽑는다 — 따로 조회하면 둘이 어긋난다.
-    const last=cs[cs.length-1], prev=cs.length>1?cs[cs.length-2]:null;
-    setPrice(last.close, prev?prev.close:null, '종가 · '+(last.t||''));
-    pollLive();
+    // 등락 기준은 일봉의 전일 종가 하나로 고정 — 주·월봉 탭에서 직전 봉 대비로
+    // 계산하면 히어로의 %가 탭에 따라 달라져 보인다.
+    if(tf==='1d'){
+      const last=cs[cs.length-1], prev=cs.length>1?cs[cs.length-2]:null;
+      setPrice(last.close, prev?prev.close:null, '종가 · '+(last.t||''));
+    }
+    startPoll();
   }catch(e){
     document.getElementById('pbasis').textContent='가격 이력을 못 불러왔어요';
   }
@@ -186,6 +207,10 @@ function setPrice(price, base, basis){
 
 // 미국 정규장 중에만 서버가 실시간 시세를 준다(장외엔 204) — 60초 폴링.
 // 웹소켓은 쓰지 않는다: 1키1세션을 국내 수급·야간선물과 나눠 쓰지 않기로 했다(설계 §4).
+// startPoll 가드: loadCandles가 성공할 때마다(이평 토글·탭 전환 포함) 호출되므로
+// 그대로 pollLive를 부르면 setTimeout 사슬이 겹겹이 쌓인다.
+let _polling=false;
+function startPoll(){if(_polling)return; _polling=true; pollLive();}
 async function pollLive(){
   try{
     const r=await fetch('/api/usprice/'+SYM);
@@ -275,6 +300,14 @@ document.querySelectorAll('.ma-btn').forEach(function(b){
   b.addEventListener('click',function(){
     const n=+b.getAttribute('data-ma');
     maOn[n]=!maOn[n]; b.classList.toggle('on',maOn[n]); loadCandles();
+  });
+});
+document.querySelectorAll('.tf-btn').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.tf-btn').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); TF=b.getAttribute('data-tf');
+    const cap=document.getElementById('tf-cap'); if(cap)cap.textContent=TF_CAP[TF];
+    loadCandles();
   });
 });
 
