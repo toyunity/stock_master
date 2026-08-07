@@ -387,14 +387,20 @@ window.addEventListener('pageshow',hide);
 })();</script>"""
 
 # ── 하단 고정 탭바(앱 골격) — 전 페이지 공용. 활성 탭은 pathname으로, '종목' 탭은
-#    마지막 조회 종목(localStorage)로. 자기완결 <style>+<nav>+<script> 한 덩어리. ──
+#    마지막 조회 종목(localStorage)로. 스크롤 방향에 따라 접힌다(아래 SHOW_ON).
+#    자기완결 <style>+<nav>+<script> 한 덩어리. ──
 TABBAR = """<style>
 body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
 #tabbar{position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;
   background:color-mix(in srgb, var(--surface) 90%, transparent);
   -webkit-backdrop-filter:saturate(160%) blur(12px);backdrop-filter:saturate(160%) blur(12px);
   border-top:1px solid var(--border);
-  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -1px 0 var(--border-2)}
+  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -1px 0 var(--border-2);
+  transition:transform .22s ease;will-change:transform}
+/* 숨김은 transform으로만 한다 — display:none이나 높이 변경은 body 패딩을 흔들어
+   숨길 때마다 본문이 튄다. 자리는 그대로 두고 화면 밖으로 밀어낸다.
+   (prefers-reduced-motion은 위쪽 전역 규칙이 transition을 이미 죽인다) */
+#tabbar.hid{transform:translateY(calc(100% + 4px))}
 #tabbar a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:3px;min-height:54px;font-size:11px;font-weight:700;color:var(--text-3);
   text-decoration:none;-webkit-tap-highlight-color:transparent;transition:color .15s;letter-spacing:-.01em}
@@ -418,6 +424,39 @@ body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
   var on=p==='/'?'home':(p.indexOf('/live/')===0?'live':(p.indexOf('/scanner')===0?'scan':''));
   var a=document.querySelectorAll('#tabbar a');
   for(var i=0;i<a.length;i++) if(a[i].getAttribute('data-tab')===on) a[i].classList.add('on');
+}catch(e){}})();</script>
+<script>(function(){try{
+// 스크롤 방향에 따라 탭바를 감춘다 — 아이폰에서 60px을 상시 뺏기지 않게(마스터 요청).
+// 방향이 흔한 앱들과 **반대**다. 사파리 제 하단바가 '내릴 때 사라지고 올릴 때 나오'므로
+// 우리 바를 그 반대 위상에 두면 화면 아래엔 항상 바가 하나만 있게 된다.
+// 거꾸로 느껴지면 SHOW_ON만 'up'으로 바꾸면 전 페이지가 뒤집힌다.
+var SHOW_ON='down';
+var bar=document.getElementById('tabbar'); if(!bar)return;
+var DEAD=8;          // 고무줄·관성으로 생기는 잔떨림을 방향으로 치지 않는 최소 이동량
+var last=window.pageYOffset||0, tick=false;
+function apply(){
+  tick=false;
+  var h=(document.documentElement||{}).scrollHeight||0, vh=window.innerHeight||0;
+  var y=window.pageYOffset||0, max=h-vh;
+  // 스크롤이 안 생기는 짧은 페이지에서 숨기면 되돌릴 방법이 없다 — 항상 보인다
+  if(h<=vh+60){bar.classList.remove('hid');last=y;return;}
+  if(y<0){last=0;return;}        // 상·하단 고무줄 구간은 방향 판단에서 제외한다
+  if(y>max){last=max;return;}
+  var d=y-last;
+  if(d>DEAD||d<-DEAD){
+    var down=d>0;
+    bar.classList.toggle('hid', SHOW_ON==='down' ? !down : down);
+    last=y;
+  }
+}
+// rAF는 반드시 window에 묶어서 부른다 — 떼어내 호출하면 크롬이 Illegal invocation을 던진다
+var raf=window.requestAnimationFrame
+  ? function(f){window.requestAnimationFrame(f);} : function(f){setTimeout(f,16);};
+// passive: 스크롤을 막지 않겠다고 미리 알려야 아이폰에서 목록이 굼뜨지 않는다
+window.addEventListener('scroll',function(){if(!tick){tick=true;raf(apply);}},{passive:true});
+// 뒤로가기(bfcache) 복귀 시 숨은 채로 돌아오지 않게 초기화
+window.addEventListener('pageshow',function(){
+  bar.classList.remove('hid'); last=window.pageYOffset||0;});
 }catch(e){}})();</script>"""
 
 DISCLAIMER = (
