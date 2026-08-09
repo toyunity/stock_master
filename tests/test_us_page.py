@@ -150,10 +150,18 @@ def test_no_placeholder_survives_the_render():
     빠뜨려 차트 라이브러리가 통째로 안 실렸다. 브라우저에선
     `ReferenceError: __LIB__ is not defined`로 스크립트가 즉사해 화면이 '불러오는 중'에
     멈췄는데, **node 실행 테스트는 LightweightCharts를 가짜로 주입하기 때문에 통과했다.**
-    가짜가 채워주는 자리는 가짜 테스트로 지킬 수 없다 — 렌더 결과를 직접 본다."""
+    가짜가 채워주는 자리는 가짜 테스트로 지킬 수 없다 — 렌더 결과를 직접 본다.
+
+    여기선 '자리표시자가 남았나'까지만 본다. 채워진 게 **진짜 라이브러리인지**는
+    test_chart_lib.py가 node로 실행해 확인한다(빈 파일·잘린 파일은 자리표시자를
+    남기지 않아 이 테스트를 그냥 통과한다)."""
     import re
+    from backend.report.dashboard import render_dashboard
     from backend.report.live_page import render_live_page
     from backend.report.us_page import render_us_page
-    for html in (render_us_page("SKHY", "SKHY"), render_live_page("005930", "삼성전자", "demo")):
+    # 대시보드도 __LIB__를 심는다 — 처음엔 빠져 있어 같은 사고를 다시 맞을 자리였다
+    for html in (render_us_page("SKHY", "SKHY"),
+                 render_live_page("005930", "삼성전자", "demo"),
+                 render_dashboard([], [], "2026-08-10", pwa=True)):
         left = set(re.findall(r"__[A-Z][A-Z0-9_]*__", html))
         assert not left, left

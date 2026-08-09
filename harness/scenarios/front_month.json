@@ -1,0 +1,29 @@
+{
+  "module": "backend.flow.optmaster",
+  "func": "front_month",
+  "coerce": {"today": "date"},
+  "_note": "8월물 만기 = 2026-08-13(둘째 목요일). 만기 당일은 거래되므로 유지, 다음날 넘어간다.",
+  "cases": [
+    {"name": "만기_사흘전", "input": {"today": "2026-08-10", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "만기_전날", "input": {"today": "2026-08-12", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "만기_당일_유지", "input": {"today": "2026-08-13", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "만기_다음날_롤오버", "input": {"today": "2026-08-14", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "만기_다음주", "input": {"today": "2026-08-17", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "깨진만기_건너뜀", "input": {"today": "2026-08-14", "rows": [
+      {"expiry": "20260x"}, {"expiry": "202609"}]}},
+    {"name": "전부_지남", "input": {"today": "2027-01-05", "rows": [
+      {"expiry": "202608"}, {"expiry": "202609"},
+      {"expiry": "202610"}, {"expiry": "202612"}]}},
+    {"name": "빈목록", "input": {"today": "2026-08-14", "rows": []}}
+  ]
+}

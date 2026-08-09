@@ -1,0 +1,93 @@
+{
+  "정상보드": {
+    "pcr": 1.3333333333333333,
+    "put_wall": 990,
+    "wall_pct": 20.0,
+    "atm_iv": 70.0,
+    "atm_strike": 1000,
+    "call_chg_sum": 30,
+    "put_chg_sum": 110,
+    "top_call": {
+      "strike": 1000,
+      "oi": 100,
+      "oi_chg": 50,
+      "vol": 10,
+      "iv": 70.0
+    },
+    "top_put": {
+      "strike": 990,
+      "oi": 500,
+      "oi_chg": 80,
+      "vol": 12,
+      "iv": 71.0
+    }
+  },
+  "사다리끝_풋벽에서_배제": {
+    "pcr": 1.2,
+    "put_wall": 900,
+    "wall_pct": 20.0,
+    "atm_iv": 68.0,
+    "atm_strike": 1050,
+    "call_chg_sum": 10,
+    "put_chg_sum": 10,
+    "top_call": {
+      "strike": 1050,
+      "oi": 100,
+      "oi_chg": 10,
+      "vol": 5,
+      "iv": 68.0
+    },
+    "top_put": {
+      "strike": 900,
+      "oi": 200,
+      "oi_chg": 10,
+      "vol": 5,
+      "iv": 70.0
+    }
+  },
+  "거래0행사가_ATM에서_배제": {
+    "pcr": 0.0,
+    "put_wall": null,
+    "wall_pct": 20.0,
+    "atm_iv": 85.0,
+    "atm_strike": 1050,
+    "call_chg_sum": 5,
+    "put_chg_sum": 0,
+    "top_call": {
+      "strike": 1050,
+      "oi": 100,
+      "oi_chg": 5,
+      "vol": 20,
+      "iv": 85.0
+    },
+    "top_put": null
+  },
+  "밴드밖만_있음_풋벽없음": {
+    "pcr": 0.6666666666666666,
+    "put_wall": null,
+    "wall_pct": 20.0,
+    "atm_iv": 58.0,
+    "atm_strike": 600,
+    "call_chg_sum": 7,
+    "put_chg_sum": -9,
+    "top_call": {
+      "strike": 1500,
+      "oi": 400,
+      "oi_chg": 7,
+      "vol": 3,
+      "iv": 60.0
+    },
+    "top_put": null
+  },
+  "빈보드": {
+    "pcr": null,
+    "put_wall": null,
+    "wall_pct": 20.0,
+    "atm_iv": null,
+    "atm_strike": null,
+    "call_chg_sum": 0,
+    "put_chg_sum": 0,
+    "top_call": null,
+    "top_put": null
+  }
+}

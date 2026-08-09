@@ -1,0 +1,27 @@
+{
+  "module": "backend.flow.options",
+  "func": "summarize",
+  "cases": [
+    {"name": "정상보드", "input": {
+      "spot": 1000,
+      "calls": [{"strike": 1000, "oi": 100, "oi_chg": 50, "vol": 10, "iv": 70.0},
+                {"strike": 1100, "oi": 300, "oi_chg": -20, "vol": 5, "iv": 65.0}],
+      "puts":  [{"strike": 950, "oi": 200, "oi_chg": 30, "vol": 8, "iv": 72.0},
+                {"strike": 990, "oi": 500, "oi_chg": 80, "vol": 12, "iv": 71.0}]}},
+    {"name": "사다리끝_풋벽에서_배제", "input": {
+      "spot": 1000,
+      "calls": [{"strike": 1050, "oi": 100, "oi_chg": 10, "vol": 5, "iv": 68.0}],
+      "puts":  [{"strike": 625, "oi": 9999, "oi_chg": 0, "vol": 1, "iv": 55.0},
+                {"strike": 900, "oi": 200, "oi_chg": 10, "vol": 5, "iv": 70.0}]}},
+    {"name": "거래0행사가_ATM에서_배제", "input": {
+      "spot": 1000,
+      "calls": [{"strike": 1000, "oi": 100, "oi_chg": 0, "vol": 0, "iv": 55.0},
+                {"strike": 1050, "oi": 100, "oi_chg": 5, "vol": 20, "iv": 85.0}],
+      "puts":  []}},
+    {"name": "밴드밖만_있음_풋벽없음", "input": {
+      "spot": 1000,
+      "calls": [{"strike": 1500, "oi": 400, "oi_chg": 7, "vol": 3, "iv": 60.0}],
+      "puts":  [{"strike": 600, "oi": 800, "oi_chg": -9, "vol": 2, "iv": 58.0}]}},
+    {"name": "빈보드", "input": {"spot": 1000, "calls": [], "puts": []}}
+  ]
+}

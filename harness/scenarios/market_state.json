@@ -1,0 +1,29 @@
+{
+  "module": "backend.flow.models",
+  "func": "market_state",
+  "coerce": {"now_kst": "datetime"},
+  "cases": [
+    {"name": "주말휴장", "input": {
+      "now_kst": "2026-08-08T10:00:00", "stalled": false, "has_data": true}},
+    {"name": "장전_08시전", "input": {
+      "now_kst": "2026-08-10T07:30:00", "stalled": false, "has_data": false}},
+    {"name": "프리마켓_NXT", "input": {
+      "now_kst": "2026-08-10T08:30:00", "stalled": true, "has_data": true}},
+    {"name": "정규장_체결중", "input": {
+      "now_kst": "2026-08-10T11:00:00", "stalled": false, "has_data": true}},
+    {"name": "정규장_체결대기", "input": {
+      "now_kst": "2026-08-10T11:00:00", "stalled": false, "has_data": false}},
+    {"name": "수신정지_VICB의심", "input": {
+      "now_kst": "2026-08-10T11:00:00", "stalled": true, "has_data": true}},
+    {"name": "마감동시호가_15시20분_경계", "input": {
+      "now_kst": "2026-08-10T15:20:00", "stalled": true, "has_data": true}},
+    {"name": "마감동시호가_15시25분_가짜VI금지", "input": {
+      "now_kst": "2026-08-10T15:25:00", "stalled": true, "has_data": true}},
+    {"name": "마감동시호가_15시30분_경계", "input": {
+      "now_kst": "2026-08-10T15:30:00", "stalled": true, "has_data": true}},
+    {"name": "애프터마켓_15시31분", "input": {
+      "now_kst": "2026-08-10T15:31:00", "stalled": true, "has_data": true}},
+    {"name": "장마감_20시", "input": {
+      "now_kst": "2026-08-10T20:00:00", "stalled": false, "has_data": true}}
+  ]
+}

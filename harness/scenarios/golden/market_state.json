@@ -1,0 +1,57 @@
+{
+  "주말휴장": {
+    "state": "closed",
+    "label": "주말 휴장",
+    "tone": "off"
+  },
+  "장전_08시전": {
+    "state": "closed",
+    "label": "장전",
+    "tone": "off"
+  },
+  "프리마켓_NXT": {
+    "state": "pre",
+    "label": "프리마켓(NXT)",
+    "tone": "info"
+  },
+  "정규장_체결중": {
+    "state": "open",
+    "label": "정규장",
+    "tone": "live"
+  },
+  "정규장_체결대기": {
+    "state": "open",
+    "label": "정규장 · 체결 대기",
+    "tone": "info"
+  },
+  "수신정지_VICB의심": {
+    "state": "halt",
+    "label": "수신 정지 — VI/CB 의심",
+    "tone": "warn"
+  },
+  "마감동시호가_15시20분_경계": {
+    "state": "auction",
+    "label": "장마감 동시호가(15:20~30)",
+    "tone": "info"
+  },
+  "마감동시호가_15시25분_가짜VI금지": {
+    "state": "auction",
+    "label": "장마감 동시호가(15:20~30)",
+    "tone": "info"
+  },
+  "마감동시호가_15시30분_경계": {
+    "state": "auction",
+    "label": "장마감 동시호가(15:20~30)",
+    "tone": "info"
+  },
+  "애프터마켓_15시31분": {
+    "state": "after",
+    "label": "애프터마켓(NXT)",
+    "tone": "info"
+  },
+  "장마감_20시": {
+    "state": "closed",
+    "label": "장마감",
+    "tone": "off"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "module": "backend.flow.options",
+  "func": "month_label",
+  "_note": "화면 라벨. 8/13 만기 뒤 '8월물'→'9월물'로 바뀌는 게 롤오버의 눈에 보이는 신호다.",
+  "cases": [
+    {"name": "8월물", "input": {"expiry": "202608"}},
+    {"name": "9월물_롤오버후", "input": {"expiry": "202609"}},
+    {"name": "12월물_두자리", "input": {"expiry": "202612"}},
+    {"name": "1월물_앞0제거", "input": {"expiry": "202701"}},
+    {"name": "빈문자열", "input": {"expiry": ""}},
+    {"name": "짧은형식", "input": {"expiry": "20260"}},
+    {"name": "숫자아님", "input": {"expiry": "abcdef"}}
+  ]
+}
