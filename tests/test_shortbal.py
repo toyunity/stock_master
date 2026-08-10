@@ -3,7 +3,7 @@ import asyncio
 import datetime as dt
 import json
 
-from backend.flow import shortbal
+from backend.flow import kst, shortbal
 
 # KOFIA getMetaDataList.do 실응답 축약 — 숫자는 JSON number로 내려온다(실측)
 _KOFIA_JS = {"unit": "", "dsmHeader": "", "ds1": [
@@ -101,7 +101,9 @@ def test_backfill_then_cache_hit(tmp_path, monkeypatch):
     monkeypatch.setattr(shortbal, "_kofia_day", _kofia_fake_factory(calls))
     d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
     assert len(d["rows"]) == 20 and d["source"] == "kofia"
-    assert d["asof"] == shortbal.expected_latest(dt.date.today()).isoformat()
+    # get_history가 kst.today()로 기준일을 잡으므로 기대값도 KST로 만든다.
+    # UTC 러너에서 한국시각 00~09시엔 날짜가 하루 어긋난다(같은 함정으로 CI가 깨졌다).
+    assert d["asof"] == shortbal.expected_latest(kst.today()).isoformat()
     assert d["rows"][1]["chg"] == d["rows"][1]["qty"] - d["rows"][0]["qty"]
     assert (tmp_path / "shortbal_000660.json").exists()
     assert len(calls) >= 20  # 백필은 여러 날 조회

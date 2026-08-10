@@ -28,7 +28,14 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const lib = scripts.find(s => s.indexOf('window.LightweightCharts=') >= 0);
 if (!lib) { console.log(JSON.stringify({error: '라이브러리 조각이 페이지에 없다'})); process.exit(0); }
+// 브라우저 전역 최소 스텁. 차트를 만들지 않고 로드만 하므로 이 정도면 충분하다.
+// navigator는 **있던 것도 지우고 우리 것으로 덮는다** — node 21+는 전역 navigator를
+// 주고 node 20은 안 준다. 그대로 두면 로컬(23)과 CI(20)가 서로 다른 코드를 타서,
+// 로컬만 초록이고 CI만 빨간 상황이 생긴다(2026-08-10 실제로 그렇게 깨졌다).
+delete globalThis.navigator;
 global.window = {};
+global.navigator = {userAgent: 'node'};
+global.document = {};
 try { eval(lib); } catch (e) {
   console.log(JSON.stringify({error: '라이브러리 실행 실패: ' + e.message})); process.exit(0);
 }

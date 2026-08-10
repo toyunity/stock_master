@@ -1,6 +1,7 @@
 """FlowEngine(데모 모드) 테스트 — 키 없이 스냅샷 스트림이 흘러야 한다."""
 import asyncio
 
+from backend.flow import kst
 from backend.flow.engine import FlowEngine
 
 
@@ -154,7 +155,7 @@ def test_new_day_resets_stale_intraday_panels(monkeypatch):
     eng.state.apply_program({"t": "15:29:00", "sell_qty": 1, "sell_value": 1,
                              "buy_qty": 1, "buy_value": 1,
                              "net_qty": -953000, "net_value": -1})
-    eng._day = dt.date.today() - dt.timedelta(days=3)  # 금요일 기동으로 가장
+    eng._day = kst.today() - dt.timedelta(days=3)  # 금요일 기동으로 가장
 
     class FakeClient:
         async def program_trend(self, code):
@@ -186,7 +187,10 @@ def test_new_day_resets_stale_intraday_panels(monkeypatch):
     snap = eng.state.snapshot()
     assert snap["estimate"]["rows"] == []      # 전일 잠정 잔존 금지
     assert snap["program"]["net_qty"] == 0     # 전일 프로그램 누적도 리셋
-    assert eng._day == dt.date.today()
+    # KST로 비교한다 — 엔진의 기준일은 kst.today()다. 러너가 UTC인 CI에서
+    # 한국시각 00~09시에 밀어넣으면 UTC 날짜가 하루 뒤처져 여기서 깨졌다
+    # (2026-08-10 08:56 KST 푸시가 UTC 08-09로 잡혀 실제로 빨간불).
+    assert eng._day == kst.today()
 
 
 def test_ws_fallback_fills_market_while_disconnected(monkeypatch):
