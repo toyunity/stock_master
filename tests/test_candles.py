@@ -228,3 +228,84 @@ def test_attach_ma_includes_5_and_10():
     assert out[9]["ma10"] == 5.5
     # 기존 키 유지
     assert "ma20" in out[0] and "ma60" in out[0] and "ma120" in out[0]
+
+
+# ── NXT 미상장 종목의 분봉(2026-08-10 실사고: 금현물 ETF 411060 차트가 통째로 빔) ──
+
+def _min_row(hhmmss, price, date="20260810"):
+    """FHKST03010200 output2 한 행. price=0이면 KIS가 주는 '값 없는 껍데기'."""
+    p = str(price)
+    return {"stck_bsop_date": date, "stck_cntg_hour": hhmmss, "stck_prpr": p,
+            "stck_oprc": p, "stck_hgpr": p, "stck_lwpr": p,
+            "cntg_vol": "10" if price else "0"}
+
+
+class _DivClient:
+    """시장구분마다 다른 응답을 주는 가짜 KIS — 네트워크·키 없음.
+
+    `empty_divs`에 든 구분으로 물으면 rt_cd=0 '정상처리'에 값이 0인 행만 준다.
+    실제 KIS가 NXT 미상장 종목을 UN으로 물었을 때 하는 짓 그대로다(실측).
+    """
+
+    def __init__(self, empty_divs=("UN",), div="UN"):
+        self.div, self.empty_divs, self.asked = div, set(empty_divs), []
+
+    async def _get(self, path, tr_id, params):
+        d = params["FID_COND_MRKT_DIV_CODE"]
+        self.asked.append(d)
+        price = 0 if d in self.empty_divs else 27495
+        return {"rt_cd": "0", "msg1": "정상처리 되었습니다.",
+                "output2": [_min_row("100000", price)]}
+
+
+def _minutes(client, code="411060", now="10:05:00"):
+    import backend.flow.candles as cd
+    cd._min_cache.clear()
+    cd._krx_only.clear()
+    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        cd._day_minutes(client, code))
+
+
+def test_minute_bars_fall_back_to_krx_only_when_unified_is_hollow(monkeypatch):
+    """통합(UN)이 값 0인 껍데기만 주면 KRX 전용(J)으로 되물어야 한다.
+
+    KIS가 rt_cd=0 '정상처리'를 주므로 예외로는 절대 못 잡는다 — 값으로 판정한다.
+    이게 없으면 금현물 ETF 상세 화면이 빈 차트로 뜬다(2026-08-10 실사고).
+    """
+    import backend.flow.candles as cd
+    monkeypatch.setattr(cd, "_session_window", lambda: ("09:00:00", "200000"))
+    monkeypatch.setattr(cd.kst, "now", lambda: dt.datetime(2026, 8, 10, 10, 5))
+    monkeypatch.setattr(cd.kst, "today", lambda: dt.date(2026, 8, 10))
+    c = _DivClient(empty_divs=("UN",))
+    out = _minutes(c)
+    assert out and out[-1]["close"] == 27495, out
+    assert "J" in c.asked                      # 폴백이 실제로 나갔다
+
+
+def test_minute_bars_do_not_refetch_when_unified_works(monkeypatch):
+    """정상 종목(삼성·하이닉스 등)은 J를 절대 추가 호출하지 않는다 — KIS 호출 낭비 금지."""
+    import backend.flow.candles as cd
+    monkeypatch.setattr(cd, "_session_window", lambda: ("09:00:00", "200000"))
+    monkeypatch.setattr(cd.kst, "now", lambda: dt.datetime(2026, 8, 10, 10, 5))
+    monkeypatch.setattr(cd.kst, "today", lambda: dt.date(2026, 8, 10))
+    c = _DivClient(empty_divs=())
+    out = _minutes(c, code="005930")
+    assert out and out[-1]["close"] == 27495
+    assert c.asked == ["UN"]                   # 한 번만
+
+
+def test_krx_only_verdict_is_remembered(monkeypatch):
+    """한 번 J로 확정된 종목은 다음 조회에서 곧장 J로 간다 — 빈 UN 조회를 되풀이하지 않게."""
+    import backend.flow.candles as cd
+    monkeypatch.setattr(cd, "_session_window", lambda: ("09:00:00", "200000"))
+    monkeypatch.setattr(cd.kst, "now", lambda: dt.datetime(2026, 8, 10, 10, 5))
+    monkeypatch.setattr(cd.kst, "today", lambda: dt.date(2026, 8, 10))
+    c = _DivClient(empty_divs=("UN",))
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    cd._min_cache.clear()
+    cd._krx_only.clear()
+    loop.run_until_complete(cd._day_minutes(c, "411060"))
+    cd._min_cache.clear()                      # TTL 만료 흉내(기억은 남는다)
+    c.asked.clear()
+    loop.run_until_complete(cd._day_minutes(c, "411060"))
+    assert c.asked == ["J"]                    # UN을 다시 묻지 않는다

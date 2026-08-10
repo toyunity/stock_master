@@ -28,6 +28,7 @@ _TTL = 60.0
 _GAP = 0.2          # 연속 호출 간헐 500 완화(실측)
 _MAX_CALLS = 26     # UN(08:00~20:00) 최대 720분/30봉 = 24콜 + 여유
 _min_cache: dict = {}   # code -> (ts, bars)
+_krx_only: dict = {}    # code -> 'J' — 통합 조회가 빈 값이라 KRX 전용으로 확정된 종목
 _daily_cache: dict = {}  # code -> (ts, candles)
 _long_cache: dict = {}   # code -> (ts, 일봉 15년) — 주·월봉 공용 원료(네이버 호출 상한)
 _client = None
@@ -156,12 +157,8 @@ def _clip(bars: list, latest_t: str, earliest_t: str = "09:00:00") -> list:
     return [b for b in bars if earliest_t <= b["t"] <= latest_t]
 
 
-async def _day_minutes(client: KisClient, code: str) -> list:
-    """당일 1분봉 전체 — 기준시각을 30분씩 당기며 조립."""
-    now = time.time()
-    hit = _min_cache.get(code)
-    if hit and now - hit[0] < _TTL:
-        return hit[1]
+async def _fetch_minutes(client: KisClient, code: str, div: str) -> list:
+    """한 시장구분으로 당일 1분봉 전체 — 기준시각을 30분씩 당기며 조립."""
     earliest, cap = _session_window()
     bars, hour = [], min(kst.now().strftime("%H%M%S"), cap)
     latest_t = f"{hour[0:2]}:{hour[2:4]}:{hour[4:6]}"
@@ -169,7 +166,7 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     for _ in range(_MAX_CALLS):
         js = await client._get(_MIN_PATH, "FHKST03010200",
                                {"FID_ETC_CLS_CODE": "",
-                                "FID_COND_MRKT_DIV_CODE": client.div,
+                                "FID_COND_MRKT_DIV_CODE": div,
                                 "FID_INPUT_ISCD": code,
                                 "FID_INPUT_HOUR_1": hour,
                                 "FID_PW_DATA_INCU_YN": "Y"})
@@ -191,6 +188,34 @@ async def _day_minutes(client: KisClient, code: str) -> list:
             out.append(b)
     out = _clip(out, latest_t, earliest)
     out.sort(key=lambda b: b["t"])
+    return out
+
+
+def _has_prices(bars: list) -> bool:
+    """가격이 하나라도 실린 봉이 있나.
+
+    NXT 미상장 종목을 통합(UN)으로 물으면 KIS는 **오류를 안 낸다** — rt_cd=0
+    '정상처리'에 시각만 있고 가격·거래량이 전부 0인 행을 30개씩 준다
+    (2026-08-10 실측, 411060 금현물 ETF: UN 0/30 vs J 30/30). 그래서 로그에도
+    흔적이 안 남고 화면만 조용히 빈다. 값의 유무로 직접 판정할 수밖에 없다."""
+    return any(b["close"] for b in bars)
+
+
+async def _day_minutes(client: KisClient, code: str) -> list:
+    """당일 1분봉 전체. 통합 조회가 빈 값이면 KRX 전용(J)으로 한 번 되묻는다."""
+    now = time.time()
+    hit = _min_cache.get(code)
+    if hit and now - hit[0] < _TTL:
+        return hit[1]
+    div = _krx_only.get(code, client.div)
+    out = await _fetch_minutes(client, code, div)
+    if not _has_prices(out) and div != "J":
+        alt = await _fetch_minutes(client, code, "J")
+        if _has_prices(alt):
+            # 한 번 확인되면 기억한다 — 매 갱신마다 빈 UN 조회를 되풀이하지 않게
+            _krx_only[code] = "J"
+            log.info("%s 분봉: 통합(%s) 빈 값 → KRX 전용(J)로 전환", code, div)
+            out = alt
     _min_cache[code] = (now, out)
     return out
 
