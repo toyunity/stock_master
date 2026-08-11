@@ -125,6 +125,9 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
   align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--warn);
   text-align:center;padding:0 16px;border-radius:var(--r)}
 .stall.on{display:flex}
+/* 차트 로딩 오버레이 — 수신 정지(.stall 기본)와 톤을 가른다. 경고가 아니라 대기다.
+   pstall과 별도 요소여야 한다: render()가 SSE 1초마다 pstall.className을 덮어쓴다. */
+.cload{color:var(--text-3);z-index:4}
 /* 이평선(이동평균) 토글 줄 */
 .marow{display:flex;align-items:center;gap:6px;margin:2px 0 10px;flex-wrap:wrap}
 .marow .ma-lb{font-size:12px;font-weight:700;color:var(--text-2);margin-right:2px}
@@ -311,7 +314,8 @@ __ICONS__
   <div class="ohlc" id="ohlc"></div>
   <div class="chartwrap"><div id="pchart"></div>
     <div class="ext-lbl hi" id="hi-lbl"></div><div class="ext-lbl lo" id="lo-lbl"></div>
-    <div class="stall" id="pstall"></div></div>
+    <div class="stall" id="pstall"></div>
+    <div class="stall cload on" id="pcload">차트 불러오는 중…</div></div>
   <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
@@ -782,10 +786,19 @@ const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉'
   '1d':'일봉 120일','1w':'주봉 120주','1mo':'월봉 120개월'};
 // 일 단위 봉(시간 라벨이 날짜 문자열) — 분봉과 시간축 처리·갱신 주기가 갈린다
 const isDay=tf=>tf==='1d'||tf==='1w'||tf==='1mo';
+// 차트 로딩 오버레이 — /api/candles는 웜 3.8초·콜드 8.2초가 걸린다(2026-08-11 실측).
+// 그동안 차트 영역은 라이브러리 워터마크만 있는 빈 상자라 '고장'으로 읽힌다(제보 2회).
+// 헤더 pc-fresh의 작은 글씨는 신호가 못 된다. fit=true(최초·주기 전환)에만 덮는다 —
+// 60초 자동 갱신마다 덮으면 1분에 한 번씩 화면이 깜빡인다.
+function setChartLoading(on){
+  const el=document.getElementById('pcload');
+  if(el)el.className='stall cload'+(on?' on':'');
+}
 async function loadCandles(fit){
   // fit=true일 때만 전체 보기로 맞춘다(최초 로드·타임프레임 전환). 60초 자동 갱신은
   // fit=false로 사용자의 확대/이동 뷰를 보존(실사고: 갱신마다 초기화).
   const seq=++tfSeq, tf=TF; // 연타로 주기를 바꿔도 마지막 요청만 반영(경합 방지)
+  if(fit)setChartLoading(true);
   try{
     const r=await fetch('/api/candles/'+CODE+'?tf='+tf);
     if(seq!==tfSeq)return;
@@ -849,6 +862,8 @@ async function loadCandles(fit){
     document.getElementById('pc-fresh').textContent='· '+TF_KO[tf]+' · 기준 '
       +lastT+(isDay(tf)?'':' (KST) · 60초 자동 갱신');
   }catch(e){console.error(e);}
+  // seq 가드: 뒤늦게 끝난 옛 요청이 진행 중인 새 요청의 오버레이를 걷어내면 안 된다.
+  finally{ if(seq===tfSeq)setChartLoading(false); }
 }
 // [data-tf]로 한정 — 세션 탭(#sz-tabs, data-ses)·알림 버튼도 .tf 클래스를 쓰므로
 // 전체 '.tf'를 잡으면 하이라이트를 서로 지운다(리뷰 확정)
