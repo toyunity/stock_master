@@ -147,6 +147,31 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   background:var(--warn-bg);color:var(--warn)}
 .mchip .mbadge.mbadge-closed{background:var(--surface-3);color:var(--text-2)}
 
+/* ── '글로벌' 섹션(미국채·원자재·해외지수) ──
+   칩은 위 시장 스트립(.market/.mchip)과 그룹 소제목(.sectlabel)을 그대로 쓴다 —
+   새 디자인 언어를 만들지 않는다(theme.py 단일 출처). 여기서 더하는 건 셋뿐:
+   단위(.gu)·기준일(.gb)·접힌 줄(.gdig). */
+#gsec>summary{flex-wrap:wrap;row-gap:3px;white-space:nowrap}
+/* 접힌 줄은 제목과 같은 줄에 못 들어간다 — 390px 실렌더 실측: 세 값이 306px인데
+   제목·아이콘·셰브런을 뺀 한 줄 가용폭은 ~218px다. 한 줄에 욱여넣으면 넘친 뒤쪽부터
+   잘려 하필 마지막(금)이 사라진다(옵션 접힌 줄에서 겪은 함정). 그래서 요약 안에서
+   자기 줄로 접는다(order:1 — 셰브런 다음). 그 줄은 324px라 18px 여유가 남는다.
+   ellipsis는 그래도 넘칠 때의 바닥이지, 평소에 기대는 수단이 아니다. */
+#gsec .gdig{order:1;flex-basis:100%;font-family:var(--font-num);
+  font-variant-numeric:tabular-nums;font-size:10.5px;font-weight:600;color:var(--text-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#gsec .sectlabel{margin:14px 2px 7px}      /* 섹션 안이라 바깥 그룹 라벨보다 촘촘하게 */
+#gsec .sectlabel:first-child{margin-top:4px}
+/* 상단 스트립과 달리 여기선 **접는다**. 헤더 스트립은 옆으로 미는 게 자연스럽지만,
+   섹션은 펼쳐서 다 보려고 여는 곳이다 — 390px에서 그룹당 373~435px라 가로 스크롤로
+   두면 VIX·30년이 손대기 전엔 아예 안 보인다(실렌더 확인). .chips와 같은 관행. */
+#gsec .market{margin:0;flex-wrap:wrap;row-gap:7px}
+#gsec .gu{font-family:var(--font-num);font-size:11px;font-weight:600;color:var(--text-2)}
+/* 기준일 — 칩마다. 값보다 확실히 작게(읽히되 주인공은 아니게). */
+#gsec .gb{font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);
+  letter-spacing:.02em;margin-top:3px}
+#gsec-foot{margin-top:12px}
+
 /* 섹션 라벨 — 시그니처: 틱마크 축(axis) 룰(가격 눈금자 모티프) */
 .sectlabel{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:800;
   letter-spacing:.02em;color:var(--text-2);margin:22px 2px 9px}
@@ -213,6 +238,14 @@ __REFRESH__
     <div class="semigrid" id="semi-kr" style="margin-top:6px"></div>
     <div class="meta" style="margin-top:6px">미국: KIS 해외시세(계정에 따라 15분 지연) ·
     국내: KIS 실시간 · 카드 '–'는 조회 실패(자동 재시도) · 60초 자동 갱신</div>
+  </div>
+</details>
+<details class="sec" id="gsec" style="display:none">
+  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 글로벌
+    <span class="gdig" id="gsec-dig"></span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div id="gsec-body"></div>
+    <div class="meta" id="gsec-foot"></div>
   </div>
 </details>
 <details class="sec">
@@ -414,6 +447,83 @@ async function loadMarket(){
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
+// ── 글로벌 지표(미국채·원자재·해외지수) — /api/worldidx 5분 폴링. ──
+// 여긴 라이브가 아니다: 재무부·FDR은 직전 영업일 종가고 KIS 해외지수도 지연이다.
+// 그래서 **칩마다 기준일을 찍는다** — 바로 위 코스피 칩이 살아 있어서, 날짜가 없으면
+// 이 숫자들까지 지금 값으로 읽힌다(설계 문서가 basis를 항목마다 실은 이유).
+// 단위도 서버가 준 unit 문자열을 그대로 쓴다. 프런트가 '$'를 지어내는 순간, 설계
+// 조사에서 걸러낸 프록시 사고(GLD 402를 '금 402'로 읽는)가 화면에서 재발한다.
+const GKEY=['ust10y','wti','gold'];        // 접힌 줄에 남길 핵심 3개(설계 확정)
+const GALIAS={ust10y:'미국채 10Y'};        // 접힌 줄엔 소제목이 없다 — '10년'만으론 뭔지 모른다
+function gnum(v){ return v==null?'–':Number(v).toLocaleString('ko-KR',
+  {minimumFractionDigits:2,maximumFractionDigits:2}); }
+// 'idx'는 표시 단위가 아니라 '단위 없음' 표식이라 안 찍는다(소제목 '해외지수'가 이미
+// 말한다). '%'만 숫자에 붙이고, 나머지는 서버 문자열 그대로 옆에 세운다.
+function gunitTx(u){ return (!u||u==='idx')?'':(u==='%'?'%':' '+u); }
+function gunitHtml(u){ return (!u||u==='idx')?''
+  :(u==='%'?'%':'<span class="gu">'+esc(u)+'</span>'); }
+function gchip(it){
+  const cls=it.rate>0?'up':(it.rate<0?'down':'flat');
+  const ar=it.rate>0?'▲':(it.rate<0?'▼':'·');
+  // rate:null은 '모른다' — 0.00%(보합)로 꾸미지 않는다(fxchip·loadSemi와 같은 관행).
+  // 기준일도 마찬가지다: 없으면 대시. 오늘 날짜로 추측해 찍으면 기준일을 실은 뜻이 없다.
+  // 등락 단위는 서버가 준 rate_unit을 그대로 쓴다 — 국채는 bp다(4.72% ▲7bp).
+  // 여기서 '%'를 가정하면 금리가 1.51%p 뛴 것처럼 읽힌다(worldidx._bp_sign 참조).
+  const ru=it.rate_unit||'%';
+  // bp는 정수로 읽는 관례라 뒤의 .0을 떼고 보여준다(7bp, 7.5bp). %는 소수 2자리 고정.
+  const rv=it.rate==null?'':(ru==='bp'
+    ? String(Math.round(Math.abs(it.rate)*10)/10)
+    : Math.abs(it.rate).toFixed(2));
+  const pct=it.rate==null?'–':(ar+rv+ru);
+  return '<div class="mchip"><div class="ml">'+esc(it.label)+'</div>'
+    +'<div class="mv">'+gnum(it.value)+gunitHtml(it.unit)
+    +'<span class="mr '+cls+'">'+pct+'</span></div>'
+    +'<div class="gb">기준 '+esc(it.basis||'–')+'</div></div>';
+}
+function ggroup(g){
+  return '<div class="sectlabel">'+esc(g.label)+'</div>'
+    +'<div class="market">'+g.items.map(gchip).join('')+'</div>';
+}
+function gpick(d,key){
+  const gs=(d&&d.groups)||[];
+  for(let i=0;i<gs.length;i++){
+    const it=(gs[i].items||[]).find(function(x){return x&&x.key===key;});
+    if(it) return it;
+  }
+  return null;
+}
+function gdigest(d){
+  const bits=[];
+  GKEY.forEach(function(k){
+    const it=gpick(d,k); if(!it) return;   // 그 원천이 죽었으면 그 자리는 비운다
+    bits.push((GALIAS[k]||it.label)+' '+gnum(it.value)+gunitTx(it.unit));
+  });
+  return bits.join(' · ');
+}
+async function loadWorldidx(){
+  let d=null;
+  try{
+    const r=await fetch('/api/worldidx');
+    if(r&&r.ok) d=await r.json();
+  }catch(e){}
+  const sec=document.getElementById('gsec'); if(!sec) return;
+  // 한 원천이 죽으면 그 그룹만 빠지고 나머지는 뜬다(칩 스트립의 기존 원칙).
+  // 전부 실패면 섹션을 통째로 감춘다 — 빈 껍데기가 '데이터 없음'처럼 자리 차지 금지.
+  const gs=((d&&d.groups)||[]).filter(function(g){return g&&(g.items||[]).length;});
+  if(!gs.length){ sec.style.display='none'; return; }
+  sec.style.display='';
+  const body=document.getElementById('gsec-body');
+  if(body) body.innerHTML=gs.map(ggroup).join('');
+  const dig=document.getElementById('gsec-dig');
+  if(dig) dig.textContent=gdigest(d);
+  const foot=document.getElementById('gsec-foot');
+  if(foot) foot.textContent='미 재무부 · FinanceDataReader · KIS 해외지수'
+    +' — 실시간이 아니라 기준일 값입니다'
+    +(d.asof?' · '+String(d.asof).slice(11,16)+' 조회':'');
+}
+// 5분 — 서버 캐시(재무부 1시간·FDR 10분·KIS 지수 60초)가 대부분 흡수한다.
+// 접힌 줄에 값이 보여야 해서 VKOSPI처럼 펼칠 때 조회로 미룰 수 없다.
+loadWorldidx(); setInterval(loadWorldidx,300000);
 __OPT_JS__
 __VOL_JS__
 // 시장상태 펄스(헤더 시그니처): KR 세션 중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색.

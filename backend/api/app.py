@@ -26,6 +26,7 @@ from backend.api import auth as _auth
 from backend.flow import candles
 from backend.flow import scanner as flow_scanner
 from backend.flow import semi
+from backend.flow import worldidx
 from backend.flow.engine import FlowEngine
 from backend.report.live_page import render_live_page
 from backend.report.scanner_page import render_scanner_page
@@ -313,6 +314,18 @@ def create_app(settings=None) -> FastAPI:
     async def semi_api():
         """반도체 동향(메모리 중심) — 미국(SOX·나스닥)+국내 시세 요약, 60초 캐시."""
         return JSONResponse(await semi.get_overview())
+
+    @app.get("/api/worldidx")
+    async def worldidx_api():
+        """글로벌 지표 — 미국채(2Y/10Y/30Y)·원자재(WTI·금)·해외지수(S&P500·나스닥·VIX).
+
+        원천이 셋이라 실패도 셋으로 나뉜다 — 죽은 원천의 그룹만 빠지고 나머지는 그대로
+        200으로 나간다. 전부 죽으면 groups=[]이고, 그건 에러가 아니라 '섹션을 감추라'는
+        신호다(빈 껍데기 금지). 키 없음도 여기서 막지 않는다 — 503으로 끊으면 KIS와
+        무관한 재무부·원자재까지 같이 죽는다.
+
+        캐시·쿨다운은 worldidx가 원천별로 들고 있어 라우트는 그대로 위임만 한다."""
+        return JSONResponse(await worldidx.get_worldidx())
 
     @app.get("/api/prices")
     async def prices_api(request: Request):

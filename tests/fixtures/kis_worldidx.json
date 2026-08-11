@@ -1,0 +1,69 @@
+{
+ "SPX": {
+  "output1": {
+   "ovrs_nmix_prdy_vrss": "-4.53",
+   "prdy_vrss_sign": "5",
+   "prdy_ctrt": "-0.06",
+   "ovrs_nmix_prdy_clpr": "7757.64",
+   "acml_vol": "0",
+   "hts_kor_isnm": "S&P500",
+   "ovrs_nmix_prpr": "7753.11",
+   "stck_shrn_iscd": "SPX",
+   "ovrs_prod_oprc": "7751.74",
+   "ovrs_prod_hgpr": "7773.76",
+   "ovrs_prod_lwpr": "7743.11"
+  },
+  "output2": [],
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다."
+ },
+ "COMP": {
+  "output1": {
+   "ovrs_nmix_prdy_vrss": "-85.26",
+   "prdy_vrss_sign": "5",
+   "prdy_ctrt": "-0.32",
+   "ovrs_nmix_prdy_clpr": "26690.62",
+   "acml_vol": "7968642200",
+   "hts_kor_isnm": "나스닥 종합",
+   "ovrs_nmix_prpr": "26605.36",
+   "stck_shrn_iscd": "COMP",
+   "ovrs_prod_oprc": "26680.44",
+   "ovrs_prod_hgpr": "26724.63",
+   "ovrs_prod_lwpr": "26548.26"
+  },
+  "output2": [],
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다."
+ },
+ "VIX": {
+  "output1": {
+   "ovrs_nmix_prdy_vrss": "0.08",
+   "prdy_vrss_sign": "2",
+   "prdy_ctrt": "0.52",
+   "ovrs_nmix_prdy_clpr": "15.46",
+   "acml_vol": "0",
+   "hts_kor_isnm": "VIX 지수",
+   "ovrs_nmix_prpr": "15.54",
+   "stck_shrn_iscd": "VIX",
+   "ovrs_prod_oprc": "15.42",
+   "ovrs_prod_hgpr": "15.57",
+   "ovrs_prod_lwpr": "15.40"
+  },
+  "output2": [
+   {
+    "stck_bsop_date": "20260811",
+    "ovrs_nmix_prpr": "15.54",
+    "ovrs_nmix_oprc": "15.42",
+    "ovrs_nmix_hgpr": "15.57",
+    "ovrs_nmix_lwpr": "15.40",
+    "acml_vol": "0",
+    "mod_yn": "N"
+   }
+  ],
+  "rt_cd": "0",
+  "msg_cd": "MCA00000",
+  "msg1": "정상처리 되었습니다."
+ }
+}
