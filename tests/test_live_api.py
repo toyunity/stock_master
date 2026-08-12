@@ -88,10 +88,13 @@ def test_dashboard_cards_link_to_live():
 def test_watch_get_default(monkeypatch, tmp_path):
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    # config 시드 기본값은 비어 있다(개인 매매 목표 비노출) — 폴백 검증용 시드를 테스트가 든다.
+    monkeypatch.setattr(settings, "watch_lines",
+                        {"000660": [{"price": 100_000, "label": "시드A"}]})
     r = client.get("/api/watch/000660")
     assert r.status_code == 200
     labels = [l["label"] for l in r.json()["lines"]]
-    assert "절대선" in labels           # config 기본값 폴백
+    assert "시드A" in labels            # config 시드 폴백
 
 
 def test_watch_post_roundtrip(monkeypatch, tmp_path):

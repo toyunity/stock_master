@@ -13,7 +13,7 @@ from pathlib import Path
 
 from backend.config import settings
 
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()   # 변경 함수가 _load~_save 구간 전체를 잡는다(_save가 재진입)
 _KR_RE = re.compile(r"^\d{6}$")
 _US_RE = re.compile(r"^[A-Z]{1,5}([.][A-Z])?$")
 MAX_ITEMS = 10
@@ -54,12 +54,17 @@ def default_account() -> str:
 
 
 def _load(email) -> dict:
-    try:
-        with open(_path(email), encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+    """계정 파일 내용. **파일 없음만** 빈 dict — 읽기 실패는 그대로 올린다.
+
+    둘을 뭉뚱그려 {}를 돌려주면 곧이어 오는 _save가 그 위에 원자적으로 덮어써
+    보유 수량·평단·위젯 토큰이 통째로 사라진다(백업 없음). 읽기 라우트가 500이 나는 게
+    '보유내역이 조용히 빈다'보다 낫다."""
+    p = _path(email)
+    if not p.exists():
+        return {}                          # 첫 사용 — 정상
+    with open(p, encoding="utf-8") as f:
+        d = json.load(f)
+    return d if isinstance(d, dict) else {}
 
 
 def _save(email, data) -> None:
@@ -70,7 +75,8 @@ def _save(email, data) -> None:
         tmp = p.with_name(p.name + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-        os.replace(tmp, p)
+        os.chmod(tmp, 0o600)   # 위젯 토큰+보유내역 — 같은 맥의 다른 프로세스가 읽으면 안 된다
+        os.replace(tmp, p)     # 모드는 tmp의 것이 따라간다 → 기존 0644 파일도 저장 시 조여진다
 
 
 def _clean_item(it) -> dict:
@@ -132,9 +138,10 @@ def set_watchlist(email, items) -> list:
         raise ValueError("관심종목은 최소 1개 필요해요")
     if len(norm) > MAX_ITEMS:
         raise ValueError("관심종목은 최대 %d개까지 저장할 수 있어요" % MAX_ITEMS)
-    d = _load(norm_email(email))
-    d["watchlist"] = norm
-    _save(email, d)
+    with _LOCK:                            # 읽기-수정-쓰기 전 구간 — 감시선 저장과 겹쳐도 유실 없음
+        d = _load(norm_email(email))
+        d["watchlist"] = norm
+        _save(email, d)
     return norm
 
 
@@ -172,13 +179,14 @@ def set_lines(email, code, lines) -> list:
     """검증 후 계정 파일에 원자적 저장. 위반 시 ValueError. 빈 배열도 영속."""
     from backend.flow import watch
     norm = watch._validate_lines(lines, market_of(code) or "KR")
-    d = _load(norm_email(email))
-    wl = d.get("watch_lines")
-    if not isinstance(wl, dict):
-        wl = {}
-    wl[code] = norm
-    d["watch_lines"] = wl
-    _save(email, d)
+    with _LOCK:
+        d = _load(norm_email(email))
+        wl = d.get("watch_lines")
+        if not isinstance(wl, dict):
+            wl = {}
+        wl[code] = norm
+        d["watch_lines"] = wl
+        _save(email, d)
     return norm
 
 
@@ -195,31 +203,23 @@ def get_token(email):
 
 def ensure_token(email) -> str:
     email = norm_email(email)
-    d = _load(email)
-    if not d.get("widget_token"):
-        d["widget_token"] = secrets.token_urlsafe(32)
-        _save(email, d)
-        _tok_cache["mtime"] = None
-    return d["widget_token"]
+    with _LOCK:
+        d = _load(email)
+        if not d.get("widget_token"):
+            d["widget_token"] = secrets.token_urlsafe(32)
+            _save(email, d)
+            _tok_cache["mtime"] = None
+        return d["widget_token"]
 
 
 def rotate_token(email) -> str:
     email = norm_email(email)
-    d = _load(email)
-    d["widget_token"] = secrets.token_urlsafe(32)
-    _save(email, d)
-    _tok_cache["mtime"] = None
-    return d["widget_token"]
-
-
-def register_env_token(token, email) -> None:
-    """마이그레이션 전용 — env SM_WIDGET_TOKEN을 고정 마스터 유저파일에 1회 등록."""
-    email = norm_email(email)
-    d = _load(email)
-    if not d.get("widget_token"):
-        d["widget_token"] = token
+    with _LOCK:        # 회전 중 다른 저장이 끼어들면 구 토큰이 되살아난다(=유출 대응 실패)
+        d = _load(email)
+        d["widget_token"] = secrets.token_urlsafe(32)
         _save(email, d)
         _tok_cache["mtime"] = None
+        return d["widget_token"]
 
 
 def _rebuild_token_map():
@@ -259,7 +259,11 @@ def migrate_globals() -> None:
     master = default_account()
     if not master:
         return
-    d = _load(master)
+    try:
+        d = _load(master)
+    except Exception:
+        return      # 계정 파일이 깨졌으면 승격을 건너뛴다 — 여기서 죽으면 앱이 아예 안 뜨고
+                    # ({}로 진행하면 보유내역을 덮어쓴다). 멱등이라 다음 기동에 다시 시도한다.
     changed = False
     if "watchlist" not in d:
         try:

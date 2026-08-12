@@ -10,16 +10,22 @@ from backend.flow import watch
 
 @pytest.fixture
 def iso(tmp_path, monkeypatch):
-    """캐시 디렉터리를 tmp로 격리 — 실제 data/cache 오염 방지."""
+    """캐시 디렉터리를 tmp로 격리 + config 시드를 테스트 소유 값으로 고정.
+
+    settings.watch_lines의 기본값은 비어 있다(개인 매매 목표를 리포에 안 남긴다).
+    폴백 경로를 검증하려면 테스트가 자기 시드를 들고 와야 한다."""
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "watch_lines", {
+        "000660": [{"price": 100_000, "label": "시드A"},
+                   {"price": 150_000, "label": "시드B"}]})
     return tmp_path
 
 
 def test_get_default_from_config(iso):
-    # 파일이 없으면 config 기본값(000660엔 절대선·예약매도)으로 폴백
+    # 파일이 없으면 config 시드로 폴백
     lines = watch.get_lines("000660")
     labels = [l["label"] for l in lines]
-    assert "절대선" in labels and "예약매도" in labels
+    assert "시드A" in labels and "시드B" in labels
     assert all(isinstance(l["price"], int) and l["price"] > 0 for l in lines)
 
 
@@ -65,7 +71,7 @@ def test_corrupt_file_falls_back(iso):
     (iso / "watch_lines.json").write_text("{ this is not json", encoding="utf-8")
     # 손상 파일이면 예외를 삼키고 config 폴백 — 화면이 죽지 않는다
     labels = [l["label"] for l in watch.get_lines("000660")]
-    assert "절대선" in labels
+    assert "시드A" in labels
 
 
 def test_atomic_write_no_tmp_residue(iso):

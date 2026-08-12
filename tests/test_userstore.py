@@ -63,9 +63,9 @@ def test_watch_lines_non_master_never_sees_config(monkeypatch):
     """blocker 회귀 방지 — 비마스터 계정은 config 감시선(마스터 실매도가) 절대 못 봄."""
     from backend.flow import userstore as us
     from backend.config import settings
-    monkeypatch.setattr(settings, "watch_lines", {"000660": [{"price": 1853000, "label": "절대선"}]})
+    monkeypatch.setattr(settings, "watch_lines", {"000660": [{"price": 100000, "label": "절대선"}]})
     assert us.get_lines(B, "000660") == []                 # B는 빈(폴백 금지)
-    assert us.get_lines(M, "000660")[0]["price"] == 1853000  # 마스터만 시드
+    assert us.get_lines(M, "000660")[0]["price"] == 100000  # 마스터만 시드
 
 
 def test_watch_lines_set_get_isolation():
@@ -106,11 +106,11 @@ def test_migration_promotes_globals(tmp_path, monkeypatch):
     with open(os.path.join(str(tmp_path), "watchlist.json"), "w") as f:
         json.dump({"codes": ["005930", "000660"]}, f)
     with open(os.path.join(str(tmp_path), "watch_lines.json"), "w") as f:
-        json.dump({"000660": [{"price": 1853000, "label": "절대선"}]}, f)
+        json.dump({"000660": [{"price": 100000, "label": "절대선"}]}, f)
     monkeypatch.setattr(settings, "widget_token", "e" * 32)
     us.migrate_globals()
     assert [i["code"] for i in us.get_watchlist(M)] == ["005930", "000660"]
-    assert us.get_lines(M, "000660")[0]["price"] == 1853000
+    assert us.get_lines(M, "000660")[0]["price"] == 100000
     assert us.email_for_token("e" * 32) == M          # env 토큰 → 마스터 고정
 
 
@@ -131,3 +131,59 @@ def test_kr_watch_line_still_integer_through_userstore():
     saved = userstore.set_lines("a@b.com", "000660",
                                 [{"price": 71234.6, "label": "절대선"}])
     assert saved == [{"price": 71235, "label": "절대선"}]
+
+
+# ── 저장 무결성 (감사 M1·M2·M8, 2026-08-12) ────────────────────────────
+# 계정 파일 하나에 관심종목·보유수량·평단·감시선·위젯토큰이 전부 들어 있다.
+# 여기서 한 번 날아가면 백업이 없다.
+
+def test_concurrent_saves_do_not_lose_each_other(monkeypatch):
+    """M1 — 락이 쓰기만 감싸면 읽기-수정-쓰기가 겹쳐 한쪽 변경이 통째로 사라진다.
+
+    _load를 느리게 만들어 겹침을 재현한다. 지연은 **읽은 뒤**여야 한다 — 앞에 두면
+    나중 스레드가 상대의 저장이 끝난 뒤에 읽어서 버그가 있어도 초록불이 된다."""
+    import threading
+    import time
+    from backend.flow import userstore as us
+    orig = us._load
+
+    def slow(email):
+        d = orig(email)
+        time.sleep(0.05)
+        return d
+
+    us.set_watchlist(M, [{"code": "005930", "market": "KR", "shares": 10, "avg": 70000}])
+    monkeypatch.setattr(us, "_load", slow)
+    t = threading.Thread(target=us.set_lines,
+                         args=(M, "005930", [{"price": 70000, "label": "지지"}]))
+    t.start()
+    time.sleep(0.01)                       # 아이폰이 감시선 저장 중일 때 맥에서 관심종목 저장
+    us.set_watchlist(M, [{"code": "000660", "market": "KR", "shares": 3, "avg": 200000}])
+    t.join()   # monkeypatch.undo() 금지 — autouse 격리(cache_dir·default_account)까지 풀린다
+    assert [i["code"] for i in us.get_watchlist(M)] == ["000660"]          # 관심종목 살아 있고
+    assert us.get_lines(M, "005930") == [{"price": 70000, "label": "지지"}]  # 감시선도 살아 있다
+
+
+def test_unreadable_account_file_is_not_overwritten():
+    """M2 — 읽기 실패를 {}로 삼키면 바로 뒤 _save가 보유내역을 통째로 지운다.
+    500이 나는 게 '보유 수량·평단이 조용히 사라짐'보다 낫다."""
+    import json
+    from backend.flow import userstore as us
+    us.set_watchlist(M, [{"code": "005930", "market": "KR", "shares": 10, "avg": 70000}])
+    p = us._path(M)
+    broken = '{"watchlist": [{"code": "0059'          # 잘린 JSON(디스크 손상 모사)
+    p.write_text(broken, encoding="utf-8")
+    with pytest.raises(json.JSONDecodeError):
+        us.set_lines(M, "005930", [{"price": 70000, "label": "지지"}])
+    assert p.read_text(encoding="utf-8") == broken   # 덮어쓰지 않았다
+    with pytest.raises(json.JSONDecodeError):
+        us.get_watchlist(M)                          # 조용한 빈 목록도 금지
+    assert us.get_watchlist(B) == []                 # 다른 계정은 정상(파일 없음=빈)
+
+
+def test_account_file_is_owner_only():
+    """M8 — 유저 파일엔 위젯 토큰과 보유내역이 있다. 같은 맥의 다른 프로세스가 읽으면 안 된다."""
+    import stat
+    from backend.flow import userstore as us
+    us.ensure_token(M)
+    assert stat.S_IMODE(us._path(M).stat().st_mode) == 0o600

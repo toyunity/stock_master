@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import secrets as _secrets
+import time
 
 from html import escape
 from typing import Iterable, List, Optional
@@ -58,17 +59,26 @@ def totp_provisioning_uri(secret: str, account: str,
 
 # ── 시크릿 영속 (env 우선, 없으면 캐시 파일 생성·재사용) ──────────────
 def _get_or_create_secret(cache_dir: str, filename: str, gen) -> str:
+    """0600으로 만들고, 이미 있는 파일도 조인다 — session_secret.txt 하나면 OAuth+TOTP를
+    통째로 우회하는 sm_session 쿠키를 서명해 만들 수 있다. 이미 0644로 배포된 파일이
+    있으므로(2026-08-12 실측) 읽기 경로에서도 한 번 조인다. 권한 조정 실패로 기동이
+    막히면 안 되므로 OSError는 삼킨다(남의 소유 파일 등 예외 상황)."""
     path = os.path.join(cache_dir, filename)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             s = f.read().strip()
         if s:
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
             return s
     s = gen()
     os.makedirs(cache_dir, exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(s)
+    os.chmod(tmp, 0o600)   # 모드는 tmp의 것이 os.replace로 따라간다
     os.replace(tmp, path)  # 원자적
     return s
 
@@ -93,6 +103,17 @@ def _emails(settings) -> List[str]:
     return [e.strip() for e in (settings.allowed_emails or "").split(",") if e.strip()]
 
 
+# ── 2FA 남용 방지 (감사 M4) ───────────────────────────────────────────
+_2FA_WINDOW = 300.0   # 실패 카운터 시간창(초). 지나면 자동 해제 — 영구 잠금은 만들지 않는다
+_2FA_MAX = 5          # 창 안 최대 실패 횟수
+_2FA_REUSE = 90.0     # 성공한 코드를 막아두는 시간(valid_window=1이라 최대 ±30초 = 90초)
+
+
+def _now() -> float:
+    """2FA 시도 창의 시계 — 한 곳에 모아 테스트가 시간을 앞당길 수 있게 한다(벽시계 점프 무관)."""
+    return time.monotonic()
+
+
 # ── 게이트 (순수 ASGI — StreamingResponse/SSE를 버퍼링하지 않는다) ─────
 _PUBLIC_EXACT = {"/login", "/auth/login", "/auth/callback", "/logout",
                  "/healthz", "/manifest.json", "/api/auth/check", "/favicon.ico"}
@@ -108,9 +129,13 @@ class AuthGate:
     아니라 순수 ASGI라 SSE 스트리밍을 깨지 않는다. SessionMiddleware가 바깥(먼저)에서
     scope['session']을 채운 뒤 이 게이트가 읽는다(설치 시 add 순서로 보장)."""
 
-    def __init__(self, app, widget_token=None):
+    def __init__(self, app, widget_token=None, emails=()):
         self.app = app
         self.widget_token = widget_token   # /api/widget 전용 Bearer(설계 2026-07-16)
+        # allowlist를 **매 요청** 대조한다 — 로그인 순간 1회만 보면 계정을 목록에서 빼도
+        # 이미 나간 세션 쿠키가 30일 통과한다(감사 M3). 목록 자체는 기동 시 1회 읽으므로
+        # 제거는 재기동 후 적용된다.
+        self.allowed = {e.strip().lower() for e in (emails or ()) if e}
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -121,18 +146,18 @@ class AuthGate:
             # 무토큰이 여전히 401이므로 PROTECTED 불변식 테스트에 예외가 없다.
             resp = self._widget_blocked(scope)
         else:
-            resp = self._blocked(path, scope.get("session") or {})
+            resp = self._blocked(path, scope.get("session") or {}, self.allowed)
         if resp is None:
             return await self.app(scope, receive, send)
         return await resp(scope, receive, send)
 
     @staticmethod
-    def _blocked(path, session):
+    def _blocked(path, session, allowed=frozenset()):
         from starlette.responses import JSONResponse, RedirectResponse
         if _is_public(path):
             return None
         is_api = path.startswith("/api/")
-        if not session.get("email"):                       # 0단계 → 로그인
+        if session.get("email") not in allowed:            # 0단계(+매 요청 allowlist) → 로그인
             return (JSONResponse({"error": "unauthorized"}, status_code=401)
                     if is_api else RedirectResponse("/login", status_code=302))
         if not session.get("totp_ok"):                     # 1단계 → 2FA
@@ -163,7 +188,7 @@ class AuthGate:
         except Exception:
             token = ""
         email = email_for_token(token) if token else None
-        if email:
+        if email and email in self.allowed:   # 위젯 토큰도 allowlist에서 빠지면 죽는다(M3)
             st = scope.get("state")
             if not isinstance(st, dict):
                 st = {}
@@ -200,7 +225,7 @@ def install(app, settings) -> None:
     _register_routes(app, google, settings, emails)
     # add 순서: 나중에 add한 것이 바깥(먼저 실행). SessionMiddleware를 바깥에 둬야
     # scope['session']이 채워진 뒤 게이트가 읽는다.
-    app.add_middleware(AuthGate, widget_token=settings.widget_token)
+    app.add_middleware(AuthGate, widget_token=settings.widget_token, emails=emails)
     app.add_middleware(
         SessionMiddleware,
         secret_key=get_session_secret(settings.cache_dir, settings.session_secret),
@@ -238,15 +263,35 @@ def _register_routes(app, google, settings, emails) -> None:
             return RedirectResponse("/login", status_code=302)
         return HTMLResponse(_twofa_html())
 
+    # 시도 카운터·재사용 기록은 **이메일 키**다(세션 키면 쿠키를 버려 초기화된다).
+    # 계정 수가 한 자리라 증가 걱정이 없다. 프로세스 메모리 — 재기동하면 풀린다(의도).
+    fail = {}      # email -> (실패 횟수, 창 시작 시각)
+    used = {}      # email -> (마지막으로 통과한 코드, 만료 시각)
+
     @app.post("/2fa", response_class=HTMLResponse)
     async def _twofa_post(request: Request):
         if not request.session.get("email"):
             return RedirectResponse("/login", status_code=302)
+        em, now = request.session["email"], _now()
+        n, t0 = fail.get(em, (0, now))
+        if now - t0 > _2FA_WINDOW:      # 창이 지났으면 초기화 — 여기서 t0를 갱신하지 않으면
+            n, t0 = 0, now              # 재시도가 창을 계속 밀어 영구 잠금이 된다
+        if n >= _2FA_MAX:
+            return HTMLResponse(_twofa_html(error="시도가 너무 많아요 — 5분 뒤 다시 해주세요."),
+                                status_code=429)
         form = await request.form()
         secret = get_totp_secret(settings.cache_dir, settings.totp_secret)
-        if verify_totp(secret, form.get("code", "")):
+        code = str(form.get("code", "")).strip()
+        last, exp = used.get(em, ("", 0.0))
+        if code and code == last and now < exp:
+            # ponytail: 마지막 1개만 기억한다 — 같은 창의 다른 코드까지 막으려면 집합으로.
+            return HTMLResponse(_twofa_html(error="이미 쓴 코드예요 — 새 코드를 입력하세요."),
+                                status_code=401)
+        if verify_totp(secret, code):
+            used[em], fail[em] = (code, now + _2FA_REUSE), (0, now)
             request.session["totp_ok"] = True
             return RedirectResponse("/", status_code=302)
+        fail[em] = (n + 1, t0)
         return HTMLResponse(_twofa_html(error="코드가 올바르지 않습니다."), status_code=401)
 
     @app.get("/2fa/setup", response_class=HTMLResponse)
@@ -264,7 +309,11 @@ def _register_routes(app, google, settings, emails) -> None:
 
     @app.get("/api/auth/check")
     def _auth_check(request: Request):
-        ok = bool(request.session.get("email") and request.session.get("totp_ok"))
+        # 이 라우트는 공개(미인증도 401을 받아야 PWA가 로그인 화면으로 간다)라 게이트를
+        # 안 탄다 — allowlist 대조를 여기서 한 번 더 한다. 안 하면 제외된 계정이 다른
+        # 경로는 전부 401을 받으면서 여기서만 ok:true를 받아 껍데기 화면이 뜬다(M3).
+        allowed = {e.strip().lower() for e in emails if e}
+        ok = bool(request.session.get("email") in allowed and request.session.get("totp_ok"))
         return JSONResponse({"ok": ok}, status_code=200 if ok else 401)
 
 
