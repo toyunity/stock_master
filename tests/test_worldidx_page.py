@@ -45,17 +45,22 @@ global.document = {
 global.window = {devicePixelRatio: 1, addEventListener: () => {}};
 global.getComputedStyle = () => ({getPropertyValue: () => ''});
 global.setInterval = () => 0;
+global.clearInterval = () => {};
 // **/api/worldidx에만** 이 페이로드를 준다 — 같은 스크립트의 다른 로더(가격·시장·
 // 반도체·옵션)까지 같은 응답을 받으면 무엇을 검증했는지 알 수 없다.
+const mkt = process.argv[5] ? JSON.parse(process.argv[5]) : null;
 global.fetch = async (u) => {
-  const mine = String(u).indexOf('/api/worldidx') >= 0;
-  return {ok: mine && !fail, json: async () => (mine ? payload : {})};
+  const s = String(u);
+  if (s.indexOf('/api/worldidx') >= 0) return {ok: !fail, json: async () => payload};
+  if (mkt && s.indexOf('/api/market') >= 0) return {ok: true, json: async () => mkt.market};
+  if (mkt && s.indexOf('/api/futures') >= 0) return {ok: true, json: async () => mkt.futures};
+  return {ok: false, json: async () => ({})};
 };
 
 (async () => {
   try {
     eval(code);
-    await new Promise(r => setTimeout(r, 30));   // loadWorldidx()가 await를 끝내도록
+    await new Promise(r => setTimeout(r, 60));   // loadMarket + loadWorldidx 둘 다
     console.log(JSON.stringify({
       ok: true,
       body: (els['gsec-body'] || {}).innerHTML || '',
@@ -98,14 +103,16 @@ def _payload(**over):
     return d
 
 
-def _run(tmp_path, payload, fail=False):
+def _run(tmp_path, payload, fail=False, mkt=None):
     html = tmp_path / "dash.html"
     html.write_text(render_dashboard([], [], "2026-08-11"), encoding="utf-8")
     data = tmp_path / "world.json"
     data.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     js = tmp_path / "h.js"
     js.write_text(_HARNESS, encoding="utf-8")
-    argv = ["node", str(js), str(html), str(data)] + (["fail"] if fail else [])
+    argv = ["node", str(js), str(html), str(data), "fail" if fail else "-"]
+    if mkt is not None:
+        argv.append(json.dumps(mkt, ensure_ascii=False))
     out = subprocess.run(argv, capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     res = json.loads(out.stdout.strip().splitlines()[-1])
@@ -274,3 +281,66 @@ def test_footer_names_tradeweb_when_the_yields_are_live(tmp_path):
             basis_kind="live", rate_unit="bp")]}]
     foot = _run(tmp_path, _payload(groups=live))["foot"]
     assert "Tradeweb" in foot and "재무부" not in foot
+
+
+# ── 국내 두 그룹 미러링 ───────────────────────────────────────────────────
+
+def _mkt():
+    """/api/market + /api/futures 실응답 모양(장중)."""
+    return {"market": {"kospi": {"price": 6525.01, "rate": 3.0},
+                       "kosdaq": {"price": 856.4, "rate": -0.17}},
+            "futures": {"k200": {"label": "K200선물", "price": 880.25,
+                                 "rate": 2.8, "closed": False},
+                        "nq": {"label": "나스닥 선물", "price": 29641.0,
+                               "rate": -0.34}}}
+
+
+@needs_node
+def test_domestic_chips_are_mirrored_into_the_section(tmp_path):
+    """상단 스트립의 칩이 섹션 안에도 뜬다 — 이동이 아니라 미러링이다.
+
+    새 API 호출은 없다. loadMarket이 이미 받아온 마지막 응답을 섹션이 읽어 쓰므로
+    두 곳이 같은 순간의 같은 값을 그린다."""
+    res = _run(tmp_path, _payload(), mkt=_mkt())
+    body = res["body"]
+    assert "국내 지수" in body and "지수 선물" in body
+    assert body.count('class="mchip"') == 12        # 2 + 2 + 3 + 2 + 3
+    for txt in ("코스피", "코스닥", "K200선물", "나스닥 선물"):
+        assert txt in body, txt + " 미러링 누락"
+    # 국내 그룹이 맨 앞이다
+    assert body.index("국내 지수") < body.index("지수 선물") < body.index("미국 금리")
+
+
+@needs_node
+def test_futures_chip_freshness_comes_from_the_server_flags(tmp_path):
+    """마감·지연은 서버가 주는 closed·stale 플래그가 정한다 — 프런트가 안 지어낸다."""
+    m = _mkt()
+    m["futures"]["k200"]["closed"] = True
+    m["futures"]["nq"]["stale"] = True
+    body = _run(tmp_path, _payload(), mkt=m)["body"]
+    assert "마감" in body and "지연" in body
+
+
+@needs_node
+def test_section_shows_up_on_domestic_alone_when_every_remote_source_dies(tmp_path):
+    """해외 원천이 다 죽어도 코스피는 보여야 한다 — 그룹이 하나라도 있으면 뜬다."""
+    res = _run(tmp_path, _payload(groups=[]), mkt=_mkt())
+    assert res["display"] == ""
+    assert res["body"].count('class="mchip"') == 4
+    assert "미국 금리" not in res["body"]
+
+
+@needs_node
+def test_section_still_hides_when_absolutely_nothing_is_available(tmp_path):
+    """전부 비면 종전대로 감춘다 — 빈 껍데기가 '데이터 없음'처럼 자리 차지 금지."""
+    res = _run(tmp_path, _payload(groups=[]))
+    assert res["display"] == "none" and res["body"] == ""
+
+
+@needs_node
+def test_worldidx_poll_does_not_erase_the_domestic_groups(tmp_path):
+    """두 로더가 주기가 달라도 한 렌더 함수를 쓴다.
+
+    합치지 않으면 worldidx 폴링(느림)이 국내 그룹(빠름)을 덮어써서 지운다."""
+    res = _run(tmp_path, _payload(), mkt=_mkt())
+    assert "코스피" in res["body"] and "미국 금리" in res["body"]

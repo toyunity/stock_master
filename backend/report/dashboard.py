@@ -418,6 +418,9 @@ async function loadMarket(){
     let d={}, f={};
     try{ if(rm&&rm.ok) d=await rm.json(); }catch(e){}
     try{ if(rf&&rf.ok) f=await rf.json(); }catch(e){}
+    // 섹션이 읽어 쓴다 — 상단 스트립과 **같은 순간의 같은 값**이라 두 곳 숫자가
+    // 어긋나지 않는다. 국내 그룹에 새 API 호출이 없는 것도 이 때문이다.
+    MKT=d||{}; FUT=f||{};
     function ix(o,label){
       if(!o||o.price==null)return '';
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
@@ -445,6 +448,7 @@ async function loadMarket(){
     const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
                  fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
     if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
+    renderIdx();
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
@@ -454,6 +458,41 @@ loadMarket(); setInterval(loadMarket,30000);
 // 이 숫자들까지 지금 값으로 읽힌다(설계 문서가 basis를 항목마다 실은 이유).
 // 단위도 서버가 준 unit 문자열을 그대로 쓴다. 프런트가 '$'를 지어내는 순간, 설계
 // 조사에서 걸러낸 프록시 사고(GLD 402를 '금 402'로 읽는)가 화면에서 재발한다.
+// ── '지수' 섹션 — 국내 어댑터. 서버는 이 두 그룹을 모른다(worldidx는 해외 전용). ──
+let MKT={}, FUT={}, WIDX=null;      // 각 로더의 마지막 응답
+// ⚠️ 설계 문서 C절은 판정 근거로 `pulseState()`를 적었으나 **여기서 벗어난다**:
+// pulseState는 NXT 프리/애프터도 '장중'으로 치는데 그건 개별 종목 얘기지 지수가 아니다.
+// 그대로 쓰면 20시에 코스피 칩이 '실시간'이라 우긴다. 코스피·코스닥 **지수**는
+// 09:00~15:30(KRX 정규장)에만 움직이므로 그 창을 명시적으로 쓴다.
+// (부수 효과: 서버 렌더 시 치환되는 pulse 확장 조각(장후 NXT 구간)에 이 판정이
+//  매이지 않는다. 그 placeholder 토큰을 여기 그대로 적으면 주석까지 치환돼 JS가
+//  깨진다 — replace는 주석을 가리지 않는다.)
+function krIndexLive(){
+  const n=new Date(), d=n.getDay(), hm=n.getHours()*60+n.getMinutes();
+  return d>=1&&d<=5&&hm>=540&&hm<930;
+}
+// 국내 칩은 신선도를 서버가 안 주므로 어댑터가 직접 정해 `fresh`로 싣는다(gfresh가
+// 그걸 우선한다). 값 모양은 worldidx.Item과 같게 맞춘다 — gchip 하나로 다 그린다.
+function gadapt(label, o, fresh){
+  if(!o||o.price==null) return null;
+  const nm=o.label||label||'';
+  return {key:nm, label:nm, value:o.price, unit:'idx',
+          rate:(o.rate==null?null:o.rate),
+          sign:(o.rate>0?'up':(o.rate<0?'down':'flat')),
+          basis:null, src:'kr', rate_unit:'%', basis_kind:'live', fresh:fresh};
+}
+function gdomestic(){
+  const gs=[], live=krIndexLive()?'실시간':'마감';
+  const idx=[gadapt('코스피',MKT.kospi,live),
+             gadapt('코스닥',MKT.kosdaq,live)].filter(Boolean);
+  if(idx.length) gs.push({label:'국내 지수', items:idx});
+  // 선물은 서버가 closed·stale을 준다 — 프런트가 세션을 다시 판정하지 않는다.
+  const fx=function(o){ return gadapt(null,o,
+    o&&o.closed?'마감':(o&&o.stale?'지연':'실시간')); };
+  const fut=[fx(FUT.k200),fx(FUT.nq)].filter(Boolean);
+  if(fut.length) gs.push({label:'지수 선물', items:fut});
+  return gs;
+}
 const GKEY=['ust10y','wti','gold'];        // 접힌 줄에 남길 핵심 3개(설계 확정)
 const GALIAS={ust10y:'미국채 10Y'};        // 접힌 줄엔 소제목이 없다 — '10년'만으론 뭔지 모른다
 function gnum(v){ return v==null?'–':Number(v).toLocaleString('ko-KR',
@@ -516,24 +555,32 @@ async function loadWorldidx(){
     const r=await fetch('/api/worldidx');
     if(r&&r.ok) d=await r.json();
   }catch(e){}
+  WIDX=d;
+  renderIdx();
+}
+// 두 로더(loadMarket 30초 / loadWorldidx)가 **한 렌더 함수**를 쓴다. 합치지 않으면
+// 느린 쪽 폴링이 빠른 쪽 그룹을 덮어써서 지운다.
+function renderIdx(){
   const sec=document.getElementById('gsec'); if(!sec) return;
   // 한 원천이 죽으면 그 그룹만 빠지고 나머지는 뜬다(칩 스트립의 기존 원칙).
-  // 전부 실패면 섹션을 통째로 감춘다 — 빈 껍데기가 '데이터 없음'처럼 자리 차지 금지.
-  const gs=((d&&d.groups)||[]).filter(function(g){return g&&(g.items||[]).length;});
+  const remote=((WIDX&&WIDX.groups)||[]).filter(function(g){
+    return g&&(g.items||[]).length;});
+  const gs=gdomestic().concat(remote);
+  // 전부 비면 섹션을 통째로 감춘다 — 빈 껍데기가 '데이터 없음'처럼 자리 차지 금지.
+  // 국내 그룹만 있어도 뜬다: 해외 원천이 다 죽어도 코스피는 보여야 한다.
   if(!gs.length){ sec.style.display='none'; return; }
   sec.style.display='';
   const body=document.getElementById('gsec-body');
   if(body) body.innerHTML=gs.map(ggroup).join('');
   const dig=document.getElementById('gsec-dig');
-  if(dig) dig.textContent=gdigest(d);
+  if(dig) dig.textContent=gdigest(WIDX);
   const foot=document.getElementById('gsec-foot');
   if(foot){
-    // 금리가 CNBC로 승격됐는지에 따라 앞부분이 바뀐다 — 원천을 숨기지 않는다.
-    const live=gs.some(function(g){return (g.items||[]).some(function(x){
+    const live=remote.some(function(g){return (g.items||[]).some(function(x){
       return x&&x.src==='cnbc';});});
     foot.textContent=(live?'미국채 Tradeweb':'미 재무부(일 1회 확정)')
       +' · 야후 선물 · KIS 해외지수 — 약 10~15분 지연'
-      +(d&&d.asof?' · '+String(d.asof).slice(11,16)+' 조회':'');
+      +(WIDX&&WIDX.asof?' · '+String(WIDX.asof).slice(11,16)+' 조회':'');
   }
 }
 // 5분 — 서버 캐시(재무부 1시간·FDR 10분·KIS 지수 60초)가 대부분 흡수한다.
