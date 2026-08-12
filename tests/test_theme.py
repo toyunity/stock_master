@@ -53,3 +53,8 @@ def test_live_page_does_not_redefine_shared_rules():
     shared = _selectors(BASE_CSS)
     dupes = sorted(s for s in _selectors(local) if s in shared)
     assert dupes == [], "theme.py와 중복된 셀렉터: %s" % dupes
+
+
+def test_rail_component_exists():
+    for sel in (".rail{", ".rail>div{", ".rail .k{", ".rail .v{"):
+        assert sel in BASE_CSS, sel

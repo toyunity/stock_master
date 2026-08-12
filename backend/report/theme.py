@@ -168,6 +168,17 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
   font-variant-numeric:tabular-nums;letter-spacing:-.01em;word-break:keep-all}
 .grid3 .val.up{color:var(--up)} .grid3 .val.down{color:var(--down)} .grid3 .val.flat{color:var(--flat)}
 
+/* 근거 레일 — 히어로 숫자를 만든 재료를 라벨/값 두 열로 편다.
+   라벨은 sans(한글), 값은 모노 계기. 행 구분은 헤어라인만(카드 크롬 없음). */
+.rail{margin:14px 0 0}
+.rail>div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:9px 0;border-top:1px solid var(--border-2);min-height:38px}
+.rail>div:first-child{border-top:0}
+.rail .k{font-size:13px;color:var(--text-2);font-weight:500;flex:0 1 auto;word-break:keep-all}
+.rail .v{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em;text-align:right;white-space:nowrap}
+.rail .v.up{color:var(--up)} .rail .v.down{color:var(--down)} .rail .v.flat{color:var(--text-2)}
+
 /* 시그널 콜아웃(판정) */
 .sig{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-top:10px;
   padding:9px 12px;border-radius:var(--r-sm);background:var(--surface-2);color:var(--text-2);
