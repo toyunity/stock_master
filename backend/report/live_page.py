@@ -61,9 +61,6 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 /* 지연 데이터 초보 카드 */
 .dp .dp-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .dp .dp-h h2{font-size:16px}
-.pill{font-family:var(--font-mono,ui-monospace,Menlo,monospace);font-size:11px;font-weight:700;
-  white-space:nowrap;display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:3px 9px}
-.pill.fixed{background:var(--warn-bg);color:var(--warn)}
 .dp-key{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
 .dp-num{font-family:var(--font-num);font-size:26px;font-weight:700;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums}

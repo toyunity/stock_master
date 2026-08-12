@@ -12,3 +12,10 @@ def test_hero_classes_live_in_shared_css():
     for cls in (".hero{", ".hero .htop{", ".hero .hname{", ".hero .price{", ".hero .chg{"):
         assert cls in BASE_CSS, cls
     assert ".hero{" in _BASE_CSS      # dashboard 재수출 경로도 같은 내용이어야 한다
+
+
+def test_pill_is_shared_and_has_direction_variants():
+    assert ".pill{" in BASE_CSS
+    assert ".pill.up{" in BASE_CSS and ".pill.down{" in BASE_CSS
+    # 새 색을 만들지 않았는지 — 기존 틴트 토큰만 쓴다
+    assert "--up-bg" in BASE_CSS and "--down-bg" in BASE_CSS

@@ -142,6 +142,16 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
 .hero .sig{margin-top:8px}
 
+/* 상태·등락 필 — 모노 유틸. 2026-08-12: live_page 로컬에서 승격(3화면이 쓴다).
+   등락 변형은 기존 틴트 토큰 재사용 — 새 색을 만들지 않는다. */
+.pill{font-family:var(--font-mono);font-size:11px;font-weight:700;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:5px;
+  border-radius:var(--r-pill);padding:3px 9px}
+.pill.fixed{background:var(--warn-bg);color:var(--warn)}
+.pill.up{background:var(--up-bg);color:var(--up)}
+.pill.down{background:var(--down-bg);color:var(--down)}
+.pill.flat{background:var(--surface-2);color:var(--text-2)}
+
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
 .note:empty{display:none}
