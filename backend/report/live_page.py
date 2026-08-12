@@ -237,9 +237,12 @@ __ICONS__
   <span class="pill flat" id="chg"></span>
   <div class="note" id="walert"></div>
   <div id="today-line"></div>
+  <!-- 근거 레일 — 히어로 숫자를 만든 재료. 2026-08-13: 시가·고가·저가는 넣지 않는다.
+       SSE 스냅샷(_market)에 price/sign/change/rate/vol/value/strength/time 8필드뿐이라
+       그 값이 아예 없다. 호가는 /api/asking 별도 5초 폴링이라 갱신 주기가 달라 #ob 패널에 둔다.
+       대시만 남는 행은 화면만 길어지고 아무것도 말하지 않는다. -->
   <div class="rail" id="hrail">
     <div><span class="k">전일 종가</span><span class="v" id="hr-prev">–</span></div>
-    <div><span class="k">시가 · 고 · 저</span><span class="v" id="hr-ohl">–</span></div>
     <div><span class="k">거래대금</span><span class="v" id="hr-amt">–</span></div>
     <div><span class="k">체결강도</span><span class="v" id="hr-str">–</span></div>
   </div>
@@ -1053,10 +1056,6 @@ function render(S){
     document.getElementById('hr-prev').textContent=won(_pc);
     document.getElementById('hr-amt').textContent=eok(M.value).replace('+','');
     document.getElementById('hr-str').textContent=M.strength==null?'–':M.strength.toFixed(1);
-    // hr-ohl(시가·고·저)은 미채움 — 스냅샷에 오늘 시가/고가/저가 필드가 없다.
-    // parse_ccnl(backend/flow/kis.py)이 KIS 체결 레코드에서 그 필드들을 추출하지
-    // 않아서다. 인덱스를 추정해 채우면 실 소켓 없이는 맞는지 검증할 길이 없고,
-    // 틀리면 화면에 잘못된 숫자가 자신 있게 뜬다 — 그래서 대시로 둔다(2026-08-13).
     // 히어로 하단 상대시간(#hago) — M.time은 체결시각 "HH:MM:SS"(KST), 날짜 없음.
     // toTs()는 이 벽시계를 UTC인 척 만들어(차트 라벨용) 9h(32400000ms) 앞선 값을 주므로,
     // ago()가 Date.now()(진짜 epoch)와 비교할 수 있게 9h를 빼서 진짜 epoch로 되돌린다(2026-08-12).
