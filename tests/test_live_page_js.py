@@ -55,13 +55,15 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl',
+                  'hr-prev','hr-ohl','hr-amt','hr-str'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago',
+                  'hr-prev','hr-ohl','hr-amt','hr-str'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -288,6 +290,47 @@ def test_render_js_fills_hago(tmp_path):
     # els['hago']가 아예 안 만들어지면(코드가 안 돌면) 하니스가 String(undefined)="undefined"를
     # 찍어 truthy로 위장한다 — 빈 문자열과 함께 명시적으로 걸러야 진짜 가드가 된다.
     assert texts["hago"] not in ("", "undefined")
+
+
+@needs_node
+def test_render_js_fills_hero_rail(tmp_path):
+    """히어로 근거 레일 — 큰 숫자를 만든 재료를 바로 밑에 편다.
+    빈 문자열로 남으면 '값이 없는 라벨 4줄'이 되어 안 넣느니만 못하다.
+
+    LEN(filled) 대신 TXT(texts, 실제 textContent)로 검증한다 — 마크업에 id가 아직
+    없어도 하니스가 (els[id]||{}).textContent를 String(undefined)="undefined"(길이 9)로
+    찍어 LEN 검사 "not in (None,'0')"을 무의미하게 통과시킨다(2026-08-13 실측,
+    구현 전 상태로 이 테스트를 그대로 돌려서 확인함). 값 자체를 대조해야
+    "안 채워졌는데 초록"을 막는다. 값은 _full_snapshot()의 마지막 tick
+    (13:00:00, price=2,254,000·change=68,000·sign=up·value=9e12·strength=88.5)에서
+    역산한 정확한 문자열이다.
+
+    hr-ohl(시가·고·저)은 제외했다: 스냅샷(FlowState.market)에 오늘 시가/고가/저가가
+    없다 — parse_ccnl(backend/flow/kis.py)이 KIS 체결 레코드에서 그 3필드를 애초에
+    추출하지 않는다. 인덱스를 추정해 채우면 실 웹소켓 없이는 맞는지 확인할 길이
+    없고, 틀리면 라이브 화면에 잘못된 숫자가 자신 있게 뜬다 — 그래서 여기서는
+    비워 두고 별도 테스트(test_hero_rail_ohl_markup_stays_at_default_dash)로 그
+    상태를 고정한다(2026-08-13, task-9 리뷰)."""
+    _, texts = _run_harness(tmp_path, _full_snapshot())
+    # 전일 종가 = 현재가 - 부호 있는 전일대비 (2,254,000 - 68,000)
+    assert texts["hr-prev"] == "2,186,000원"
+    # 거래대금 = M.value를 eok()로(부호 접두 제거, pmeta 줄과 동일 재사용)
+    assert texts["hr-amt"] == "90,000억"
+    # 체결강도 = M.strength.toFixed(1)(pmeta 줄과 동일 재사용)
+    assert texts["hr-str"] == "88.5"
+
+
+def test_hero_rail_ohl_markup_stays_at_default_dash():
+    """hr-ohl은 의도적으로 미채움 — test_render_js_fills_hero_rail의 docstring 참고.
+    render()가 hr-ohl을 건드리지 않으므로(getElementById 호출 자체가 없음) node
+    하니스로는 검증 불가 — 하니스는 JS가 실제로 손댄 id만 기록하고, 안 건드린
+    id는 원래 마크업 값과 무관하게 'undefined'로 보인다. 그래서 여기서는
+    render_live_page()가 만든 원본 HTML 문자열에서 직접 기본값(대시)을 확인한다:
+    데이터가 생기기 전까지는 마크업 기본값이 그대로 보여야 한다(빈 라벨 4줄보다는
+    낫지만, 없는 숫자를 지어내는 것보다는 대시가 낫다)."""
+    from backend.report.live_page import render_live_page
+    page = render_live_page("000660", "SK하이닉스", "live")
+    assert '<span class="v" id="hr-ohl">–</span>' in page
 
 
 @needs_node

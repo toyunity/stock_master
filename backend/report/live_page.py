@@ -237,6 +237,12 @@ __ICONS__
   <span class="pill flat" id="chg"></span>
   <div class="note" id="walert"></div>
   <div id="today-line"></div>
+  <div class="rail" id="hrail">
+    <div><span class="k">전일 종가</span><span class="v" id="hr-prev">–</span></div>
+    <div><span class="k">시가 · 고 · 저</span><span class="v" id="hr-ohl">–</span></div>
+    <div><span class="k">거래대금</span><span class="v" id="hr-amt">–</span></div>
+    <div><span class="k">체결강도</span><span class="v" id="hr-str">–</span></div>
+  </div>
   <div class="hstate">
     <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
     <span id="conn" class="badge b-off">연결 중…</span>
@@ -1039,6 +1045,18 @@ function render(S){
     cg.className='pill '+M.sign;
     document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 거래대금 <span class="n">'+eok(M.value).replace('+','')
       +'</span> · 체결강도 <span class="n">'+(M.strength==null?'–':M.strength.toFixed(1))+'</span> · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    // 히어로 근거 레일(#hrail) — pmeta 줄과 같은 포맷터 재사용, 새로 안 만든다.
+    // 전일 종가는 스냅샷에 별도 필드가 없어 현재가-부호있는전일대비로 역산한다.
+    // sign(up/down)으로 부호를 만들고 change는 abs()로 씌워, 와이어가 change를
+    // 이미 부호 있는 값으로 주든(데모) 크기만 주든(실 KIS, 부호는 별도 필드) 둘 다 맞는다.
+    var _pc=M.change!=null?M.price-(M.sign==='up'?1:(M.sign==='down'?-1:0))*Math.abs(M.change):null;
+    document.getElementById('hr-prev').textContent=won(_pc);
+    document.getElementById('hr-amt').textContent=eok(M.value).replace('+','');
+    document.getElementById('hr-str').textContent=M.strength==null?'–':M.strength.toFixed(1);
+    // hr-ohl(시가·고·저)은 미채움 — 스냅샷에 오늘 시가/고가/저가 필드가 없다.
+    // parse_ccnl(backend/flow/kis.py)이 KIS 체결 레코드에서 그 필드들을 추출하지
+    // 않아서다. 인덱스를 추정해 채우면 실 소켓 없이는 맞는지 검증할 길이 없고,
+    // 틀리면 화면에 잘못된 숫자가 자신 있게 뜬다 — 그래서 대시로 둔다(2026-08-13).
     // 히어로 하단 상대시간(#hago) — M.time은 체결시각 "HH:MM:SS"(KST), 날짜 없음.
     // toTs()는 이 벽시계를 UTC인 척 만들어(차트 라벨용) 9h(32400000ms) 앞선 값을 주므로,
     // ago()가 Date.now()(진짜 epoch)와 비교할 수 있게 9h를 빼서 진짜 epoch로 되돌린다(2026-08-12).
