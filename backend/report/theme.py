@@ -316,7 +316,11 @@ function ago(t, now){
   }
   var f = -d;
   if (f < 86400000) return Math.max(1, Math.round(f / 3600000)) + '시간 뒤';
-  var days = Math.round(f / 86400000);
+  // 달력 날짜로 센다. 경과 24시간으로 나누면 지금이 몇 시냐에 따라
+  // 내일이 '2일 뒤'가 되고 모레가 '내일'이 된다(2026-08-12 리뷰에서 node 실행으로 확인).
+  var a = new Date(t), b = new Date(n);
+  var days = Math.round((new Date(a.getFullYear(), a.getMonth(), a.getDate())
+                       - new Date(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
   return days <= 1 ? '내일' : days + '일 뒤';
 }
 """
