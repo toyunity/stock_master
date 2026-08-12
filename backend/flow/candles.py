@@ -27,6 +27,9 @@ _MIN_PATH = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
 _TTL = 60.0
 _GAP = 0.2          # 연속 호출 간헐 500 완화(실측)
 _MAX_CALLS = 26     # UN(08:00~20:00) 최대 720분/30봉 = 24콜 + 여유
+_FETCH_TIMEOUT = 30  # 일봉·주월봉 blocking 조회 상한 — FDR엔 timeout 인자가 없어
+                     # 야후가 무응답이면 기본 스레드풀(14슬롯)이 마른다. 콜드 조회가
+                     # 정상적으로도 수 초 걸려 넉넉히 잡는다(스레드 자체는 회수 불가).
 _min_cache: dict = {}   # code -> (ts, bars)
 _krx_only: dict = {}    # code -> 'J' — 통합 조회가 빈 값이라 KRX 전용으로 확정된 종목
 _daily_cache: dict = {}  # code -> (ts, candles)
@@ -138,6 +141,8 @@ def _long_daily_bars(code: str) -> list:
     bars = [{"t": c["time"], "open": c["open"], "high": c["high"],
              "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
             for c in to_candles(df, 10 ** 6)]
+    if len(_long_cache) > 20:   # ponytail: 종목당 1.9MB(15년 일봉) — TTL은 신선도만
+        _long_cache.clear()     # 정할 뿐 지우지 않는다. 축출 정책을 둘 값어치는 없다
     _long_cache[code] = (now, bars)
     return bars
 
@@ -266,12 +271,16 @@ async def get_candles(code: str, tf: str) -> dict:
     # date: 분봉의 KST 기준일 — 프런트 시간축이 클라이언트 로컬 날짜/시계 없이
     # 서버 기준으로 epoch을 만들도록 항상 내려준다(P0-3).
     kdate = kst.today().isoformat()
+    # 상한은 여기(호출부)에 건다 — _daily_candles/_wm_candles 안에서 터뜨리면
+    # 그 안의 except가 빈 candles를 1시간 캐시해 한 번 느린 조회가 화면을 한 시간 비운다.
     if tf == "1d":
         return {"tf": tf, "date": kdate,
-                "candles": await asyncio.to_thread(_daily_candles, code)}
+                "candles": await asyncio.wait_for(
+                    asyncio.to_thread(_daily_candles, code), _FETCH_TIMEOUT)}
     if tf in ("1w", "1mo"):
         return {"tf": tf, "date": kdate,
-                "candles": await asyncio.to_thread(_wm_candles, code, tf)}
+                "candles": await asyncio.wait_for(
+                    asyncio.to_thread(_wm_candles, code, tf), _FETCH_TIMEOUT)}
     live = (settings.kis_app_key and settings.kis_app_secret
             and settings.flow_mode != "demo")
     if live:

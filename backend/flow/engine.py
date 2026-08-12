@@ -151,9 +151,15 @@ class FlowEngine:
             self.state.set_status(note=f"KIS 인증 실패({e}) — 데모 데이터로 표시 중")
             await DemoSource(self.state).run(stop)
             return
-        await asyncio.gather(self._poll_rest(client, stop),
-                             self._ws_link(client, stop),
-                             self._ws_fallback(client, stop))
+        try:
+            await asyncio.gather(self._poll_rest(client, stop),
+                                 self._ws_link(client, stop),
+                                 self._ws_fallback(client, stop))
+        finally:
+            # gather는 형제를 죽이지 않는다 — 한 갈래가 예외로 죽으면 나머지 둘도 세운다.
+            # 안 세우면 다음 _ensure_running이 self._stop을 새 Event로 갈아치워, 이전
+            # Event만 보는 고아 폴러가 재기동 전까지 KIS를 계속 두드린다(재접속마다 배가).
+            stop.set()
 
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)

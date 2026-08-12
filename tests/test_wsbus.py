@@ -71,6 +71,25 @@ def test_unregister_only_unsubscribes_when_last_handler_leaves():
     assert '"tr_type": "2"' in ws.sent[1]          # 해지 프레임(1:등록 2:해지)
 
 
+def test_duplicate_register_of_same_handler_still_unsubscribes():
+    """같은 핸들러가 두 번 등록돼도 해지 프레임은 나가야 한다.
+
+    도달 경로(야간선물): 소켓이 흔들리는 창에서 register가 append 뒤 예외를 내면
+    호출부(marketdata._ensure_night_ws)는 '등록한 적 없다'고 믿고 30초 뒤 또 등록한다.
+    unregister는 한 겹만 벗기므로 `if handlers: return`에 걸려 해지가 영영 안 나가고,
+    그 등록은 재접속마다 _resubscribe_all이 되살린다 — 재기동 전까지 KIS 세션에 남는다.
+    """
+    s, ws = _connected()
+
+    def h(rec):
+        pass
+
+    asyncio.run(s.register("H0MFCNT0", "101W09", h))
+    asyncio.run(s.register("H0MFCNT0", "101W09", h))    # 재시도로 인한 중복
+    asyncio.run(s.unregister("H0MFCNT0", "101W09", h))
+    assert len(ws.sent) == 2 and '"tr_type": "2"' in ws.sent[1]
+
+
 def test_register_before_connect_is_deferred_to_resubscribe():
     """연결 전 등록은 프레임을 못 보낸다 — 접속 시 재구독이 책임진다."""
     s = wsbus.WsSession(_FakeClient())             # _ws 없음(미연결)
