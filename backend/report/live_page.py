@@ -301,7 +301,7 @@ __ICONS__
   <div class="mylines" id="mylines"></div>
 </div>
 
-<details class="sec" open>
+<details class="sec" id="sec-flow" open>
   <summary><svg class="hic secic"><use href="#i-flows"/></svg> 수급 <span class="seccap">누가 사고파나</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="glance" id="glance"></div>
@@ -345,7 +345,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" open>
+<details class="sec" id="sec-risk" open>
   <summary><svg class="hic secic"><use href="#i-short"/></svg> 위험 지표 <span class="seccap">공매도·빚 · 며칠 전 확정</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="fixed-note"><span class="tag-fixed">🕐 확정</span> 하루~이틀 전 · 실시간 아님 · 떨어질 때 연료
@@ -439,7 +439,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" open>
+<details class="sec" id="sec-xvol" open>
   <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·거래소·체결 <span class="chev">▾</span></summary>
   <div class="sec-body">
 __ADR_PANEL__
@@ -473,7 +473,7 @@ __ADR_PANEL__
   </div>
 </details>
 
-<details class="sec">
+<details class="sec" id="sec-tape">
   <summary><svg class="hic secic"><use href="#i-activity"/></svg> 실시간 체결 <span class="seccap">최근 30건 · 계속 갱신</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="panel">
@@ -1467,8 +1467,18 @@ try{
 connect();
 // 드릴다운 섹션이 열릴 때 그 안의 차트(프로그램)를 재-핏 — LWC는 접힌(width:0) 컨테이너에서
 // 생성되면 크기가 0이라, 펼칠 때 fitContent로 강제 리사이즈(하니스엔 addEventListener 가드).
+// 2026-08-12: 여기에 접힘 상태 저장·복원을 얹었다 — 같은 핸들러가 저장도 재핏도 책임진다.
+// 2026-08-13 실측: chart·pchart는 616·640행 top-level const로 먼저 생성되고 이 복원
+// 블록은 1470행(connect() 뒤)에서 돈다 — 같은 <script>의 동기 실행이라 #chart는 항상
+// 섹션이 열린 뒤 생성되고 그 다음에 닫힌다. '접힌 채로 생성 → 폭 0'은 #chart엔 재현되지
+// 않는다. fitContent는 그대로 둔다(접힘→펼침 왕복에서 LWC가 0폭으로 굳던 원래 이유).
 try{document.querySelectorAll('details.sec').forEach(function(d){
-  d.addEventListener('toggle',function(){ if(!d.open)return;
+  if(!d.id)return;                       // id 없는 섹션은 기억하지 않는다(순서 밀림 방지)
+  var key='livesec:'+d.id;
+  try{var v=localStorage.getItem(key); if(v==='0')d.open=false; else if(v==='1')d.open=true;}catch(e){}
+  d.addEventListener('toggle',function(){
+    try{localStorage.setItem(key, d.open?'1':'0');}catch(e){}
+    if(!d.open)return;
     try{chart.timeScale().fitContent();}catch(e){}
     try{pchart.timeScale().fitContent();syncVol();}catch(e){} });
 });}catch(e){}

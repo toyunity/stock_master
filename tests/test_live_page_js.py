@@ -957,3 +957,104 @@ def test_adr_absent_page_still_renders_the_rest_of_the_section():
     html = render_live_page("005930", "삼성전자", "live")
     assert "거래소별 거래량" in html and 'id="xv-fresh"' in html
     assert "체결 규모 분포" in html
+
+
+@needs_node
+def test_render_js_persists_section_open_state(tmp_path):
+    """접힘 상태를 기억한다. localStorage가 없는 환경(사파리 프라이빗)에서도
+    죽지 않아야 한다 — try/catch 가드가 핵심이다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert "livesec:" in html            # 저장 키 접두사
+    assert "localStorage" in html
+    # 프라이빗 모드 가드 — 저장 호출이 try 안에 있어야 한다
+    seg = html.split("livesec:", 1)[0][-400:]
+    assert "try{" in seg
+
+
+# ── 접힘 상태 저장·복원: 위 문자열 검사는 forEach 루프 본문을 한 번도 안 돌려도 통과한다
+# (_HARNESS·_SAVE_HARNESS 둘 다 querySelectorAll을 빈 배열로 스텁하는 게 이 리포 관례라 —
+# 2026-08-13 자문에서 지적됨). details.sec을 흉내내는 페이크 노드로 실제 실행까지 검증한다.
+_TOGGLE_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const throwMode = process.argv[3] === 'throw';
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
+
+function D(id, open){
+  var h = null;
+  return { id: id, open: open,
+    addEventListener: function(t, f){ if (t === 'toggle') h = f; },
+    fire: function(){ if (h) h(); } };
+}
+const secFlow = D('sec-flow', true);   // markup은 open — 저장값 '0'이 이걸 뒤집어야 한다
+const secTape = D('sec-tape', false);  // 저장값 없음 — 원래 상태 그대로여야 한다
+const noId = D('', true);              // id 없음 — 절대 안 건드려야 한다(순서 밀림 방지 가드)
+const secs = [secFlow, secTape, noId];
+
+const store = { 'livesec:sec-flow': '0' };
+global.localStorage = {
+  getItem: function(k){ if (throwMode) throw new Error('private'); return (k in store) ? store[k] : null; },
+  setItem: function(k, v){ if (throwMode) throw new Error('private'); store[k] = String(v); },
+};
+let fitCount = 0;
+global.document = {
+  getElementById: () => ({textContent:'', innerHTML:'', className:'', style:{}}),
+  querySelectorAll: sel => sel === 'details.sec' ? secs : [],
+  addEventListener: () => {},
+};
+global.window = { addEventListener: () => {} };
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){return {};}}),
+  timeScale: () => ({fitContent(){ fitCount++; }}), applyOptions(){}, subscribeClick(){},
+})};
+global.EventSource = function(){ return {}; };
+global.fetch = async () => ({ok:false, json:async()=>({})});
+global.setInterval = () => {}; global.setTimeout = () => 0;
+
+eval(code);
+console.log('RESTORE_OK');    // throwMode에서도 여기까지 죽지 않고 도달해야 한다
+console.log('FLOW_OPEN=' + secFlow.open);
+console.log('TAPE_OPEN=' + secTape.open);
+console.log('NOID_OPEN=' + noId.open);
+
+secFlow.open = true; secFlow.fire();     // 사용자가 수급 섹션을 펼침
+console.log('STORE_AFTER_OPEN=' + store['livesec:sec-flow']);
+console.log('FIT_AFTER_OPEN=' + fitCount);
+"""
+
+
+def _toggle_harness(tmp_path, throw=False):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "toggle.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_TOGGLE_HARNESS, encoding="utf-8")
+    args = ["node", str(js_p), str(html_p)] + (["throw"] if throw else [])
+    r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return r.stdout, out
+
+
+@needs_node
+def test_toggle_listener_restores_and_persists_open_state(tmp_path):
+    out_raw, out = _toggle_harness(tmp_path)
+    assert "RESTORE_OK" in out_raw
+    assert out["FLOW_OPEN"] == "false"      # 저장값 '0'이 markup의 open을 뒤집었다
+    assert out["TAPE_OPEN"] == "false"      # 저장값 없음 — 원래 상태 유지
+    assert out["NOID_OPEN"] == "true"       # id 없는 섹션은 절대 건드리지 않는다
+    assert out["STORE_AFTER_OPEN"] == "1"   # 펼치면 저장됨
+    assert int(out["FIT_AFTER_OPEN"]) >= 1  # 펼칠 때 재핏(기존 동작 보존) — 저장 로직이 얹혀도 안 죽음
+
+
+@needs_node
+def test_toggle_listener_survives_private_mode_localstorage(tmp_path):
+    """사파리 프라이빗 모드 — localStorage.getItem/setItem이 둘 다 던져도 렌더가 안 죽어야 한다."""
+    out_raw, _out = _toggle_harness(tmp_path, throw=True)
+    assert "RESTORE_OK" in out_raw
