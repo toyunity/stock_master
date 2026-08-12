@@ -58,3 +58,7 @@ def test_live_page_does_not_redefine_shared_rules():
 def test_rail_component_exists():
     for sel in (".rail{", ".rail>div{", ".rail .k{", ".rail .v{"):
         assert sel in BASE_CSS, sel
+
+
+def test_direction_bar_variants_exist():
+    assert ".card--up{" in BASE_CSS and ".card--down{" in BASE_CSS

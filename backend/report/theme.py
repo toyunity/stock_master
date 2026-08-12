@@ -104,6 +104,10 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 /* 카드/패널 — 계기 베이(플랫·크리스프 1px, 반경은 24px로 넉넉하게 — 2026-08-12 6차) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:18px;margin:16px 0;box-shadow:var(--shadow)}
+/* 카드 윗변 방향색 바 — 색이 곧 정보. box-shadow inset을 쓰면 border-radius가
+   깎아주므로 별도 의사요소가 필요 없다(가장 짧은 구현). */
+.card--up{box-shadow:inset 0 3px 0 0 var(--up), var(--shadow)}
+.card--down{box-shadow:inset 0 3px 0 0 var(--down), var(--shadow)}
 .panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
 /* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
