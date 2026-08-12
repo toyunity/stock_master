@@ -152,7 +152,11 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .hero .price{font-family:inherit;font-size:48px;margin:10px 0 0;font-weight:800;
   letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.02}
 .hero .plabel{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
-.hero .chg{margin:10px 0 0}
+/* 미국 상세(us_page)가 여전히 class="chg"를 쓴다 — 2026-08-12: 이 규칙을 지웠다가
+   그 화면 등락 표시가 모노·볼드·tabular를 통째로 잃었다. /live의 히어로 필은
+   class="pill flat"이라 이 셀렉터에 안 걸리므로 양쪽이 공존한다. */
+.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
+  font-variant-numeric:tabular-nums}
 .hero .hstate{display:flex;align-items:center;gap:6px;margin-top:12px;
   padding-top:11px;border-top:1px solid var(--border-2)}
 .hero .hstate .ago{margin-left:auto}

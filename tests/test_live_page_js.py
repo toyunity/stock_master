@@ -61,7 +61,7 @@ for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh'
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -276,6 +276,18 @@ def _run_harness(tmp_path, snap, snap2=None):
     r = subprocess.run(args, capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
     return _parse_harness(r.stdout)
+
+
+@needs_node
+def test_render_js_fills_hago(tmp_path):
+    """#hago(히어로 상대시간)가 실제로 채워지는지 — render() 안의 갱신 코드가
+    try/catch로 감싸여 있어, 인자를 잘못 넘기거나 toTs 오프셋 산술이 틀려도
+    조용히 아무 것도 안 하고 다른 모든 테스트가 초록으로 남는다(2026-08-12 리뷰 지적).
+    정확한 문자열은 스냅샷/실행 시각에 따라 달라지므로 '비어있지 않다'만 확인한다."""
+    _, texts = _run_harness(tmp_path, _full_snapshot())
+    # els['hago']가 아예 안 만들어지면(코드가 안 돌면) 하니스가 String(undefined)="undefined"를
+    # 찍어 truthy로 위장한다 — 빈 문자열과 함께 명시적으로 걸러야 진짜 가드가 된다.
+    assert texts["hago"] not in ("", "undefined")
 
 
 @needs_node
