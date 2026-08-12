@@ -17,6 +17,11 @@ from __future__ import annotations
 버린 후보(재조사 방지): FRED는 최신 관측이 나흘~일주일 지연, ETF 프록시(GLD·USO)는
 단위가 달라 "금 402"처럼 틀린 숫자로 읽히고, KIS 해외선물(CLU26·GCQ26)은 파라미터가
 아니라 거래소 신청 권한이 없어 막힌다(EGW00551/EGW00553).
+장중 미국금리 후보도 2026-08-12에 전부 실측했다: 야후 ^TNX는 값은 맞지만 미 채권장
+시간에만 움직이고 **2년물 지수가 없다**(^FVX는 5년물). CME 마이크로 수익률선물은
+유동성이 없어 **만료된 월물을 조용히 계속 준다**(2YY=F가 07-15 만료 계약값). CBOT
+국채선물 ZN=F/ZT=F는 살아 움직이지만 가격 호가라 108.45는 금리가 아니다(수익률 변환은
+CTD·전환계수가 필요). MarketWatch는 401, stooq는 404. **CNBC만 유일하게 된다.**
 
 **KIS 해외지수 TR의 함정**: 이 TR은 주식 티커도 받는다. `CL`=93.15는 WTI가 아니라
 콜게이트고 `XAU`는 금광주 지수다 — 값이 0이 아니라고 그 상품이 아니다. 단위 검증 없이
@@ -72,15 +77,19 @@ _COMMODITIES = (("wti", "WTI", "CL=F", "$/bbl"), ("gold", "금", "GC=F", "$/oz")
 _INDICES = (("spx", "S&P500", "SPX"), ("comp", "나스닥 종합", "COMP"),
             ("vix", "VIX", "VIX"))
 
-_ORDER = ("treasury", "commodity", "index")
-_TTL = {"treasury": 3600.0,   # 하루 한 번 갱신되는 값 — 한 시간이면 충분
-        "commodity": 600.0,   # FDR(비공식 경유)은 아껴 쓴다
-        "index": 60.0}        # KIS 지수는 지연 실시간
-# fail_ts: 실패한 원천을 매 폴링(30초)마다 다시 두드리지 않기 위한 쿨다운 시각.
+_ORDER = ("treasury", "commodity", "index")   # 화면 그룹 — treasury_rows는 내부 슬롯이다
+_TTL = {"treasury": 600.0,      # CNBC 사이클 — 10분에 한 번(마스터 지시: 사설 API 배려)
+        "treasury_rows": 3600.0,  # 재무부 원본(폴백 바닥) — 하루 한 번 갱신되는 값
+        "commodity": 600.0,     # FDR(비공식 경유)은 아껴 쓴다
+        "index": 60.0}          # KIS 지수는 지연 실시간
+# fail_ts: 실패한 원천을 매 폴링마다 다시 두드리지 않기 위한 쿨다운 시각.
 # 없으면 재무부가 죽었을 때 폴링마다 두 달치 타임아웃을 물고 락을 잡은 채 서 있어,
 # 멀쩡히 캐시된 나머지 그룹까지 같이 늦어진다.
 _cache = {k: {"ts": 0.0, "data": None, "fail_ts": 0.0} for k in _TTL}
 _FAIL_COOLDOWN = 60.0
+# CNBC는 기본보다 길게 물러선다. 우리를 거절하는 중이라면 1분마다 다시 두드리는 게
+# 최악의 행동이다 — 그동안 화면은 재무부 확정치로 조용히 강등된다.
+_COOLDOWN = {"treasury": 600.0}
 
 _FDR_LOOKBACK_DAYS = 10   # 주말·휴장 + 전부 NaN인 결측 행을 넘길 만큼 넉넉히
 _GAP = 0.25               # KIS 연속 호출 간헐 500 완화(semi.py와 같은 관례)
@@ -187,7 +196,8 @@ def _cached(name: str) -> Optional[dict]:
 
 
 def _cooling(name: str) -> bool:
-    return time.time() - _cache[name]["fail_ts"] < _FAIL_COOLDOWN
+    return (time.time() - _cache[name]["fail_ts"]
+            < _COOLDOWN.get(name, _FAIL_COOLDOWN))
 
 
 def _store(name: str, group: Optional[dict]) -> Optional[dict]:
@@ -255,6 +265,83 @@ def _item(key, label, value, unit, rate, sign, basis, src, rate_unit="%",
             "rate_unit": rate_unit, "basis_kind": basis_kind}
 
 
+# ── CNBC 장중 미국금리(Tradeweb) ──────────────────────────────────────────
+# 2026-08-12 한국 장중 실측: US2Y 4.222 / US10Y 4.69 / US30Y 5.24, 지연 약 30초,
+# 재무부 확정치 대비 0~1bp. 값이 그만큼 가까워서 폴백해도 화면 숫자가 튀지 않는다.
+# **심볼은 반드시 한 건씩** 부른다 — 여러 개 붙이면 에러가 아니라 last=null인 빈 응답이
+# 조용히 온다(실측). 재배포 제약: Tradeweb 라이선스 피드라 야후보다 리스크가 크다 —
+# 공개 전환 시 1순위 제거 대상이다(설계 문서 실측 2).
+
+_CNBC_URL = ("https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/"
+             "symbol?symbols={sym}&requestMethod=itv&noform=1&partnerId=2"
+             "&fund=1&exthrs=1&output=json&events=1")
+# (key, label, CNBC 심볼) — key·label을 _TENORS와 **똑같이** 맞춘다. 폴백 경계에서
+# 칩 자리가 바뀌면 원천이 바뀐 게 사용자에겐 칩이 움직인 것으로 보인다.
+_CNBC_TENORS = (("ust2y", "2년", "US2Y"), ("ust10y", "10년", "US10Y"),
+                ("ust30y", "30년", "US30Y"))
+_YIELD_MIN, _YIELD_MAX = 0.0, 15.0
+
+
+def _pct(v) -> Optional[float]:
+    """'4.69%' → 4.69. %가 없어도 읽는다. 못 읽으면 None(0.0으로 뭉개지 않는다)."""
+    if v is None:
+        return None
+    return _num(str(v).replace("%", "").replace(",", "").strip())
+
+
+def parse_cnbc_yield(js: dict) -> Optional[dict]:
+    """CNBC 단건 시세 → {'value','prev','basis'(date|None)}.
+
+    범위 가드(0 < y < 15%)를 통과하지 못하면 None이다. 사설 API가 조용히 깨지는 것을
+    전제로 짠다 — 실측에서 겪은 실패 모드가 예외가 아니라 `last: null`이었다."""
+    rows = (((js or {}).get("FormattedQuoteResult") or {})
+            .get("FormattedQuote") or [])
+    if not rows:
+        return None
+    o = rows[0]
+    value = _pct(o.get("last"))
+    if value is None or not (_YIELD_MIN < value < _YIELD_MAX):
+        return None
+    try:                       # '2026-08-11T21:03:06.000-0400'
+        basis = dt.date.fromisoformat(str(o.get("last_time") or "")[:10])
+    except ValueError:
+        basis = None
+    return {"value": value, "prev": _pct(o.get("previous_day_closing")),
+            "basis": basis}
+
+
+def _fetch_cnbc(symbol: str) -> dict:
+    """동기 HTTP — to_thread로 감싸 호출한다. 테스트는 이 지점을 갈아끼운다."""
+    import requests
+    r = requests.get(_CNBC_URL.format(sym=symbol), headers=_UA, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+async def _cnbc_items() -> list:
+    """CNBC 3만기 — **한 건씩 순차**로 부른다(마스터 지시: 사설 API에 버스트 금지).
+
+    _index_group이 KIS에 쓰는 것과 같은 _GAP 관례. 만기별로 시차를 두지는 않는다 —
+    호출은 1/3로 줄지만 한 그룹 안에서 세 만기의 기준 시각이 섞이고, 금리 곡선은
+    만기 간 관계를 보는 값이라 시각이 어긋나면 곡선 자체가 거짓이 된다."""
+    items = []
+    for i, (key, label, sym) in enumerate(_CNBC_TENORS):
+        if i:
+            await asyncio.sleep(_GAP)
+        try:
+            q = parse_cnbc_yield(await _blocking(_fetch_cnbc, sym))
+        except Exception:
+            log.warning("CNBC %s 실패 — 이 만기만 생략", sym, exc_info=True)
+            q = None
+        if not q:
+            continue
+        rate, sign = _bp_sign(q["value"], q["prev"])
+        items.append(_item(key, label, q["value"], "%", rate, sign,
+                           _mmdd(q["basis"]), "cnbc", rate_unit="bp",
+                           basis_kind="live"))
+    return items
+
+
 # ── 미 재무부 일별 금리곡선 ────────────────────────────────────────────────
 
 def parse_treasury(xml_text: str) -> list:
@@ -314,12 +401,33 @@ async def _treasury_rows() -> list:
 
 
 async def _treasury_group() -> Optional[dict]:
+    """CNBC 우선 + 재무부 폴백.
+
+    값이 0~1bp 차이라 원천이 바뀌어도 화면 숫자가 튀지 않는다 — 사용자에겐 신선도
+    줄이 '실시간(지연)' ↔ '08-11 확정'으로 바뀌는 것으로만 보인다. 이 성질이 폴백
+    설계를 정당화한다(값이 크게 달랐다면 원천을 섞을 수 없다)."""
     hit = _cached("treasury")
     if hit is not None or _cooling("treasury"):
         return hit
-    rows = await _treasury_rows()
+    # 미 채권장이 닫혀 있으면 CNBC를 **아예 안 부른다**. 절약이기 전에 더 정확하다 —
+    # 시장이 닫혀 있으면 재무부 확정치가 애초에 맞는 값이다.
+    items = await _cnbc_items() if cme_open() else []
+    if items:
+        return _store("treasury", {"label": "미국 금리", "items": items})
+    return _store("treasury", await _treasury_fallback())
+
+
+async def _treasury_fallback() -> Optional[dict]:
+    """재무부 확정치 — 폴백의 바닥. rows는 **별도 슬롯에 1시간** 캐시한다.
+
+    같이 캐시하면 CNBC가 죽어 있는 동안 재무부를 10분마다 새로 두드리게 된다."""
+    rows = _cached("treasury_rows")
+    if rows is None:
+        if _cooling("treasury_rows"):
+            return None
+        rows = _store("treasury_rows", (await _treasury_rows()) or None)
     if not rows:
-        return _store("treasury", None)
+        return None
     last, prev = rows[-1], (rows[-2] if len(rows) >= 2 else {})
     basis = _mmdd(last["date"])
     items = []
@@ -330,8 +438,7 @@ async def _treasury_group() -> Optional[dict]:
         rate, sign = _bp_sign(value, prev.get(field))
         items.append(_item(key, label, value, "%", rate, sign, basis, "treasury",
                            rate_unit="bp", basis_kind="date"))
-    return _store("treasury", {"label": "미국 금리", "items": items} if items
-                  else None)
+    return {"label": "미국 금리", "items": items} if items else None
 
 
 # ── FinanceDataReader 원자재 ──────────────────────────────────────────────

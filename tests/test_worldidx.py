@@ -104,6 +104,10 @@ def _offline(monkeypatch):
     def _boom_client():
         raise RuntimeError("KIS 스텁 미지정")
 
+    def _boom_cnbc(symbol):
+        raise RuntimeError("CNBC 스텁 미지정")
+
+    monkeypatch.setattr(wi, "_fetch_cnbc", _boom_cnbc)
     monkeypatch.setattr(wi, "_fetch_treasury_xml", _boom_treasury)
     monkeypatch.setattr(wi, "_fetch_fdr", _boom_fdr)
     monkeypatch.setattr(candles, "_get_client", _boom_client)
@@ -143,6 +147,27 @@ def _kis(monkeypatch, client=None):
     c = client or _FakeKis()
     monkeypatch.setattr(candles, "_get_client", lambda: c)
     return c
+
+
+def _cnbc(monkeypatch, values=None, boom=()):
+    """CNBC 단건 응답 스텁. values={'US10Y': ('4.69%', '4.684%')} 형태."""
+    calls = []
+    vals = values if values is not None else {
+        "US2Y": ("4.22%", "4.218%"), "US10Y": ("4.69%", "4.684%"),
+        "US30Y": ("5.24%", "5.237%")}
+
+    def fetch(symbol):
+        calls.append(symbol)
+        if symbol in boom:
+            raise RuntimeError("CNBC 실패 스텁")
+        last, prev = vals[symbol]
+        return {"FormattedQuoteResult": {"FormattedQuote": [{
+            "symbol": symbol, "last": last, "previous_day_closing": prev,
+            "last_time": "2026-08-11T21:03:06.000-0400",
+            "exchange": "Tradeweb", "realTime": "true"}]}}
+
+    monkeypatch.setattr(wi, "_fetch_cnbc", fetch)
+    return calls
 
 
 def _fix_now(monkeypatch, when):
@@ -460,7 +485,10 @@ def test_failed_source_is_not_retried_during_cooldown(monkeypatch):
     assert [g["label"] for g in d["groups"]] == ["원자재"]
     asyncio.run(wi.get_worldidx())          # 쿨다운 중 — 재무부는 건드리지 않는다
     assert len(tcalls) == 2
-    wi._cache["treasury"]["fail_ts"] -= wi._FAIL_COOLDOWN + 1
+    # 슬롯 둘 다 되감는다. 그룹(treasury)은 CNBC 배려로 600초를 쓰고, 재무부 원본
+    # (treasury_rows)은 기본 60초다 — 한쪽만 풀면 다른 쪽이 계속 막아 재시도가 안 온다.
+    wi._cache["treasury"]["fail_ts"] -= wi._COOLDOWN["treasury"] + 1
+    wi._cache["treasury_rows"]["fail_ts"] -= wi._FAIL_COOLDOWN + 1
     asyncio.run(wi.get_worldidx())
     assert len(tcalls) == 4                 # 쿨다운 만료 → 다시 시도
 
@@ -660,3 +688,143 @@ def test_nasdaq_composite_label_is_unambiguous(monkeypatch):
     _kis(monkeypatch)
     g = _groups(asyncio.run(wi.get_worldidx()))
     assert _items(g["해외지수"])["comp"]["label"] == "나스닥 종합"
+
+
+# ── CNBC 장중 미국금리 ────────────────────────────────────────────────────
+
+def _cnbc_js(**over):
+    q = {"symbol": "US10Y", "last": "4.69%", "previous_day_closing": "4.684%",
+         "last_time": "2026-08-11T21:03:06.000-0400"}
+    q.update(over)
+    return {"FormattedQuoteResult": {"FormattedQuote": [q]}}
+
+
+def test_parse_cnbc_reads_the_percent_string():
+    """last는 '4.69%' 문자열이다 — %를 떼고 읽는다. last_time에서 기준일도 나온다."""
+    q = wi.parse_cnbc_yield(_cnbc_js())
+    assert q["value"] == 4.69
+    assert q["prev"] == 4.684
+    assert q["basis"] == dt.date(2026, 8, 11)
+
+
+def test_parse_cnbc_rejects_the_silent_empty_response():
+    """심볼을 여러 개 붙이면 에러가 아니라 last=null인 빈 응답이 온다(2026-08-12 실측).
+
+    사설 API는 조용히 깨진다 — 값이 없으면 '모른다'이지 0이 아니다."""
+    assert wi.parse_cnbc_yield(_cnbc_js(last=None)) is None
+    assert wi.parse_cnbc_yield({"FormattedQuoteResult": {"FormattedQuote": []}}) is None
+    assert wi.parse_cnbc_yield({}) is None
+
+
+def test_parse_cnbc_range_guard_drops_impossible_yields():
+    """미국 국채 수익률이 0 이하나 15% 이상일 리 없다 — 스키마가 조용히 바뀌어
+    엉뚱한 필드가 들어앉는 실패 모드를 막는다(marketdata._NGT_SANE와 같은 관례)."""
+    assert wi.parse_cnbc_yield(_cnbc_js(last="0%")) is None
+    assert wi.parse_cnbc_yield(_cnbc_js(last="97.5469")) is None   # 채권 가격이 들어옴
+    assert wi.parse_cnbc_yield(_cnbc_js(last="4.69")) is not None  # %가 없어도 읽는다
+
+
+def test_parse_cnbc_missing_prev_means_unknown_not_zero():
+    """직전 종가를 모르면 rate=None이다 — 0.0bp(보합)로 꾸미지 않는다."""
+    q = wi.parse_cnbc_yield(_cnbc_js(previous_day_closing=None))
+    assert q["value"] == 4.69 and q["prev"] is None
+    assert wi._bp_sign(q["value"], q["prev"]) == (None, "flat")
+
+
+def test_treasury_group_prefers_cnbc_when_the_market_is_open(monkeypatch):
+    """장중이면 CNBC — src=cnbc, basis_kind=live, 등락 단위는 bp."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    calls = _cnbc(monkeypatch)
+    g = asyncio.run(wi._treasury_group())
+    it = {i["key"]: i for i in g["items"]}
+    assert calls == ["US2Y", "US10Y", "US30Y"]      # 순차, 세 만기 전부
+    assert it["ust10y"]["value"] == 4.69
+    assert it["ust10y"]["src"] == "cnbc"
+    assert it["ust10y"]["basis_kind"] == "live"
+    assert it["ust10y"]["rate_unit"] == "bp"
+    assert it["ust10y"]["rate"] == 0.6              # (4.69-4.684)*100
+
+
+def test_treasury_group_never_calls_cnbc_when_the_market_is_closed(monkeypatch):
+    """휴장이면 **호출이 0건**이고 재무부로 간다.
+
+    절약이기 전에 더 정확하다 — 시장이 닫혀 있으면 확정치가 애초에 맞는 값이다.
+    이 테스트가 없으면 세션 게이트가 조용히 무력화돼도 아무도 모른다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: False)
+    calls = _cnbc(monkeypatch)
+    _treasury(monkeypatch)
+    g = asyncio.run(wi._treasury_group())
+    assert calls == []
+    assert {i["src"] for i in g["items"]} == {"treasury"}
+    assert {i["basis_kind"] for i in g["items"]} == {"date"}
+
+
+def test_treasury_group_falls_back_when_every_tenor_fails(monkeypatch):
+    """CNBC 3만기가 전부 죽으면 재무부 확정치로 조용히 강등된다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    _cnbc(monkeypatch, boom=("US2Y", "US10Y", "US30Y"))
+    _treasury(monkeypatch)
+    g = asyncio.run(wi._treasury_group())
+    assert {i["src"] for i in g["items"]} == {"treasury"}
+    assert {i["basis_kind"] for i in g["items"]} == {"date"}
+
+
+def test_partial_cnbc_success_never_mixes_live_and_date(monkeypatch):
+    """일부만 성공하면 성공분만 live로 낸다 — 한 그룹에 live/date를 섞지 않는다.
+
+    기준이 섞이면 '10년만 더 최신'으로 읽히고, 금리 곡선은 만기 간 관계를 보는
+    값이라 그 순간 곡선 자체가 거짓이 된다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    _cnbc(monkeypatch, boom=("US2Y",))
+    _treasury(monkeypatch)
+    g = asyncio.run(wi._treasury_group())
+    keys = {i["key"] for i in g["items"]}
+    assert keys == {"ust10y", "ust30y"}             # 2년물은 빠진다
+    assert {i["basis_kind"] for i in g["items"]} == {"live"}
+
+
+def test_cnbc_failure_does_not_get_hammered_while_cached(monkeypatch):
+    """거절당하는 중에 1분마다 다시 두드리는 건 최악의 행동이다 — 물러선다.
+
+    CNBC가 죽어도 재무부 폴백이 **성공하므로** 그룹은 None이 아니고 600초 캐시에
+    들어간다. 그 사이 CNBC를 다시 부르지 않는 것이 back-off의 실체다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    ccalls = _cnbc(monkeypatch, boom=("US2Y", "US10Y", "US30Y"))
+    tcalls = _treasury(monkeypatch)
+    assert asyncio.run(wi._treasury_group()) is not None
+    assert len(ccalls) == 3 and len(tcalls) == 1
+    asyncio.run(wi._treasury_group())               # TTL 안이면 캐시 히트
+    assert len(ccalls) == 3, "TTL 안인데 CNBC를 또 불렀다"
+    assert wi._TTL["treasury"] == 600.0
+    assert wi._COOLDOWN["treasury"] == 600.0
+
+
+def test_both_sources_dead_backs_off_without_hammering(monkeypatch):
+    """CNBC도 재무부도 죽으면 그룹을 생략하고 쿨다운에 들어간다 — 재호출 0건."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    ccalls = _cnbc(monkeypatch, boom=("US2Y", "US10Y", "US30Y"))
+    tcalls = _treasury(monkeypatch, pages={})       # 어느 달을 물어도 404
+    assert asyncio.run(wi._treasury_group()) is None
+    n_c, n_t = len(ccalls), len(tcalls)
+    assert asyncio.run(wi._treasury_group()) is None
+    assert len(ccalls) == n_c and len(tcalls) == n_t, "쿨다운인데 다시 두드렸다"
+
+
+def test_treasury_rows_are_cached_separately_from_the_group(monkeypatch):
+    """rows를 그룹과 같이 캐시하면 CNBC가 죽어 있는 동안 재무부를 10분마다 새로
+    두드리게 된다 — 하루 한 번 갱신되는 값에 대고 할 짓이 아니다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    _cnbc(monkeypatch, boom=("US2Y", "US10Y", "US30Y"))
+    tcalls = _treasury(monkeypatch)
+    assert asyncio.run(wi._treasury_group()) is not None
+    wi._cache["treasury"]["ts"] = 0.0               # 그룹 TTL만 만료(rows는 1시간)
+    assert asyncio.run(wi._treasury_group()) is not None
+    assert len(tcalls) == 1, "rows 캐시를 안 타고 재무부를 다시 불렀다"
+    assert wi._TTL["treasury_rows"] == 3600.0

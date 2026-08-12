@@ -12,6 +12,27 @@ import pytest
 from backend.flow import worldidx
 
 
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """이 파일은 **재무부 조립 경로**의 bp 계약을 본다 — CNBC로 새지 않게 못 박는다.
+
+    _treasury_group은 장중이면 CNBC를 먼저 부르므로, 게이트를 닫아 재무부 경로를
+    결정론적으로 고른다(실제 벽시계에 따라 경로가 갈리면 이 파일의 단언이 흔들린다).
+    boom 스텁은 그 위의 안전망이다 — 게이트가 언젠가 열려도 라이브 호출이 아니라
+    RuntimeError가 난다(test_worldidx.py의 _offline과 같은 관례).
+
+    캐시는 **전 슬롯**을 리셋한다. 재무부 원본(treasury_rows)은 그룹과 별도 슬롯에
+    1시간 살아 있어, 아래 테스트들이 각자 다른 rows를 주입해도 앞 테스트가 채워둔
+    행이 그대로 읽힌다 — '직전값 없으면 None'이 2행짜리 앞 테스트 덕에 통과해버린다."""
+    def _boom_cnbc(symbol):
+        raise RuntimeError("CNBC 스텁 미지정")
+
+    for slot in worldidx._cache.values():
+        slot["ts"], slot["data"], slot["fail_ts"] = 0.0, None, 0.0
+    monkeypatch.setattr(worldidx, "_fetch_cnbc", _boom_cnbc)
+    monkeypatch.setattr(worldidx, "cme_open", lambda now_et=None: False)
+
+
 def _treasury_items(monkeypatch):
     """재무부 그룹만 실제 조립 경로로 만든다(네트워크 없음)."""
     rows = [{"date": dt.date(2026, 8, 7), "2Y": 4.19, "10Y": 4.65, "30Y": 5.19},

@@ -73,6 +73,12 @@ def _offline(monkeypatch):
     def _boom_client():
         raise RuntimeError("KIS 스텁 미지정")
 
+    def _boom_cnbc(symbol):
+        raise RuntimeError("CNBC 스텁 미지정")
+
+    # CNBC도 반드시 막는다. 이 줄이 없으면 _treasury_group이 장중에 **실제 CNBC로
+    # 나간다** — 남의 사설 API이고, '전부 실패' 테스트가 라이브 성공으로 통과해버린다.
+    monkeypatch.setattr(wi, "_fetch_cnbc", _boom_cnbc)
     monkeypatch.setattr(wi, "_fetch_treasury_xml", _boom_treasury)
     monkeypatch.setattr(wi, "_fetch_fdr", _boom_fdr)
     monkeypatch.setattr(candles, "_get_client", _boom_client)
