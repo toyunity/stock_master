@@ -16,6 +16,14 @@
 - **모르는 값은 `None`.** `0.0`으로 뭉개지 않는다. `kis._f`(전부 0.0으로 뭉갬)를 이 모듈에서 쓰지 않는다 — `_num`/`_pct`만 쓴다.
 - **프런트는 아무것도 추측하지 않는다.** 단위(`unit`)·등락단위(`rate_unit`)·신선도(`basis_kind`)는 전부 서버가 실어 보낸다. `basis` 문자열 모양이나 그룹 이름으로 분기 금지.
 - **새 디자인 언어 금지.** 칩은 기존 `.mchip/.ml/.mv/.mr`(theme.py 단일 출처)를 그대로 쓴다.
+- **⚠️ `dashboard.py`의 JS/CSS 주석에 `__대문자__` 치환 토큰을 글자 그대로 적지 마라.**
+  `render_dashboard()`는 마지막에 `.replace("__X__", ...)`를 18번 돌리는데(`__LIB__`,
+  `__DATA__`, `__PULSE_EXT__`, `__OPT_JS__` …) **이 replace는 주석을 가리지 않는다.**
+  설명하려고 주석에 토큰을 적으면 렌더 시 주석 한복판에 실제 코드 조각이 치환돼 들어가
+  인라인 JS가 통째로 깨진다(2026-08-12 Task 4에서 실제로 밟았다 — 15 failed의 원인이
+  전부 이 한 줄이었다). 토큰 이름을 쓰지 말고 **뜻만** 풀어서 적는다.
+  `tests/test_dashboard.py::test_dashboard_inline_js_parses`의 `node --check`가 잡아주긴
+  하지만, 다른 실패 14건이 전부 그 하나의 2차 피해라 원인 찾기 전엔 아주 시끄럽다.
 - **테스트는 전부 오프라인.** `tests/test_worldidx.py`의 autouse `_offline` 픽스처가 모든 원천에 '반드시 터지는' 스텁을 먼저 깐다. CNBC 실호출을 CI에 넣지 않는다.
 - **`/api/*` 기존 응답 필드는 이름·타입·내용 불변.** 추가는 `basis_kind` 하나뿐이다.
 - **8000 실서버를 건드리지 않는다.** 라이브 확인은 `python -m harness verify` 경로로.
@@ -1066,7 +1074,9 @@ let MKT={}, FUT={}, WIDX=null;      // 각 로더의 마지막 응답
 // pulseState는 NXT 프리/애프터도 '장중'으로 치는데 그건 개별 종목 얘기지 지수가 아니다.
 // 그대로 쓰면 20시에 코스피 칩이 '실시간'이라 우긴다. 코스피·코스닥 **지수**는
 // 09:00~15:30(KRX 정규장)에만 움직이므로 그 창을 명시적으로 쓴다.
-// (부수 효과: 서버 렌더 시 치환되는 __PULSE_EXT__에 이 판정이 매이지 않는다.)
+// (부수 효과: 서버 렌더 시 치환되는 pulse 확장 조각(장후 NXT 구간)에 이 판정이
+//  매이지 않는다. 그 placeholder 토큰을 여기 그대로 적으면 주석까지 치환돼 JS가
+//  깨진다 — replace는 주석을 가리지 않는다.)
 function krIndexLive(){
   const n=new Date(), d=n.getDay(), hm=n.getHours()*60+n.getMinutes();
   return d>=1&&d<=5&&hm>=540&&hm<930;
