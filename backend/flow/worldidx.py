@@ -99,9 +99,18 @@ _TIMEOUT = 5.0            # 실패 시 두 달을 연달아 물으므로 넉넉�
 # 각각 적용되는 값이고, FDR(fdr.DataReader → requests.get)엔 그 인자조차 없다 —
 # 야후가 RST 없이 무응답이면(TCP 블랙홀) 그 스레드는 영원히 매달린다.
 _CALL_TIMEOUT = 8.0
+# CNBC **단계 전체** 상한. 재무부 그룹은 CNBC 단계와 재무부 폴백이 연달아 돌므로 둘의
+# 합이 _GROUP_TIMEOUT 안에 들어와야 한다 — 안 들어오면 그룹 벽이 먼저 터져 전월 폴백을
+# 아예 못 타고 미국 금리가 통째로 사라진다(그리고 600초 쿨다운). 호출 단위가 아니라
+# 단계 단위로 거는 이유: 만기를 하나 더 늘려도 이 항이 안 커진다.
+# 실측 응답은 1초 미만이라(2026-08-12) 10초면 정상 경로에 넉넉하다.
+_CNBC_PHASE_TIMEOUT = 10.0
 # 그룹 하나의 백스톱. **_GROUP_TIMEOUT > (그룹 안 호출 수 × _CALL_TIMEOUT) + 슬립 합**을
-# 지켜라(지수 그룹 3×8+0.5=24.5가 최대). 이 부등식이 깨지면 그룹 벽이 먼저 터져,
-# 이미 모아둔 칩까지 통째로 버린다 — 칩 단위 격리를 스스로 무효화하는 셈이다.
+# 지켜라. 이 부등식이 깨지면 그룹 벽이 먼저 터져, 이미 모아둔 칩까지 통째로 버린다 —
+# 칩 단위 격리를 스스로 무효화하는 셈이다.
+#   최대는 재무부 그룹이다: _CNBC_PHASE_TIMEOUT(10) + 재무부 두 달(2×8) = 26.0.
+#   지수 그룹은 3×8+0.5=24.5. 이 관계는 주석이 아니라
+#   test_group_wall_leaves_room_for_every_call_in_the_group이 지킨다.
 _GROUP_TIMEOUT = 30.0
 _UA = {"User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -380,11 +389,18 @@ def _fetch_treasury_xml(month: str) -> str:
     return r.text
 
 
+def _treasury_month_codes(today: dt.date) -> list:
+    """조회할 달 — 이번 달, 그리고 월초 폴백용 전월.
+
+    개수가 그룹 벽 부등식의 항이라(_GROUP_TIMEOUT 주석) 테스트가 이 함수에서 직접
+    센다. 하드코딩한 '2'는 달을 하나 늘리는 날 조용히 틀린다 — 실제로 그렇게 틀렸다."""
+    prev_month = today.replace(day=1) - dt.timedelta(days=1)
+    return [today.strftime("%Y%m"), prev_month.strftime("%Y%m")]
+
+
 async def _treasury_rows() -> list:
     """이번 달 → (비면/터지면) 전월. 월초 첫 영업일 전에는 이번 달 엔트리가 없다."""
-    today = kst.today()
-    prev_month = today.replace(day=1) - dt.timedelta(days=1)
-    months = [today.strftime("%Y%m"), prev_month.strftime("%Y%m")]
+    months = _treasury_month_codes(kst.today())
     for i, month in enumerate(months):
         try:
             rows = parse_treasury(await _blocking(_fetch_treasury_xml, month))
@@ -411,7 +427,16 @@ async def _treasury_group() -> Optional[dict]:
         return hit
     # 미 채권장이 닫혀 있으면 CNBC를 **아예 안 부른다**. 절약이기 전에 더 정확하다 —
     # 시장이 닫혀 있으면 재무부 확정치가 애초에 맞는 값이다.
-    items = await _cnbc_items() if cme_open() else []
+    items = []
+    if cme_open():
+        try:
+            # 단계 상한 — 매달린 CNBC가 재무부 폴백 몫까지 먹지 못하게 한다.
+            items = await asyncio.wait_for(_cnbc_items(), _CNBC_PHASE_TIMEOUT)
+        except Exception:
+            # 상한 초과도 '한 만기도 못 얻음'과 같은 폴백을 탄다. 단계가 잘리면 그때까지
+            # 모은 만기도 버린다 — 그룹에 live/date를 섞지 않는다는 계약이 우선이다.
+            log.warning("CNBC 단계 상한 초과 — 재무부로 폴백", exc_info=True)
+            items = []
     if items:
         return _store("treasury", {"label": "미국 금리", "items": items})
     return _store("treasury", await _treasury_fallback())

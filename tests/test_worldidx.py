@@ -612,11 +612,20 @@ def test_group_wall_stops_a_slow_group_from_holding_the_lock(monkeypatch):
 def test_group_wall_leaves_room_for_every_call_in_the_group():
     """벽의 크기 관계가 계약이다 — 그룹 벽이 먼저 터지면 이미 모은 칩을 통째로 버린다.
 
-    그룹 벽 > (그룹 안 호출 수 × 호출 상한) + 호출 간 슬립 합. 지수 그룹이 가장 크다."""
-    worst = len(wi._INDICES) * wi._CALL_TIMEOUT + (len(wi._INDICES) - 1) * wi._GAP
-    assert wi._GROUP_TIMEOUT > worst
+    그룹 벽 > (그룹 안 호출 수 x 호출 상한) + 호출 간 슬립 합.
+    **재무부 그룹은 CNBC 단계와 재무부 폴백이 연달아 돈다** — 그 합이 벽 안에 들어와야
+    CNBC가 매달려도 전월 폴백까지 갈 수 있다. 항의 개수를 하드코딩하지 않는다:
+    만기나 조회 달이 하나 늘면 이 테스트가 먼저 빨개져야 한다(하드코딩한 '2'가 바로
+    이 결함을 조용히 통과시켰다)."""
+    idx = len(wi._INDICES) * wi._CALL_TIMEOUT + (len(wi._INDICES) - 1) * wi._GAP
+    assert wi._GROUP_TIMEOUT > idx
     assert wi._GROUP_TIMEOUT > len(wi._COMMODITIES) * wi._CALL_TIMEOUT
-    assert wi._GROUP_TIMEOUT > 2 * wi._CALL_TIMEOUT      # 재무부: 이번 달 + 전월
+    months = wi._treasury_month_codes(dt.date(2026, 8, 12))
+    treasury = wi._CNBC_PHASE_TIMEOUT + len(months) * wi._CALL_TIMEOUT
+    assert wi._GROUP_TIMEOUT > treasury, (
+        "재무부 그룹 최악값 %.1f초가 벽 %.1f초를 넘는다" % (treasury, wi._GROUP_TIMEOUT))
+    # 여유를 주석이 아니라 테스트가 지킨다 — 1초 남기고 통과하는 건 통과가 아니다.
+    assert wi._GROUP_TIMEOUT - treasury >= 2.0, "여유 2초 미만 — 상수를 다시 잡아라"
 
 
 # ── CME/현금국채 세션 판정 ────────────────────────────────────────────────
