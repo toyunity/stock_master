@@ -67,7 +67,9 @@ _TENORS = (("ust2y", "2년", "2Y"), ("ust10y", "10년", "10Y"),
 # (key, label, FDR 심볼, 단위)
 _COMMODITIES = (("wti", "WTI", "CL=F", "$/bbl"), ("gold", "금", "GC=F", "$/oz"))
 # (key, label, KIS ISCD) — 늘리기 전에 위 '함정' 문단을 읽을 것.
-_INDICES = (("spx", "S&P500", "SPX"), ("comp", "나스닥", "COMP"),
+# comp 라벨이 '나스닥 종합'인 이유: '지수' 섹션에서 '나스닥 선물' 칩과 나란히 뜬다.
+# COMP는 실제로 나스닥 종합지수라 더 정확하기도 하다.
+_INDICES = (("spx", "S&P500", "SPX"), ("comp", "나스닥 종합", "COMP"),
             ("vix", "VIX", "VIX"))
 
 _ORDER = ("treasury", "commodity", "index")
@@ -132,6 +134,34 @@ def _last_us_session() -> dt.date:
     while d.weekday() >= 5:               # 토·일 → 금요일
         d -= dt.timedelta(days=1)
     return d
+
+
+def cme_open(now_et: Optional[dt.datetime] = None) -> bool:
+    """CME Globex(원자재)와 현금 국채 시장이 열려 있는가 — **ET 벽시계**.
+
+    일 18:00 ET 개장 → 금 17:00 ET 마감, 매일 17:00~18:00 ET 휴식.
+    두 시장의 창이 사실상 같아 **헬퍼 하나를 공유한다** — 같은 판정을 두 군데서
+    흉내내면 한쪽만 고쳐지는 날이 온다(원자재 신선도 + CNBC 호출 게이트).
+
+    KST 벽시계로 판정하면 미국 서머타임 전환마다 한 시간씩 어긋나므로 adr._ET를 쓴다
+    (_last_us_session과 같은 시계 — DST 처리를 두 군데서 흉내내지 않는다).
+
+    **절대 쓰면 안 되는 대안**: "값의 시각이 오늘(KST)이면 열림". 토요일 10:00 KST면
+    마지막 호가가 토 06:00 KST(= 금 17:00 ET 정산)라 '오늘'이 되어 정산된 값에 live가
+    붙고, 일요일 10:00엔 같은 숫자가 '오늘이 아니'라 마감으로 뒤집힌다.
+
+    한계: 미국 휴장일 달력은 없다 — 휴장일엔 정산된 값에 '실시간'이 붙을 수 있다.
+    adr.us_market_open·futures.session_of가 이미 같은 한계를 안고 같은 이유로
+    받아들인다(휴장일 하루를 위해 달력을 들이는 값어치가 없다)."""
+    n = now_et or kst.now().astimezone(adr._ET)
+    wd, hm = n.weekday(), n.strftime("%H:%M")      # 월=0 … 토=5, 일=6
+    if wd == 5:                                    # 토요일은 종일 휴장
+        return False
+    if wd == 6:                                    # 일요일은 18:00 ET에 열린다
+        return hm >= "18:00"
+    if wd == 4 and hm >= "17:00":                  # 금요일 17:00 마감 → 주말
+        return False
+    return not ("17:00" <= hm < "18:00")           # 평일 일일 휴식
 
 
 async def _blocking(fn, *args):
@@ -211,14 +241,18 @@ def _bp_sign(value: float, prev: Optional[float]):
     return bp, "up" if bp > 0 else ("down" if bp < 0 else "flat")
 
 
-def _item(key, label, value, unit, rate, sign, basis, src, rate_unit="%") -> dict:
-    """칩 하나 — 키 구성은 설계 문서의 Item + `rate_unit`(프런트 계약).
+def _item(key, label, value, unit, rate, sign, basis, src, rate_unit="%",
+          basis_kind="date") -> dict:
+    """칩 하나 — 키 구성은 설계 문서의 Item + `rate_unit`·`basis_kind`(프런트 계약).
 
-    `rate_unit`을 **데이터에 실는** 이유는 `unit`과 같다: 프런트가 등락 단위를
-    추측하기 시작하면 이 파일이 막으려는 단위 사고가 렌더러에서 재발한다."""
+    `rate_unit`·`basis_kind`를 **데이터에 실는** 이유는 `unit`과 같다: 프런트가 등락
+    단위나 신선도를 추측하기 시작하면 이 파일이 막으려는 사고가 렌더러에서 재발한다.
+
+    basis_kind: "date"=그날 확정/마감값 / "live"=지금 움직이는 중.
+    "live"여도 basis는 그대로 싣는다 — 폴백 경계에서 필드 모양이 바뀌지 않게."""
     return {"key": key, "label": label, "value": value, "unit": unit,
             "rate": rate, "sign": sign, "basis": basis, "src": src,
-            "rate_unit": rate_unit}
+            "rate_unit": rate_unit, "basis_kind": basis_kind}
 
 
 # ── 미 재무부 일별 금리곡선 ────────────────────────────────────────────────
@@ -295,7 +329,7 @@ async def _treasury_group() -> Optional[dict]:
             continue
         rate, sign = _bp_sign(value, prev.get(field))
         items.append(_item(key, label, value, "%", rate, sign, basis, "treasury",
-                           rate_unit="bp"))
+                           rate_unit="bp", basis_kind="date"))
     return _store("treasury", {"label": "미국 금리", "items": items} if items
                   else None)
 
@@ -305,9 +339,16 @@ async def _treasury_group() -> Optional[dict]:
 def parse_fdr_last(df) -> Optional[dict]:
     """FDR 일봉 → {'value','rate','sign','basis'(date)}. 마지막 유효 행 기준.
 
+    **마지막 행은 종가가 아니라 진행 중 세션의 현재가다**(2026-08-12 실측: 90초 간격
+    3회 호출에 금 4427.10 → 4428.20 → 4428.10). FDR `_validate_dates`의 end 기본값이
+    자정이 아니라 `datetime.today()`(현재 시각)라 오늘 봉이 안 잘린다. 야후 분봉 교차
+    확인 지연은 금 10.1분 / WTI 11.8분. 그런데 야후는 그 진행 중 봉에 **하루 전 날짜**를
+    찍으므로 basis만 어제가 된다 — 그래서 화면 신선도는 basis가 아니라 basis_kind
+    (cme_open)로 정한다. 등락률(직전 완료 세션 종가 대비 현재가)은 의미가 맞다.
+
     FDR은 거래일인데도 통째로 NaN인 행을 실제로 내보낸다(결측 — futures.pick_latest_pair
-    가 같은 함정을 이미 기록해뒀다). 그 행은 값도 기준일도 쓰지 않는다 — NaN 행의 날짜를
-    기준일로 찍으면 하루 미래의 날짜가 칩에 박힌다. 유효 행이 하나뿐이면 rate=None.
+    가 같은 함정을 이미 기록해뒀다). 그 행은 값도 기준일도 쓰지 않는다. 유효 행이
+    하나뿐이면 rate=None.
 
     값은 소수 2자리로 정규화한다 — FDR은 float32에서 승격된 값을 준다(2026-08-11 실호출:
     WTI 81.9800033569336, 금 4455.2998046875). 그대로 내리면 그 잡음이 API 응답과
@@ -342,6 +383,9 @@ async def _commodity_group() -> Optional[dict]:
         return hit
     start = (kst.today()
              - dt.timedelta(days=_FDR_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+    # 마지막 봉은 세션이 열려 있으면 '진행 중'이라 값이 현재가다(2026-08-12 실측:
+    # 90초 간격 호출에 값이 계속 바뀐다). 닫혀 있으면 완료된 세션의 종가다.
+    kind = "live" if cme_open() else "date"
     items = []
     for key, label, symbol, unit in _COMMODITIES:
         try:
@@ -354,7 +398,7 @@ async def _commodity_group() -> Optional[dict]:
         if not q:
             continue          # 종목 단위 격리 — 금이 죽어도 유가는 뜬다
         items.append(_item(key, label, q["value"], unit, q["rate"], q["sign"],
-                           _mmdd(q["basis"]), "fdr"))
+                           _mmdd(q["basis"]), "fdr", basis_kind=kind))
     return _store("commodity", {"label": "원자재", "items": items} if items
                   else None)
 
@@ -408,6 +452,7 @@ async def _index_group() -> Optional[dict]:
     # 기준일을 안 실어 kst.today()로 둔 것 — 이 모듈과 요구가 다르다).
     session = _last_us_session()
     day = session.strftime("%Y%m%d")
+    kind = "live" if adr.us_market_open() else "date"
     items = []
     for i, (key, label, iscd) in enumerate(_INDICES):
         if i:
@@ -431,7 +476,7 @@ async def _index_group() -> Optional[dict]:
         # 그대로다 — 휴장일처럼 원천이 진짜 세션을 알려주는 자리다.
         basis = min(q["basis"], session) if q["basis"] else session
         items.append(_item(key, label, q["value"], "idx", q["rate"], q["sign"],
-                           _mmdd(basis), "kis"))
+                           _mmdd(basis), "kis", basis_kind=kind))
     return _store("index", {"label": "해외지수", "items": items} if items
                   else None)
 

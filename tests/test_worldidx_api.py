@@ -33,7 +33,9 @@ FIX = pathlib.Path(__file__).parent / "fixtures"
 FIXTURE_NOW = dt.datetime(2026, 8, 11, 21, 40, tzinfo=KST)
 
 ITEM_KEYS = {"key", "label", "value", "unit", "rate", "rate_unit", "sign",
-             "basis", "src"}   # rate_unit: 국채는 bp, 나머지는 % (프런트가 추측 금지)
+             "basis", "src", "basis_kind"}
+# rate_unit: 국채는 bp, 나머지는 % / basis_kind: live냐 date냐 — 둘 다 프런트가 추측
+# 하지 않게 서버가 실어 내린다.
 UNITS = {"ust2y": "%", "ust10y": "%", "ust30y": "%",
          "wti": "$/bbl", "gold": "$/oz",
          "spx": "idx", "comp": "idx", "vix": "idx"}

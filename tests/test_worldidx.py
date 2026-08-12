@@ -180,7 +180,7 @@ def test_treasury_group_carries_unit_basis_and_rate(monkeypatch):
     assert [i["key"] for i in g["items"]] == ["ust2y", "ust10y", "ust30y"]
     it = _items(g)["ust10y"]
     assert set(it) == {"key", "label", "value", "unit", "rate", "rate_unit", "sign",
-                       "basis", "src"}
+                       "basis", "src", "basis_kind"}
     assert it["value"] == 4.72 and it["unit"] == "%"
     assert it["basis"] == "08-10" and it["src"] == "treasury"
     # 금리 등락은 bp다: 4.65 → 4.72 = +0.07%p = +7bp. 상대변화율(1.51%)이 아니다 —
@@ -589,3 +589,74 @@ def test_group_wall_leaves_room_for_every_call_in_the_group():
     assert wi._GROUP_TIMEOUT > worst
     assert wi._GROUP_TIMEOUT > len(wi._COMMODITIES) * wi._CALL_TIMEOUT
     assert wi._GROUP_TIMEOUT > 2 * wi._CALL_TIMEOUT      # 재무부: 이번 달 + 전월
+
+
+# ── CME/현금국채 세션 판정 ────────────────────────────────────────────────
+
+def _et(y, m, d, hh, mm=0):
+    return dt.datetime(y, m, d, hh, mm, tzinfo=wi.adr._ET)
+
+
+def test_cme_open_covers_the_globex_window():
+    """일 18:00 ET 개장 → 금 17:00 ET 마감, 매일 17:00~18:00 ET 휴식."""
+    assert wi.cme_open(_et(2026, 8, 12, 21, 0)) is True    # 수 저녁 = 한국 목 오전
+    assert wi.cme_open(_et(2026, 8, 12, 17, 30)) is False  # 일일 휴식
+    assert wi.cme_open(_et(2026, 8, 12, 18, 0)) is True    # 휴식 끝, 재개장
+    assert wi.cme_open(_et(2026, 8, 14, 17, 0)) is False   # 금 17:00 마감 직후
+    assert wi.cme_open(_et(2026, 8, 14, 16, 59)) is True   # 마감 직전
+    assert wi.cme_open(_et(2026, 8, 16, 18, 0)) is True    # 일 18:00 재개장
+    assert wi.cme_open(_et(2026, 8, 16, 17, 59)) is False  # 그 직전
+
+
+def test_cme_open_says_closed_on_the_saturday_trap():
+    """토요일 10:00 KST — 설계 문서가 경고한 구멍.
+
+    그 시각 마지막 호가는 토 06:00 KST(= 금 17:00 ET 정산)라 '값의 시각이 오늘(KST)'
+    판정을 쓰면 정산된 값에 live가 붙고, 일요일엔 같은 숫자가 마감으로 뒤집힌다.
+    판정 기준은 달력 날짜가 아니라 세션이다."""
+    sat_10_kst = dt.datetime(2026, 8, 15, 10, 0, tzinfo=KST)
+    assert wi.cme_open(sat_10_kst.astimezone(wi.adr._ET)) is False
+    sun_10_kst = dt.datetime(2026, 8, 16, 10, 0, tzinfo=KST)
+    assert wi.cme_open(sun_10_kst.astimezone(wi.adr._ET)) is False
+
+
+# ── basis_kind — 신선도를 데이터에 실어 내린다 ────────────────────────────
+
+def test_basis_kind_rides_on_every_item(monkeypatch):
+    """재무부는 항상 date(일 1회 확정치), 원자재는 세션, 해외지수는 미국장 개장 여부.
+
+    프런트가 basis 문자열 모양이나 그룹 이름으로 신선도를 추측하기 시작하면 이 모듈이
+    unit·rate_unit을 실어 막으려던 추측 사고가 렌더러에서 재발한다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)             # 2026-08-11 21:40 KST = 08:40 ET
+    _treasury(monkeypatch)
+    _fdr(monkeypatch)
+    _kis(monkeypatch)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: True)
+    monkeypatch.setattr(wi.adr, "us_market_open", lambda now_et=None: False)
+    g = _groups(asyncio.run(wi.get_worldidx()))
+    assert {i["basis_kind"] for i in g["미국 금리"]["items"]} == {"date"}
+    assert {i["basis_kind"] for i in g["원자재"]["items"]} == {"live"}
+    assert {i["basis_kind"] for i in g["해외지수"]["items"]} == {"date"}
+
+
+def test_basis_kind_flips_with_the_sessions(monkeypatch):
+    """세션이 닫히면 원자재는 date, 미국장이 열리면 해외지수는 live."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    _treasury(monkeypatch)
+    _fdr(monkeypatch)
+    _kis(monkeypatch)
+    monkeypatch.setattr(wi, "cme_open", lambda now_et=None: False)
+    monkeypatch.setattr(wi.adr, "us_market_open", lambda now_et=None: True)
+    g = _groups(asyncio.run(wi.get_worldidx()))
+    assert {i["basis_kind"] for i in g["원자재"]["items"]} == {"date"}
+    assert {i["basis_kind"] for i in g["해외지수"]["items"]} == {"live"}
+
+
+def test_nasdaq_composite_label_is_unambiguous(monkeypatch):
+    """'나스닥'은 섹션 안에서 '나스닥 선물' 칩과 나란히 뜬다 — COMP는 종합지수다."""
+    _fix_now(monkeypatch, FIXTURE_NOW)
+    _treasury(monkeypatch)
+    _fdr(monkeypatch)
+    _kis(monkeypatch)
+    g = _groups(asyncio.run(wi.get_worldidx()))
+    assert _items(g["해외지수"])["comp"]["label"] == "나스닥 종합"
