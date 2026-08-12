@@ -29,6 +29,18 @@ def _selectors(css: str) -> set:
             for m in re.finditer(r"([^{}\n][^{}]*)\{[^{}]*\}", css)}
 
 
+def test_tokens_match_6th_redesign():
+    """되돌림 가드. 진짜 검수는 make verify 스크린샷이지, 이 문자열 검사가 아니다."""
+    for tok in ("--r-lg:24px", "--r:16px", "--r-sm:12px",
+                "--bg:#f0f4f8", "--bg:#080b10"):
+        assert tok in BASE_CSS, tok
+    # 경계선은 rgba여야 서피스 3단계 어디에 놓여도 대비가 일정하다
+    assert "--border:rgba(0,0,0,.07)" in BASE_CSS
+    assert "--border:rgba(255,255,255,.09)" in BASE_CSS
+    # 시맨틱 색은 건드리지 않는다
+    assert "--up:#e5342f" in BASE_CSS and "--down:#1f66e0" in BASE_CSS
+
+
 def test_live_page_does_not_redefine_shared_rules():
     """live_page.py는 __BASE_CSS__를 이미 싣는다 — 같은 셀렉터를 또 정의하면
     두 복사본이 갈라져도 아무도 모른다(2026-08-12: 10규칙이 바이트 동일 복제였다)."""

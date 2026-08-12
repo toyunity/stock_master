@@ -33,9 +33,9 @@ BASE_CSS = """
    ═══════════════════════════════════════════════════════════════════ */
 :root{
   /* 표면 — 차가운 계기판 무채색 */
-  --bg:#eceef3; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
+  --bg:#f0f4f8; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
   --text:#12151d; --text-2:#586074; --text-3:#8b93a4;
-  --border:#e0e4ec; --border-2:#ebeef4; --grid:#eef0f6;
+  --border:rgba(0,0,0,.07); --border-2:rgba(0,0,0,.05); --grid:#eef0f6;
   /* 브랜드 iris — 길찾기·코칭 전용 */
   --primary:#6a4ff0; --primary-ink:#5238d8;
   /* 시장 시맨틱 — 의미를 나르는 유일한 chroma. 상승=적/하락=청(한국식) */
@@ -48,15 +48,15 @@ BASE_CSS = """
   --accent-glow:0 1px 8px rgba(106,79,240,.28);
   --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
   --font-num:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
-  --r:12px; --r-lg:16px; --r-sm:9px; --r-pill:999px;
+  --r:16px; --r-lg:24px; --r-sm:12px; --r-pill:999px;
   --disc-bg:#fbf5e6; --disc-bd:#efe1bb; --disc-tx:#7a6320;
 }
 @media (prefers-color-scheme: dark){
   :root{
     /* 다크 = 터미널: 깊은 잉크-네이비(순흑 회피) */
-    --bg:#0a0c12; --surface:#141824; --surface-2:#1a1f2e; --surface-3:#232a3c;
+    --bg:#080b10; --surface:#141824; --surface-2:#1a1f2e; --surface-3:#232a3c;
     --text:#e9ecf3; --text-2:#8b93a5; --text-3:#5f6879;
-    --border:#252c3c; --border-2:#1c2231; --grid:#1c2231;
+    --border:rgba(255,255,255,.09); --border-2:rgba(255,255,255,.05); --grid:#1c2231;
     --primary:#9a86ff; --primary-ink:#b3a4ff;
     --up:#ff5b52; --down:#4f8bff; --flat:#5f6879;
     --good:#2fcf8a; --warn:#f2a83a; --info:#9a86ff;
@@ -101,7 +101,7 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 
 /* 카드/패널 — 계기 베이(플랫·크리스프 1px·타이트 반경) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:15px;margin:13px 0;box-shadow:var(--shadow)}
+  padding:18px;margin:16px 0;box-shadow:var(--shadow)}
 .panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
 /* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
@@ -219,7 +219,7 @@ details.inline summary::-webkit-details-marker{display:none}
 details.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
 details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
-  padding:15px 16px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
+  padding:18px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
   letter-spacing:-.02em;min-height:54px;color:var(--text)}
 details.sec>summary::-webkit-details-marker{display:none}
 details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
@@ -229,7 +229,7 @@ details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offse
 .chev{margin-left:auto;color:var(--text-3);font-size:12px;font-weight:700;transition:transform .2s}
 details.sec[open]>summary .chev{transform:rotate(180deg)}
 details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
-.sec-body{padding:2px 15px 15px}
+.sec-body{padding:2px 18px 18px}
 /* 섹션 내부 패널은 카드 크롬 제거 → 하위구획(하이라인 구분)으로 평평하게(.card는 유지) */
 .sec-body>.panel,.sec-body>.panel.dp{background:transparent;border:0;box-shadow:none;
   border-radius:0;padding:16px 0;margin:0;border-top:1px solid var(--border-2)}
