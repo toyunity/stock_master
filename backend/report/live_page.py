@@ -223,24 +223,6 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 #today-line{margin-top:9px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.5;
   padding-left:13px;border-left:3px solid var(--primary)}
 #today-line:empty{display:none}
-details.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
-details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
-  padding:15px 16px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
-  letter-spacing:-.02em;min-height:54px;color:var(--text)}
-details.sec>summary::-webkit-details-marker{display:none}
-details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
-.secic{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
-  stroke-linecap:round;stroke-linejoin:round;color:var(--primary)}
-.seccap{font-size:11.5px;font-weight:500;color:var(--text-3);letter-spacing:0}
-.chev{margin-left:auto;color:var(--text-3);font-size:12px;font-weight:700;transition:transform .2s}
-details.sec[open]>summary .chev{transform:rotate(180deg)}
-details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
-.sec-body{padding:2px 15px 15px}
-/* 섹션 내부 패널은 카드 크롬 제거 → 하위구획(하이라인 구분)으로 평평하게 */
-.sec-body>.panel,.sec-body>.panel.dp{background:transparent;border:0;box-shadow:none;
-  border-radius:0;padding:16px 0;margin:0;border-top:1px solid var(--border-2)}
-.sec-body>.panel:first-child{border-top:0}
 .sec-body>.glance,.sec-body>.ob{margin:12px 0 0}
 .fixed-note{font-size:12.5px;color:var(--text-2);line-height:1.55;padding:10px 0 2px}
 .fixed-note .whyfixed{margin-top:6px}
