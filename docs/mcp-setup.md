@@ -4,8 +4,9 @@
 Claude 앱에서 "내 관심종목 어때?" 처럼 물으면 Claude가 이 도구를 호출해
 **라이브 데이터로 답하고 대시보드/차트도 만들어** 준다.
 
-제공 도구 4개:
+제공 도구 5개:
 - `watchlist_summary` — 관심종목 전체 오늘 분석(신호·현재가·근거·뉴스/공시)
+- `dashboard_data` — 위와 같은 범위를 JSON으로 한 번에(대시보드·차트 아티팩트용)
 - `stock_detail(code)` — 특정 종목 상세
 - `search_stocks(query)` — 전체 KRX 종목 이름/코드 검색(현재가 포함)
 - `chart_data(code)` — 최근 120일 캔들(차트 시각화용)
@@ -28,9 +29,9 @@ macOS 경로:
 {
   "mcpServers": {
     "stock-master": {
-      "command": "/Users/toyunity/dev/stock_master/.venv/bin/python",
+      "command": "<repo>/.venv/bin/python",
       "args": ["-m", "backend.mcp.server"],
-      "cwd": "/Users/toyunity/dev/stock_master"
+      "cwd": "<repo>"
     }
   }
 }
@@ -41,7 +42,7 @@ macOS 경로:
 (메뉴 → 종료(Cmd+Q) → 재실행. 새로고침만으론 안 잡힐 수 있음.)
 
 ### 4) 확인
-새 대화에서 도구(🔌/망치 아이콘)에 `stock-master`의 4개 도구가 보이면 성공.
+새 대화에서 도구(🔌/망치 아이콘)에 `stock-master`의 5개 도구가 보이면 성공.
 예시로 물어보기:
 - "내 관심종목 오늘 어때?" → `watchlist_summary`
 - "삼성전자(005930) 자세히 봐줘" → `stock_detail`
@@ -50,7 +51,7 @@ macOS 경로:
 
 ### 안 잡힐 때
 - Claude Desktop을 **완전 종료(Cmd+Q)** 후 재실행했는지.
-- 경로가 정확한지: 위 `command`/`cwd`는 이 저장소 절대경로여야 함.
+- 경로가 정확한지: 위 `command`/`cwd`의 `<repo>`는 이 저장소의 **절대경로**로 바꿔 넣어야 함.
 - 서버 단독 점검(터미널):
   ```
   echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | .venv/bin/python -m backend.mcp.server

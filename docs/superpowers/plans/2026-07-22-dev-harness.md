@@ -1033,7 +1033,7 @@ import subprocess
 
 import httpx
 
-_FUNNEL = "https://YOUR-MAC.YOUR-TAILNET.ts.net"
+_FUNNEL = "https://<내-머신>.ts.net"
 
 
 def _listener_pid(port: int = 8000):

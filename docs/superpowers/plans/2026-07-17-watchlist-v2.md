@@ -305,9 +305,9 @@ def test_watch_lines_non_master_never_sees_config():
     """blocker 회귀 방지 — 비마스터 계정은 config 감시선(마스터 실매도가) 절대 못 봄."""
     from backend.flow import userstore as us
     from backend.config import settings
-    settings.watch_lines = {"000660": [{"price": 1853000, "label": "절대선"}]}
+    settings.watch_lines = {"000660": [{"price": 100000, "label": "절대선"}]}
     assert us.get_lines(B, "000660") == []                 # B는 빈(폴백 금지)
-    assert us.get_lines(M, "000660")[0]["price"] == 1853000  # 마스터만 시드
+    assert us.get_lines(M, "000660")[0]["price"] == 100000  # 마스터만 시드
 
 
 def test_watch_lines_set_get_isolation():
@@ -502,11 +502,11 @@ def test_migration_promotes_globals(tmp_path, monkeypatch):
     with open(os.path.join(str(tmp_path), "watchlist.json"), "w") as f:
         json.dump({"codes": ["005930", "000660"]}, f)
     with open(os.path.join(str(tmp_path), "watch_lines.json"), "w") as f:
-        json.dump({"000660": [{"price": 1853000, "label": "절대선"}]}, f)
+        json.dump({"000660": [{"price": 100000, "label": "절대선"}]}, f)
     monkeypatch.setattr(settings, "widget_token", "e" * 32)
     us.migrate_globals()
     assert [i["code"] for i in us.get_watchlist(M)] == ["005930", "000660"]
-    assert us.get_lines(M, "000660")[0]["price"] == 1853000
+    assert us.get_lines(M, "000660")[0]["price"] == 100000
     assert us.email_for_token("e" * 32) == M          # env 토큰 → 마스터 고정
 ```
 

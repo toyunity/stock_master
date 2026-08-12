@@ -31,7 +31,7 @@ Expected: `free` (없으면 진행). 있으면 그 PID가 데모인지 확인 �
 - [ ] **Step 2: 데모·무인증 서버 기동(라이브 모드 금지 — KIS 세션 보호)**
 
 ```bash
-cd /Users/toyunity/dev/stock_master
+cd <repo>
 SM_FLOW_MODE=demo SM_AUTH_ENABLED=false nohup .venv/bin/python -m backend.cli serve --port 8001 >> data/serve_demo.log 2>&1 </dev/null & disown
 ```
 

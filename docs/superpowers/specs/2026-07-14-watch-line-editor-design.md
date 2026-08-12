@@ -32,7 +32,7 @@
 ## A. 감시선 서버 저장 (확정)
 
 ### `backend/flow/watch.py` (신규)
-- 저장 파일: `<cache_dir>/watch_lines.json` — `{"000660":[{"price":1853000,"label":"절대선"}, …]}`.
+- 저장 파일: `<cache_dir>/watch_lines.json` — `{"000660":[{"price":100000,"label":"절대선"}, …]}`.
 - `get_lines(code) -> list[dict]`: 파일을 읽어 **코드 키가 있으면 파일값을 그대로**(빈 배열
   포함 — 사용자가 전부 지운 상태도 영속), **없으면 `settings.watch_lines.get(code) or []`**
   로 폴백. 파일 손상/부재 시 config 폴백(예외 삼키고 로그).

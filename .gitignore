@@ -14,4 +14,3 @@ harness/artifacts/*
 .worktrees/
 .superpowers/
 scratchpad/
-.venv

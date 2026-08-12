@@ -1112,7 +1112,7 @@ git commit -m "feat(widget): /widget-setup 설치 페이지 + Scriptable 스크�
 ## 설치 (5단계, 약 5분)
 
 1. **App Store에서 “Scriptable” 설치** (무료 — 개발자 계정·컴퓨터 불필요)
-2. **아이폰 사파리로 `https://YOUR-MAC.YOUR-TAILNET.ts.net/widget-setup` 접속**
+2. **아이폰 사파리로 `https://<내-머신>.ts.net/widget-setup` 접속**
    — 평소처럼 구글 로그인 + 2FA. 토큰과 스크립트가 준비되어 있습니다.
 3. **[스크립트 전체 복사] → Scriptable 앱 → ＋ → 붙여넣기 → 이름 `StockMaster`로 저장
    → ▶ 실행 → [토큰 복사]한 값 붙여넣기(1회)** — 토큰은 아이폰 Keychain에 저장됩니다.

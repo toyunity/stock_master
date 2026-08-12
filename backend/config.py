@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     watchlist: list[str] = ["005930", "000660", "035420", "051910", "005380"]
     # 상대경로는 Claude Desktop 실행 시 읽기 전용 cwd로 해석되어 실패하므로 절대경로로 고정.
     cache_dir: str = str(_PROJECT_ROOT / "data" / "cache")
-    db_path: str = str(_PROJECT_ROOT / "stock_master.db")
     history_days: int = 400  # 지표 계산용 과거 일수
 
     # S3 뉴스/공시
@@ -39,10 +38,12 @@ class Settings(BaseSettings):
     # 수신 정지 감지(초): 정규장 중 마지막 체결/프로그램 수신 후 이 시간이 지나면
     # 차트에 "수신 정지" 오버레이 (VI/서킷브레이커/장중단 오해 방지)
     stall_sec: int = 90
-    # 감시선: 코드별 [{price, label}] — SM_WATCH_LINES='{"000660":[...]}' JSON으로 재정의
-    watch_lines: dict[str, list[dict]] = {
-        "000660": [{"price": 1_853_000, "label": "절대선"},
-                   {"price": 2_600_000, "label": "예약매도"}]}
+    # 감시선: 코드별 [{price, label}] — SM_WATCH_LINES='{"000660":[...]}' JSON으로 재정의.
+    # 기본값은 비어 있다. 실경로는 계정 파일(`<cache_dir>/users/*.json`)이고
+    # userstore.get_lines는 파일에 코드 키가 있으면 그 값만 쓴다(config 시드는 마스터
+    # 계정이면서 파일에 그 코드가 아예 없을 때만 닿는다). 개인 매매 목표를 리포에
+    # 남기지 않으려고 비웠다 — 시드가 필요하면 .env의 SM_WATCH_LINES로 넣어라.
+    watch_lines: dict[str, list[dict]] = {}
     # 반도체 동향 섹션(메인 대시보드 상단) 종목셋 — SOX는 지수(div=N), 나머지 NAS
     semi_us: list[str] = ["SOX", "NVDA", "MU", "WDC", "SNDK",
                           "AMAT", "LRCX", "KLAC", "SKHY"]
@@ -78,6 +79,11 @@ class Settings(BaseSettings):
 
     # 계정별 데이터 기준 계정(로그인 이메일). 미설정 시 allowlist 첫 이메일(경고).
     default_account: Optional[str] = None       # SM_DEFAULT_ACCOUNT
+
+    # 공개 배포 주소(Tailscale Funnel). 소스에 박지 않는다 — 리포가 public이 되면
+    # 이 호스트명이 맥북을 가리키는 고정 표적이 된다. `harness ops`의 공개 점검 대상이고,
+    # 미설정이면 그 점검만 생략된다(앱 동작과 무관).
+    public_url: Optional[str] = None            # SM_PUBLIC_URL
 
 
 settings = Settings()

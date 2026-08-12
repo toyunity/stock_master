@@ -6,7 +6,7 @@ import subprocess
 
 import httpx
 
-_FUNNEL = "https://YOUR-MAC.YOUR-TAILNET.ts.net"
+from backend.config import settings
 
 
 def _listener_pid(port: int = 8000):
@@ -30,7 +30,13 @@ def local_status() -> dict:
     return {"listening": pid is not None, "pid": pid, "healthz": healthz}
 
 
-def public_status(base: str = _FUNNEL) -> dict:
+def public_status(base: str = "") -> dict:
+    """공개 URL 점검. 주소는 소스에 박지 않고 .env(SM_PUBLIC_URL)에서 읽는다 —
+    리포가 public이 되면 하드코딩된 호스트명이 마스터 맥북을 가리키는 고정 표적이 되고,
+    포크한 누구든 `make ops`로 마스터 서버에 GET을 날린다. 미설정이면 네트워크 없이 생략."""
+    base = (base or settings.public_url or "").rstrip("/")
+    if not base:
+        return {"skipped": "SM_PUBLIC_URL 미설정 — .env에 넣으면 점검"}
     try:
         root = httpx.get(base + "/", timeout=8, follow_redirects=False)
         api = httpx.get(base + "/api/scanner", timeout=8, follow_redirects=False)

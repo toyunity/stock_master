@@ -1,12 +1,19 @@
-# Stock Master — 구현 계획서 (MVP: S0–S2)
+# Stock Master — 구현 계획서 (MVP: S0–S2) · ⚠️ 역사 문서
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ⚠️ **실행하지 마시오. 2026-06-19에 쓴 착수 전 계획서이고, S0–S2는 이미 전부 구현돼 매일 돌고 있다.**
+> 아래 미체크 박스(`- [ ]`)는 "미구현"이 아니라 **작성 당시의 착수 전 상태**다. 그대로 구현하면
+> `backend/adapters/prices.py`·`analysis/indicators.py`·`signals/rules.py`를 두 번 쓴다.
+> - 현재 상태 → **`README.md`**
+> - 현재 설계·계획 → `docs/superpowers/{specs,plans}/`
+> - 작업 규칙(실서버·KIS 제약) → **`CLAUDE.md`**
 
 **Goal:** 과거 시세(FDR) → 지표(`ta`) → 검증(백테스트)된 매매 신호 → HTML 일일 리포트까지, **KIS 계좌 없이 EOD로 동작하는 MVP**를 완성한다.
 
 **Architecture:** 단일 책임 모듈 + 데이터 어댑터/캐시 레이어. 데이터 소스(FDR)는 주입 가능(injectable)하게 추상화해 테스트가 네트워크에 의존하지 않게 하고, 스크래퍼가 깨져도 상위 모듈이 영향받지 않게 한다. 모든 신호는 백테스트 게이트를 통과해야 "조언"으로 노출된다.
 
-**Tech Stack:** Python 3.13, finance-datareader, pandas, `ta`, pyarrow(parquet), Jinja2, pydantic-settings, pytest.
+**Tech Stack (당시 계획):** ~~Python 3.13~~ → **실런타임은 Python 3.9다**(환경에 3.13이 없고
+실서버가 시스템 3.9로 뜬다). 3.10+ 문법(`match`, `X | Y` 타입힌트)을 쓰면 실서버가 기동에 실패한다.
+그 외: finance-datareader, pandas, `ta`, pyarrow(parquet), Jinja2, pydantic-settings, pytest.
 
 **관련 문서:** 설계 = `docs/design.md`. 본 계획은 설계의 로드맵 S0(기반)·S1(MVP)·S2(백테스트 게이트)를 구현한다. S3~S6은 본 문서 말미 §후속 계획에 개요로 둔다.
 
@@ -72,7 +79,7 @@ stock_master/
 - [ ] **Step 1: 저장소 초기화 & 디렉터리 생성**
 
 ```bash
-cd /Users/toyunity/dev/stock_master
+cd <repo>
 git init
 mkdir -p backend/adapters backend/ingest backend/analysis backend/signals backend/report/templates tests data/cache
 touch backend/__init__.py backend/adapters/__init__.py backend/ingest/__init__.py backend/analysis/__init__.py backend/signals/__init__.py backend/report/__init__.py tests/__init__.py

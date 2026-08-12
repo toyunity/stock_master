@@ -927,7 +927,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 1: main 병합 후 재기동**
 
 ```bash
-cd /Users/toyunity/dev/stock_master
+cd <repo>
 git merge --no-ff feat/index-futures
 P=$(lsof -nP -iTCP:8000 -sTCP:LISTEN -t | head -1); kill -TERM $P
 # graceful 종료 대기 후

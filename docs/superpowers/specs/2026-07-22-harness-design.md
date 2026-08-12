@@ -157,7 +157,7 @@ input}...]}` 형태이고, 기대 출력은 `golden/<module>.<func>.json`에 별
 #### `ops` — 운영 점검(읽기전용 기본)
 - 기본 동작은 **읽기전용 상태 리포트**:
   - 로컬 실서버: `lsof -nP -iTCP:8000 -sTCP:LISTEN`로 PID 존재 확인 + `/healthz`.
-  - Funnel 공개 URL(`YOUR-MAC.YOUR-TAILNET.ts.net`): 200 + 인증 게이트
+  - Funnel 공개 URL(`<내-머신>.ts.net`): 200 + 인증 게이트
     (미인증 302) 확인.
   - KIS 세션: 실서버가 살아있으면 라이브 데이터 응답(예 `/api/asking/000660`
     200)로 세션 건강 확인(REST만, WS 미접촉).
