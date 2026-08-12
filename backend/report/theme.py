@@ -12,8 +12,8 @@ Python 3.9 호환(마스터 실서버는 시스템 3.9) — 단순 문자열 상
 
 # ── PWA head: 라이트/다크 theme-color + 세이프에어리어 전제(viewport-fit은 각 페이지) ──
 PWA_HEAD = (
-    '<meta name="theme-color" content="#eceef3" media="(prefers-color-scheme: light)">'
-    '<meta name="theme-color" content="#0a0c12" media="(prefers-color-scheme: dark)">'
+    '<meta name="theme-color" content="#f0f4f8" media="(prefers-color-scheme: light)">'
+    '<meta name="theme-color" content="#080b10" media="(prefers-color-scheme: dark)">'
     '<link rel="manifest" href="/manifest.json">'
     '<link rel="apple-touch-icon" href="/icons/icon-180.png">'
     '<meta name="apple-mobile-web-app-capable" content="yes">'
@@ -35,6 +35,8 @@ BASE_CSS = """
   /* 표면 — 차가운 계기판 무채색 */
   --bg:#f0f4f8; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
   --text:#12151d; --text-2:#586074; --text-3:#8b93a4;
+  /* 경계선은 불투명 hex가 아니라 rgba(2026-08-12, 6차 리디자인): 서피스가 3단계라
+     rgba라야 어느 층 위에서도 대비가 일정하다 — 불투명이면 --surface-3 위에서 묻힌다 */
   --border:rgba(0,0,0,.07); --border-2:rgba(0,0,0,.05); --grid:#eef0f6;
   /* 브랜드 iris — 길찾기·코칭 전용 */
   --primary:#6a4ff0; --primary-ink:#5238d8;
@@ -99,7 +101,7 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .back{display:inline-flex;align-items:center;gap:4px;min-height:36px;
   font-size:14px;font-weight:700;color:var(--primary);margin-bottom:6px}
 
-/* 카드/패널 — 계기 베이(플랫·크리스프 1px·타이트 반경) */
+/* 카드/패널 — 계기 베이(플랫·크리스프 1px, 반경은 24px로 넉넉하게 — 2026-08-12 6차) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:18px;margin:16px 0;box-shadow:var(--shadow)}
 .panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}

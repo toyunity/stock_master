@@ -6,7 +6,7 @@ us_page.py가 .hero 마크업을 쓰는데 그 CSS가 live_page.py 페이지 로
 import re
 
 from backend.report.dashboard import _BASE_CSS
-from backend.report.theme import BASE_CSS
+from backend.report.theme import BASE_CSS, PWA_HEAD
 
 
 def test_hero_classes_live_in_shared_css():
@@ -39,6 +39,9 @@ def test_tokens_match_6th_redesign():
     assert "--border:rgba(255,255,255,.09)" in BASE_CSS
     # 시맨틱 색은 건드리지 않는다
     assert "--up:#e5342f" in BASE_CSS and "--down:#1f66e0" in BASE_CSS
+    # PWA_HEAD의 theme-color는 --bg의 리터럴 사본이다(CSS 변수를 못 씀) — 따로 갱신 안 하면
+    # 홈화면 PWA 상태바 색이 새 --bg와 어긋나 상단에 이음매가 생긴다(2026-08-12 리뷰 발견).
+    assert "#f0f4f8" in PWA_HEAD and "#080b10" in PWA_HEAD
 
 
 def test_live_page_does_not_redefine_shared_rules():
