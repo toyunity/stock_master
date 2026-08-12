@@ -1191,7 +1191,11 @@ EOF
 
 ```javascript
 const timers = [];
-global.setInterval = (fn, ms) => { timers.push(ms); return timers.length; };
+// **로더 이름과 함께** 기록한다. 주기만 모으면 페이지의 다른 로더까지 섞인다 —
+// loadSemi·marketPulse가 이미 60초로 돌고 있어서 "60000이 없다"는 단언은 구현이
+// 아무리 옳아도 영영 실패한다(2026-08-12 Task 5에서 실제로 밟았다).
+global.setInterval = (fn, ms) => { timers.push({fn: (fn && fn.name) || '?', ms: ms});
+                                   return timers.length; };
 global.clearInterval = () => {};
 ```
 
@@ -1212,8 +1216,11 @@ def test_polling_is_slow_while_the_section_is_collapsed(tmp_path):
     때릴 이유가 없다. (서버 캐시가 실제 원격 호출량을 정하므로 60초 폴링이 CNBC
     호출을 늘리지는 않지만, 굳이 두드릴 이유도 없다.)"""
     res = _run(tmp_path, _payload(), mkt=_mkt())    # 하니스 mock은 open:false
-    assert 300000 in res["timers"], res["timers"]
-    assert 60000 not in res["timers"], "접힌 채로 60초 폴링 — 접힘 분기 없음"
+    # **worldidx 타이머만** 본다. 이 페이지엔 loadSemi·marketPulse가 이미 60초로
+    # 돌고 있어, 주기 목록 전체에서 60000을 찾으면 남의 타이머를 보게 된다.
+    widx = [t["ms"] for t in res["timers"] if t["fn"] == "loadWorldidx"]
+    assert widx == [300000], res["timers"]          # 접힘 = 5분, 타이머는 하나뿐
+    assert 60000 not in widx, "접힌 채로 60초 폴링 — 접힘 분기 없음"
 
 
 def test_section_registers_a_toggle_listener():
@@ -1269,11 +1276,24 @@ Expected: 전부 PASS. 실패가 있으면 이 계획이 건드린 파일(`world
 
 문자열 검사는 "칩이 그려졌다"까지만 말한다. **390px에서 5그룹 12칩이 어떻게 접히는지, 칩 높이가 맞는지는 실렌더로만 보인다** (`__LIB__` 미치환·원화 반올림 함정이 실렌더로만 잡혔던 전례가 있다).
 
-```bash
-.venv/bin/python -m harness verify --only dashboard --theme both
-```
+**⚠️ `harness verify --only dashboard`로는 이 섹션을 볼 수 없다**(2026-08-12 실측). 실행은
+깨끗하게 끝나고 스크린샷도 나오지만 **섹션이 숨은 채로 찍힌다.** 원인 둘이 독립적이다:
 
-`harness/cmd/verify.py`의 `SCREENS`에 `("dashboard", "route", "/")`가 이미 있다. 데모 서버는 KIS 키를 차단하므로 8000 실서버와 무관하다. 결과 스크린샷은 `harness/artifacts/`에 떨어진다 — **열어서 눈으로 본다.** 헤드리스 크롬이 없으면 verify가 `"헤드리스 크롬 미설치 — verify 생략"`을 찍고 0으로 끝나므로, 그 문구가 보이면 검증이 **안 된 것**이다(통과로 읽지 말 것).
+- `cdp.shot`의 대기가 3.0초 고정인데(`harness/core/cdp.py:139`) 데모서버의 `/api/worldidx`는
+  재무부 XML + FDR 2심볼 + 실패하는 KIS 3콜이라 그보다 훨씬 오래 걸린다 → 찍을 때 데이터가 없다
+- 데모서버는 KIS를 차단하므로 `/api/market`·`/api/futures`가 `{}`다 → **국내 두 그룹이 아예
+  안 그려진다**(`/api/worldidx` 자체는 미국 금리 3 + 원자재 2를 준다. 해외지수만 빠진다)
+
+그래서 **캔 데이터를 주입한 렌더**로 확인한다. 스크래치패드에 `dashboard.py`의 실제 HTML을
+그대로 띄우고 `/api/market`·`/api/futures`·`/api/worldidx`만 고정 응답으로 돌려주는 작은
+서버를 세운 뒤, 390px에서 **라이트/다크 × 접힘/펼침**을 찍고 **Read 도구로 열어 눈으로 본다.**
+페이로드는 `tests/test_worldidx_page.py`의 `_payload()`·`_mkt()`를 그대로 쓰면 된다.
+
+헤드리스 크롬이 없으면 `"헤드리스 크롬 미설치"`가 찍히고 0으로 끝난다 — 그 문구가 보이면
+검증이 **안 된 것**이다(통과로 읽지 말 것).
+
+(`harness verify`에 대기 연장이나 캔 데이터 경로를 넣어 이 게이트를 상시화하는 것은 별도
+과제로 남긴다.)
 
 **눈으로 확인할 것:**
 1. 5그룹이 `국내 지수 → 지수 선물 → 미국 금리 → 원자재 → 해외지수` 순
