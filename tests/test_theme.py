@@ -62,6 +62,65 @@ def test_rail_component_exists():
         assert sel in BASE_CSS, sel
 
 
+def test_pages_do_not_hardcode_colors():
+    """CSS 단일 출처 — 페이지 파일에 색을 직접 쓰지 않는다(CLAUDE.md).
+
+    허용 목록은 파일별 "정확한 헥스 값" 단위로 좁힌다 — 같은 파일에 새 하드코딩
+    색이 섞여도 그 값이 목록에 없으면 여전히 걸린다(2026-08-13 감사).
+
+    예외 사유:
+    - options_panel.py·vol_panel.py: `CV('--x')||'#hex'` 폴백. theme.py의
+      CHART_THEME_JS._cv()와 동일한 패턴 — node 하니스는 getComputedStyle이
+      없어 이 폴백이 실제로 실행되는 살아있는 코드다(theme.py 주석 참조).
+    - dashboard.py·live_page.py·us_page.py 캔들/기준선/가격선/이평선 색:
+      LightweightCharts는 JS 객체 리터럴이라 CSS var()를 못 받는다. 캔들·기준선은
+      같은 틱에 registerSemSeries()가 semUp()/semDown()으로 즉시 재적용해 이 값이
+      화면에 노출되진 않는다. 이평선 5색(#9aa0a6 등)은 토큰과 의미가 다른 카테고리
+      팔레트라 토큰화하면 5개 신규 토큰이 필요해 과설계다.
+      (알려진 갭, 이번 범위 아님: us_page.py 캔들은 registerSemSeries를 안 불러
+      다크에서 라이트 색 그대로다. live_page.py:717 현재가 색·891 매물벽 마커도
+      다크 재적용 없이 라이트 값 고정.)
+    - dashboard.py `#b3a4ff`: 앱 아이콘 마크 그라디언트의 보조색. 라이트·다크
+      공통 고정값이 의도다 — `--primary-ink`로 바꾸면 라이트(#5238d8, 더 어두움)와
+      다크(#9a86ff·b3a4ff, 더 밝음)가 반대 방향이라 그라디언트가 뒤집힌다.
+    - widget_setup.py: iOS Scriptable 위젯 스크립트 — 다른 런타임·다른 색 시스템
+      (Color.dynamic)이라 CSS 토큰과 무관하다.
+    """
+    import re
+    from pathlib import Path
+
+    report_dir = Path(__file__).resolve().parents[1] / "backend" / "report"
+    files = sorted(report_dir.glob("*.py"))
+    assert files, "backend/report 스캔 경로가 비었다 — glob이 깨졌다"
+
+    allowed_hex = {
+        "options_panel.py": {"#e5342f", "#1f66e0", "#dcdfe6", "#8b93a4"},
+        "vol_panel.py": {"#dcdfe6", "#8b93a4", "#1a1d24", "#e5342f", "#1f66e0"},
+        "dashboard.py": {"#e5342f", "#1f66e0", "#b3a4ff"},
+        "live_page.py": {
+            "#e5342f", "#1f66e0", "#8a94a6", "#a855f7",
+            "#9aa0a6", "#ec4899", "#f59e0b", "#22c55e", "#3b82f6",
+        },
+        "us_page.py": {"#e5342f", "#1f66e0", "#f0a020", "#6a4ff0", "#8a8f9a"},
+        "widget_setup.py": {
+            "#d32f2f", "#ff6b6b", "#1565c0", "#6ba3ff", "#000000", "#ffffff",
+        },
+    }
+
+    bad = []
+    for p in files:
+        if p.name == "theme.py":
+            continue
+        allowed = allowed_hex.get(p.name, set())
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            if "var(--" in line:
+                continue
+            for m in re.finditer(r"#[0-9a-fA-F]{6}\b", line):
+                if m.group(0).lower() not in allowed:
+                    bad.append("%s:%d:%s" % (p.name, i, m.group(0)))
+    assert bad == [], "허용 목록 밖 하드코딩 색: %s" % bad
+
+
 def test_hero_headline_is_sans_tabular_48():
     """kospinow 문법: 히어로는 모노가 아니라 sans 볼드 tabular다.
     Pretendard는 굽기당 766~791KB라 못 싣는다(2026-08-12 실측) — SF Pro로 같은 효과를 낸다."""
