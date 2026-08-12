@@ -1055,6 +1055,14 @@ def test_toggle_listener_restores_and_persists_open_state(tmp_path):
 
 @needs_node
 def test_toggle_listener_survives_private_mode_localstorage(tmp_path):
-    """사파리 프라이빗 모드 — localStorage.getItem/setItem이 둘 다 던져도 렌더가 안 죽어야 한다."""
-    out_raw, _out = _toggle_harness(tmp_path, throw=True)
+    """사파리 프라이빗 모드 — localStorage.getItem/setItem이 둘 다 던져도 렌더가 안 죽어야 한다.
+
+    "RESTORE_OK만 찍히면 통과"는 가짜 가드다 — 바깥 forEach 전체를 감싸는 try(Task 10
+    이전부터 있던 것)만으로도 스크립트는 안 죽는다. 안쪽 개별 try(getItem용·setItem용)가
+    빠지면 첫 섹션(sec-flow)의 throw가 바깥 catch까지 전파돼 forEach가 통째로 중단되고
+    **이후 모든 섹션이 toggle 리스너를 못 받아 재핏이 전멸**한다(2026-08-13 리뷰 실험:
+    FIT_AFTER_OPEN 2→0). 그래서 "안 죽었다"가 아니라 "sec-flow 이후 섹션도 정상 동작한다"를
+    본다 — per-item 격리가 살아있는지의 유일한 관측 가능한 신호."""
+    out_raw, out = _toggle_harness(tmp_path, throw=True)
     assert "RESTORE_OK" in out_raw
+    assert int(out["FIT_AFTER_OPEN"]) >= 1, "프라이빗 모드에서 재핏이 전부 죽었다(개별 try 가드 회귀)"
