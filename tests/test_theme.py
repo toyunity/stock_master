@@ -113,9 +113,12 @@ def test_pages_do_not_hardcode_colors():
             continue
         allowed = allowed_hex.get(p.name, set())
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if "var(--" in line:
-                continue
-            for m in re.finditer(r"#[0-9a-fA-F]{6}\b", line):
+            # var(--토큰) 자체를 지운 뒤 남은 hex만 본다. 줄 단위로 통째로
+            # 건너뛰면 `linear-gradient(135deg,var(--primary),#b3a4ff)`처럼
+            # 토큰과 하드코딩이 한 줄에 섞인 경우 hex가 검사에서 통째로
+            # 빠진다(2026-08-13 리뷰에서 발견 — 허용 목록에서 지워도 통과했다).
+            stripped = re.sub(r"var\(--[a-z0-9-]+\)", "", line)
+            for m in re.finditer(r"#[0-9a-fA-F]{6}\b", stripped):
                 if m.group(0).lower() not in allowed:
                     bad.append("%s:%d:%s" % (p.name, i, m.group(0)))
     assert bad == [], "허용 목록 밖 하드코딩 색: %s" % bad

@@ -129,6 +129,10 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   letter-spacing:-.03em;color:var(--text)}
 .ah-mark{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;color:#fff;
   font-size:15px;font-weight:900;font-family:var(--font-mono);
+  /* #b3a4ff는 토큰화 못 한다(2026-08-13 감사, tests/test_theme.py 허용 목록) — --primary보다
+     밝은 쪽으로 가는 라이트·다크 공통 그라디언트인데, --primary-ink는 라이트에서 --primary보다
+     더 어둡고 다크에서 더 밝아(theme.py :root 참조) 방향이 테마마다 반대다. 토큰으로 바꾸면
+     라이트 모드 그라디언트가 뒤집힌다. */
   background:linear-gradient(135deg,var(--primary),#b3a4ff);box-shadow:var(--accent-glow)}
 .ah-state{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;
   color:var(--text-2);background:var(--surface);border:1px solid var(--border);
