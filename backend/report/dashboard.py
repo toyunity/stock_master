@@ -147,7 +147,7 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   background:var(--warn-bg);color:var(--warn)}
 .mchip .mbadge.mbadge-closed{background:var(--surface-3);color:var(--text-2)}
 
-/* ── '글로벌' 섹션(미국채·원자재·해외지수) ──
+/* ── '지수' 섹션(국내·선물·미국채·원자재·해외지수) ──
    칩은 위 시장 스트립(.market/.mchip)과 그룹 소제목(.sectlabel)을 그대로 쓴다 —
    새 디자인 언어를 만들지 않는다(theme.py 단일 출처). 여기서 더하는 건 셋뿐:
    단위(.gu)·기준일(.gb)·접힌 줄(.gdig). */
@@ -167,7 +167,8 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
    두면 VIX·30년이 손대기 전엔 아예 안 보인다(실렌더 확인). .chips와 같은 관행. */
 #gsec .market{margin:0;flex-wrap:wrap;row-gap:7px}
 #gsec .gu{font-family:var(--font-num);font-size:11px;font-weight:600;color:var(--text-2)}
-/* 기준일 — 칩마다. 값보다 확실히 작게(읽히되 주인공은 아니게). */
+/* 신선도 줄 — 칩마다. 값보다 확실히 작게(읽히되 주인공은 아니게).
+   폭·overflow를 걸지 않는다: '실시간(지연)'처럼 긴 문구가 잘리면 안 된다. */
 #gsec .gb{font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);
   letter-spacing:.02em;margin-top:3px}
 #gsec-foot{margin-top:12px}
@@ -241,7 +242,7 @@ __REFRESH__
   </div>
 </details>
 <details class="sec" id="gsec" style="display:none">
-  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 글로벌
+  <summary><svg class="hic secic"><use href="#i-bars"/></svg> 지수
     <span class="gdig" id="gsec-dig"></span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div id="gsec-body"></div>
@@ -462,6 +463,15 @@ function gnum(v){ return v==null?'–':Number(v).toLocaleString('ko-KR',
 function gunitTx(u){ return (!u||u==='idx')?'':(u==='%'?'%':' '+u); }
 function gunitHtml(u){ return (!u||u==='idx')?''
   :(u==='%'?'%':'<span class="gu">'+esc(u)+'</span>'); }
+// 신선도 줄 — 상태만 말하고 시계는 안 찍는다. 어느 칩도 '09:02 기준'처럼 쓰지 않는다:
+// 그 줄만 다른 언어가 되고 "KST인가 ET인가"라는 질문을 새로 만든다. 시각은 푸터 한 곳뿐.
+// basis_kind·src는 서버가 실어 보낸다 — basis 문자열 모양이나 그룹 이름으로 추측하면
+// unit·rate_unit을 실어 막으려던 사고가 렌더러에서 재발한다.
+function gfresh(it){
+  if(it.fresh) return it.fresh;                     // 프런트 어댑터가 직접 정한 국내 칩
+  if(it.basis_kind==='live') return '실시간(지연)';
+  return (it.basis||'–')+(it.src==='treasury'?' 확정':' 마감');
+}
 function gchip(it){
   const cls=it.rate>0?'up':(it.rate<0?'down':'flat');
   const ar=it.rate>0?'▲':(it.rate<0?'▼':'·');
@@ -478,7 +488,7 @@ function gchip(it){
   return '<div class="mchip"><div class="ml">'+esc(it.label)+'</div>'
     +'<div class="mv">'+gnum(it.value)+gunitHtml(it.unit)
     +'<span class="mr '+cls+'">'+pct+'</span></div>'
-    +'<div class="gb">기준 '+esc(it.basis||'–')+'</div></div>';
+    +'<div class="gb">'+esc(gfresh(it))+'</div></div>';
 }
 function ggroup(g){
   return '<div class="sectlabel">'+esc(g.label)+'</div>'
@@ -517,9 +527,14 @@ async function loadWorldidx(){
   const dig=document.getElementById('gsec-dig');
   if(dig) dig.textContent=gdigest(d);
   const foot=document.getElementById('gsec-foot');
-  if(foot) foot.textContent='미 재무부 · FinanceDataReader · KIS 해외지수'
-    +' — 실시간이 아니라 기준일 값입니다'
-    +(d.asof?' · '+String(d.asof).slice(11,16)+' 조회':'');
+  if(foot){
+    // 금리가 CNBC로 승격됐는지에 따라 앞부분이 바뀐다 — 원천을 숨기지 않는다.
+    const live=gs.some(function(g){return (g.items||[]).some(function(x){
+      return x&&x.src==='cnbc';});});
+    foot.textContent=(live?'미국채 Tradeweb':'미 재무부(일 1회 확정)')
+      +' · 야후 선물 · KIS 해외지수 — 약 10~15분 지연'
+      +(d&&d.asof?' · '+String(d.asof).slice(11,16)+' 조회':'');
+  }
 }
 // 5분 — 서버 캐시(재무부 1시간·FDR 10분·KIS 지수 60초)가 대부분 흡수한다.
 // 접힌 줄에 값이 보여야 해서 VKOSPI처럼 펼칠 때 조회로 미룰 수 없다.

@@ -68,10 +68,12 @@ global.fetch = async (u) => {
 """
 
 
-def _it(key, label, value, unit, rate, sign, basis, src):
+def _it(key, label, value, unit, rate, sign, basis, src, basis_kind="date",
+        rate_unit="%"):
     """worldidx.Item 계약 그대로 — 키가 늘거나 줄면 프런트가 먼저 깨져야 한다."""
     return {"key": key, "label": label, "value": value, "unit": unit,
-            "rate": rate, "sign": sign, "basis": basis, "src": src}
+            "rate": rate, "sign": sign, "basis": basis, "src": src,
+            "rate_unit": rate_unit, "basis_kind": basis_kind}
 
 
 def _payload(**over):
@@ -79,15 +81,18 @@ def _payload(**over):
     d = {"asof": "2026-08-11T21:40:00+09:00",
          "groups": [
              {"label": "미국 금리", "items": [
-                 _it("ust2y", "2년", 4.25, "%", 1.43, "up", "08-10", "treasury"),
-                 _it("ust10y", "10년", 4.72, "%", 1.51, "up", "08-10", "treasury"),
-                 _it("ust30y", "30년", 5.25, "%", 0.0, "flat", "08-10", "treasury")]},
+                 _it("ust2y", "2년", 4.25, "%", 1.43, "up", "08-10", "treasury",
+                     rate_unit="bp"),
+                 _it("ust10y", "10년", 4.72, "%", 1.51, "up", "08-10", "treasury",
+                     rate_unit="bp"),
+                 _it("ust30y", "30년", 5.25, "%", 0.0, "flat", "08-10", "treasury",
+                     rate_unit="bp")]},
              {"label": "원자재", "items": [
                  _it("wti", "WTI", 82.13, "$/bbl", 0.77, "up", "08-10", "fdr"),
                  _it("gold", "금", 4361.80, "$/oz", 1.67, "up", "08-10", "fdr")]},
              {"label": "해외지수", "items": [
                  _it("spx", "S&P500", 7753.11, "idx", -0.06, "down", "08-11", "kis"),
-                 _it("comp", "나스닥", 26605.36, "idx", 0.31, "up", "08-11", "kis"),
+                 _it("comp", "나스닥 종합", 26605.36, "idx", 0.31, "up", "08-11", "kis"),
                  _it("vix", "VIX", 15.54, "idx", 0.52, "up", "08-11", "kis")]}]}
     d.update(over)
     return d
@@ -152,19 +157,39 @@ def test_chip_renderer_reuses_the_market_chip_classes():
 # ── 실행 스모크(node) ─────────────────────────────────────────────────────
 
 @needs_node
-def test_every_chip_prints_its_own_basis(tmp_path):
-    """**항목마다** 기준일. 그룹 하나에 한 번이 아니다 — 원천이 달라 날짜가 섞인다
-    (재무부·FDR은 직전 영업일, KIS 지수는 당일). 살아 있는 코스피 칩 아래에서
-    기준일 없는 숫자는 지금 값으로 읽힌다."""
+def test_every_chip_prints_its_own_freshness(tmp_path):
+    """**항목마다** 신선도 줄. 그룹 하나에 한 번이 아니다 — 원천이 달라 상태가 섞인다.
+
+    살아 있는 코스피 칩 아래에서 상태 없는 숫자는 지금 값으로 읽힌다. 재무부는
+    일 1회 '확정'이고 나머지 date는 '마감'이다 — 문구를 가르는 건 src다."""
     res = _run(tmp_path, _payload())
     assert res["display"] == ""                     # 데이터가 오면 섹션이 뜬다
     body = res["body"]
-    assert body.count('class="mchip"') == 8         # 3 + 2 + 3
-    assert body.count("기준 ") == 8                 # 칩 하나에 하나씩
-    assert body.count("08-10") == 5                 # 미국채 3 + 원자재 2
-    assert body.count("08-11") == 3                 # 해외지수 3
+    assert body.count('class="gb"') == 8            # 3 + 2 + 3, 칩 하나에 하나씩
+    assert body.count("08-10 확정") == 3            # 미국채(treasury)
+    assert body.count("08-10 마감") == 2            # 원자재(fdr)
+    assert body.count("08-11 마감") == 3            # 해외지수(kis)
+    assert "기준 " not in body                      # 옛 문구는 사라져야 한다
     for label in ("미국 금리", "원자재", "해외지수"):
         assert label in body, label + " 소제목 누락"
+
+
+@needs_node
+def test_live_items_say_so_instead_of_printing_a_date(tmp_path):
+    """basis_kind=live면 날짜가 아니라 상태를 찍는다.
+
+    FDR 마지막 봉은 진행 중 세션이라 값은 실시간인데 야후가 하루 전 날짜를 찍는다 —
+    그 날짜를 그대로 보여주면 살아 있는 값이 어제 종가로 읽힌다(정반대 착시)."""
+    live = [{"label": "원자재", "items": [
+        _it("wti", "WTI", 83.51, "$/bbl", 0.37, "up", "08-11", "fdr",
+            basis_kind="live")]},
+        {"label": "미국 금리", "items": [
+            _it("ust10y", "10년", 4.69, "%", 0.6, "up", "08-11", "cnbc",
+                basis_kind="live", rate_unit="bp")]}]
+    body = _run(tmp_path, _payload(groups=live))["body"]
+    assert body.count("실시간(지연)") == 2
+    assert "08-11" not in body                      # live면 날짜를 안 찍는다
+    assert "4.69%" in body and "0.6bp" in body
 
 
 @needs_node
@@ -229,13 +254,23 @@ def test_unknown_rate_and_basis_render_a_dash_not_a_fake_zero(tmp_path):
         _it("wti", "WTI", 82.13, "$/bbl", None, "flat", None, "fdr")]}]
     res = _run(tmp_path, _payload(groups=one))
     assert "–" in res["body"] and "0.00%" not in res["body"]
-    assert "기준 –" in res["body"]
+    assert "– 마감" in res["body"]                  # 기준일을 모르면 대시
 
 
 @needs_node
 def test_footer_names_the_sources_and_the_query_time(tmp_path):
-    """각주는 원천과 조회 시각을 숨기지 않는다 — 이 값들이 실시간이 아님을 말한다."""
+    """각주는 원천과 조회 시각을 숨기지 않는다 — 이 값들이 무지연이 아님을 말한다."""
     foot = _run(tmp_path, _payload())["foot"]
     assert "재무부" in foot and "KIS" in foot
     assert "21:40" in foot                          # asof(KST)에서 시:분
-    assert "실시간" in foot
+    assert "지연" in foot
+
+
+@needs_node
+def test_footer_names_tradeweb_when_the_yields_are_live(tmp_path):
+    """CNBC로 승격된 동안은 각주도 그렇게 말한다 — 원천을 숨기지 않는다."""
+    live = [{"label": "미국 금리", "items": [
+        _it("ust10y", "10년", 4.69, "%", 0.6, "up", "08-11", "cnbc",
+            basis_kind="live", rate_unit="bp")]}]
+    foot = _run(tmp_path, _payload(groups=live))["foot"]
+    assert "Tradeweb" in foot and "재무부" not in foot
