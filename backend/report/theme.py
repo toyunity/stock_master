@@ -115,6 +115,11 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
   margin:3px 0 12px;line-height:1.5;font-variant-numeric:tabular-nums}
 .panel>h2 .fresh{flex-basis:100%;margin:4px 0 0}
 
+/* 상대시간 — "지금 살아 있는가"를 말한다. 절대시각(.fresh)은 "언제 기준값인가"를
+   말하므로 둘은 대체재가 아니다. 우리 basis_kind 규율이 후자다. */
+.ago{font-size:11.5px;color:var(--text-3);font-weight:500;
+  font-variant-numeric:tabular-nums;letter-spacing:0;white-space:nowrap}
+
 /* 배지(상태) — 모노 대문자 유틸 태그 */
 .badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;
   padding:3px 9px;border-radius:var(--r-sm);color:#fff;vertical-align:middle;
@@ -292,6 +297,27 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,
 img,canvas{max-width:100%}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+"""
+
+# ── 상대시간 포맷터 — 페이지들이 공유하는 전역 ago(). ──
+# 브라우저 시점 기준이어야 맞으므로 파이썬 대응물은 만들지 않는다(서버 렌더 시각으로
+# 찍으면 탭을 오래 열어둔 아이폰에서 "1초 전"이 몇 시간째 남는다).
+# 하니스(node)에서도 그대로 eval 되도록 DOM·window를 건드리지 않는다.
+AGO_JS = """
+function ago(t, now){
+  var n = (now == null ? Date.now() : now), d = n - t;
+  if (d >= 0) {
+    if (d < 5000) return '방금';
+    if (d < 60000) return Math.floor(d / 1000) + '초 전';
+    if (d < 3600000) return Math.floor(d / 60000) + '분 전';
+    var dt = new Date(t);
+    return ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+  }
+  var f = -d;
+  if (f < 86400000) return Math.max(1, Math.round(f / 3600000)) + '시간 뒤';
+  var days = Math.round(f / 86400000);
+  return days <= 1 ? '내일' : days + '일 뒤';
 }
 """
 
