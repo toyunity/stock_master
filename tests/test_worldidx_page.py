@@ -61,6 +61,7 @@ global.fetch = async (u) => {
   if (s.indexOf('/api/worldidx') >= 0) return {ok: !fail, json: async () => payload};
   if (mkt && s.indexOf('/api/market') >= 0) return {ok: true, json: async () => mkt.market};
   if (mkt && s.indexOf('/api/futures') >= 0) return {ok: true, json: async () => mkt.futures};
+  if (mkt && s.indexOf('/api/kospi-temp') >= 0) return {ok: true, json: async () => mkt.temp};
   return {ok: false, json: async () => ({})};
 };
 
@@ -294,13 +295,20 @@ def test_footer_names_tradeweb_when_the_yields_are_live(tmp_path):
 # ── 국내 두 그룹 미러링 ───────────────────────────────────────────────────
 
 def _mkt():
-    """/api/market + /api/futures 실응답 모양(장중)."""
+    """/api/market + /api/futures + /api/kospi-temp 실응답 모양(장중)."""
     return {"market": {"kospi": {"price": 6525.01, "rate": 3.0},
                        "kosdaq": {"price": 856.4, "rate": -0.17}},
             "futures": {"k200": {"label": "K200선물", "price": 880.25,
                                  "rate": 2.8, "closed": False},
                         "nq": {"label": "나스닥 선물", "price": 29641.0,
-                               "rate": -0.34}}}
+                               "rate": -0.34}},
+            "temp": {"asof": "2026-08-12T12:50:00+09:00", "items": [
+                {"key": "ma_gap", "label": "100일 평균", "value": -6.34,
+                 "unit": "%", "verdict": "눌림"},
+                {"key": "ema_gap", "label": "12일 평균", "value": 2.63,
+                 "unit": "%", "verdict": "위"},
+                {"key": "down_avg", "label": "하락폭(20일)", "value": 4.99,
+                 "unit": "%p", "verdict": "거침"}]}}
 
 
 @needs_node
@@ -312,7 +320,8 @@ def test_domestic_chips_are_mirrored_into_the_section(tmp_path):
     res = _run(tmp_path, _payload(), mkt=_mkt())
     body = res["body"]
     assert "국내 지수" in body and "지수 선물" in body
-    assert body.count('class="mchip"') == 12        # 2 + 2 + 3 + 2 + 3
+    # 국내 2 + 코스피 온도 3 + 선물 2 + 미국 금리 3 + 원자재 2 + 해외지수 3
+    assert body.count('class="mchip"') == 15
     for txt in ("코스피", "코스닥", "K200선물", "나스닥 선물"):
         assert txt in body, txt + " 미러링 누락"
     # 국내 그룹이 맨 앞이다
@@ -331,10 +340,13 @@ def test_futures_chip_freshness_comes_from_the_server_flags(tmp_path):
 
 @needs_node
 def test_section_shows_up_on_domestic_alone_when_every_remote_source_dies(tmp_path):
-    """해외 원천이 다 죽어도 코스피는 보여야 한다 — 그룹이 하나라도 있으면 뜬다."""
+    """해외 원천이 다 죽어도 코스피는 보여야 한다 — 그룹이 하나라도 있으면 뜬다.
+
+    코스피 온도도 함께 남는다: /api/kospi-temp는 worldidx와 다른 원천이라 저쪽이
+    통째로 죽어도 살아 있다."""
     res = _run(tmp_path, _payload(groups=[]), mkt=_mkt())
     assert res["display"] == ""
-    assert res["body"].count('class="mchip"') == 4
+    assert res["body"].count('class="mchip"') == 7      # 국내 2 + 온도 3 + 선물 2
     assert "미국 금리" not in res["body"]
 
 
@@ -376,3 +388,48 @@ def test_section_registers_a_toggle_listener():
     html = render_dashboard([], [], "2026-08-11")
     assert "'toggle'" in html or '"toggle"' in html
     assert "widxSchedule" in html
+
+
+@needs_node
+def test_kospi_temperature_group_sits_right_after_the_domestic_index(tmp_path):
+    """읽는 순서 — '코스피 6,525' 다음에 '그게 최근 대비 어디쯤인가'."""
+    body = _run(tmp_path, _payload(), mkt=_mkt())["body"]
+    assert "코스피 온도" in body
+    assert body.index("국내 지수") < body.index("코스피 온도") < body.index("지수 선물")
+    assert body.count('class="mchip"') == 15        # 2 + 3 + 2 + 3 + 2 + 3
+
+
+@needs_node
+def test_verdict_sits_next_to_the_value_not_on_the_freshness_line(tmp_path):
+    """판정은 값 옆에, 세 번째 줄은 다른 칩과 똑같이 신선도.
+
+    .gb를 판정에 내주면 한 섹션 안에서 같은 줄이 두 가지를 뜻하게 된다 — 이 저장소가
+    반복해서 잡아온 '라벨이 조용히 틀리는' 결함과 같은 부류다."""
+    body = _run(tmp_path, _payload(), mkt=_mkt())["body"]
+    for w in ("눌림", "위", "거침"):
+        assert w in body, w + " 판정 누락"
+    # 판정 단어가 신선도 줄에 들어가지 않았는지 — .gb 안엔 실시간/마감/기준일만 온다.
+    import re
+    for gb in re.findall(r'<div class="gb">([^<]*)</div>', body):
+        assert "눌림" not in gb and "거침" not in gb, gb
+    assert body.count('class="gb"') == 15           # 칩마다 하나씩, 높이 균일
+
+
+@needs_node
+def test_verdict_is_colourless(tmp_path):
+    """판정에 up/down 색을 쓰지 않는다 — 이격도가 음수라고 '나쁨'이 아니다."""
+    body = _run(tmp_path, _payload(), mkt=_mkt())["body"]
+    i = body.index("눌림")
+    seg = body[max(0, i - 120):i]
+    assert 'class="mr up"' not in seg and 'class="mr down"' not in seg
+
+
+@needs_node
+def test_temperature_group_vanishes_when_its_source_dies(tmp_path):
+    """items=[]면 그 그룹만 빠지고 나머지는 그대로 뜬다."""
+    m = _mkt()
+    m["temp"] = {"asof": "2026-08-12T12:50:00+09:00", "items": []}
+    body = _run(tmp_path, _payload(), mkt=m)["body"]
+    assert "코스피 온도" not in body
+    assert "국내 지수" in body and "지수 선물" in body
+    assert body.count('class="mchip"') == 12

@@ -448,6 +448,10 @@ async function loadMarket(){
     const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
                  fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
     if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
+    try{
+      const rt=await fetch('/api/kospi-temp');
+      if(rt&&rt.ok) TEMP=await rt.json();
+    }catch(e){}
     renderIdx();
   }catch(e){}
 }
@@ -459,7 +463,7 @@ loadMarket(); setInterval(loadMarket,30000);
 // 단위도 서버가 준 unit 문자열을 그대로 쓴다. 프런트가 '$'를 지어내는 순간, 설계
 // 조사에서 걸러낸 프록시 사고(GLD 402를 '금 402'로 읽는)가 화면에서 재발한다.
 // ── '지수' 섹션 — 국내 어댑터. 서버는 이 두 그룹을 모른다(worldidx는 해외 전용). ──
-let MKT={}, FUT={}, WIDX=null;      // 각 로더의 마지막 응답
+let MKT={}, FUT={}, WIDX=null, TEMP=null;      // 각 로더의 마지막 응답
 // ⚠️ 설계 문서 C절은 판정 근거로 `pulseState()`를 적었으나 **여기서 벗어난다**:
 // pulseState는 NXT 프리/애프터도 '장중'으로 치는데 그건 개별 종목 얘기지 지수가 아니다.
 // 그대로 쓰면 20시에 코스피 칩이 '실시간'이라 우긴다. 코스피·코스닥 **지수**는
@@ -486,6 +490,12 @@ function gdomestic(){
   const idx=[gadapt('코스피',MKT.kospi,live),
              gadapt('코스닥',MKT.kosdaq,live)].filter(Boolean);
   if(idx.length) gs.push({label:'국내 지수', items:idx});
+  // '코스피 온도' — 국내 지수 바로 다음. "코스피 6,525" 다음에 "그게 최근 대비 어디쯤".
+  // 신선도는 국내 지수 칩과 **같은 판정**이어야 한다(같은 원천의 같은 봉이다).
+  const tp=((TEMP&&TEMP.items)||[]).map(function(x){
+    return {key:x.key, label:x.label, value:x.value, unit:x.unit,
+            verdict:x.verdict, fresh:live};});
+  if(tp.length) gs.push({label:'코스피 온도', items:tp});
   // 선물은 서버가 closed·stale을 준다 — 프런트가 세션을 다시 판정하지 않는다.
   const fx=function(o){ return gadapt(null,o,
     o&&o.closed?'마감':(o&&o.stale?'지연':'실시간')); };
@@ -518,6 +528,13 @@ function gchip(it){
   // 기준일도 마찬가지다: 없으면 대시. 오늘 날짜로 추측해 찍으면 기준일을 실은 뜻이 없다.
   // 등락 단위는 서버가 준 rate_unit을 그대로 쓴다 — 국채는 bp다(4.72% ▲7bp).
   // 여기서 '%'를 가정하면 금리가 1.51%p 뛴 것처럼 읽힌다(worldidx._bp_sign 참조).
+  // 판정 단어(코스피 온도)는 등락률 자리에 **무채색으로** 앉는다. up/down 색을 쓰지
+  // 않는 이유: 이격도가 음수라고 '나쁨'이 아니다(눌린 게 기회일 수도 있다) — 색으로
+  // 말할 방향이 없다. 신선도 줄(.gb)은 다른 칩과 똑같이 유지한다.
+  if(it.verdict) return '<div class="mchip"><div class="ml">'+esc(it.label)+'</div>'
+    +'<div class="mv">'+gnum(it.value)+gunitHtml(it.unit)
+    +'<span class="mr flat">'+esc(it.verdict)+'</span></div>'
+    +'<div class="gb">'+esc(gfresh(it))+'</div></div>';
   const ru=it.rate_unit||'%';
   // bp는 정수로 읽는 관례라 뒤의 .0을 떼고 보여준다(7bp, 7.5bp). %는 소수 2자리 고정.
   const rv=it.rate==null?'':(ru==='bp'
