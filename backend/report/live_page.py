@@ -17,7 +17,7 @@ SSE(/api/live/{code}/stream)로 1초마다 전체 스냅샷을 받아 그린다(
 
 from html import escape
 
-from backend.report.dashboard import (_BASE_CSS, _CHART_THEME_JS, _DISCLAIMER,
+from backend.report.dashboard import (_AGO_JS, _BASE_CSS, _CHART_THEME_JS, _DISCLAIMER,
                                       _ICON_SPRITE, _LIB_PATH, _NAV_LOADER,
                                       _PWA_HEAD, _TABBAR)
 
@@ -231,14 +231,18 @@ __ICONS__
 <div id="app"><div id="app-scroll">
 <div class="hero">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
-    <span class="hname">__NAME__</span> <span class="code">__CODE__</span>
-    <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
-    <span id="conn" class="badge b-off">연결 중…</span>
-    <span id="mstate" class="badge b-off">상태 확인 중</span></div>
+    <span class="hname">__NAME__</span> <span class="code">__CODE__</span></div>
   <div class="price" id="price">–</div>
-  <div class="chg flat" id="chg"></div>
+  <div class="plabel" id="plabel">현재가</div>
+  <span class="pill flat" id="chg"></span>
   <div class="note" id="walert"></div>
   <div id="today-line"></div>
+  <div class="hstate">
+    <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
+    <span id="conn" class="badge b-off">연결 중…</span>
+    <span id="mstate" class="badge b-off">상태 확인 중</span>
+    <span class="ago" id="hago"></span>
+  </div>
 </div>
 
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
@@ -495,6 +499,7 @@ __ADR_PANEL__
 
 <script>__LIB__</script>
 <script>
+__AGO_JS__
 const CODE='__CODE__';
 let WATCH=__WATCH__; // 감시선 [{price,label}] — 서버 저장(/api/watch)에서 주입, 편집 시 가변
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
@@ -1031,9 +1036,14 @@ function render(S){
     var cg=document.getElementById('chg');
     cg.textContent=(M.change!=null?sgn[M.sign]+won(Math.abs(M.change)):'')
       +(M.rate!=null?'  '+(M.rate>0?'+':(M.rate<0?'-':''))+Math.abs(M.rate).toFixed(2)+'%':'');
-    cg.className='chg '+M.sign;
+    cg.className='pill '+M.sign;
     document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 거래대금 <span class="n">'+eok(M.value).replace('+','')
       +'</span> · 체결강도 <span class="n">'+(M.strength==null?'–':M.strength.toFixed(1))+'</span> · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    // 히어로 하단 상대시간(#hago) — M.time은 체결시각 "HH:MM:SS"(KST), 날짜 없음.
+    // toTs()는 이 벽시계를 UTC인 척 만들어(차트 라벨용) 9h(32400000ms) 앞선 값을 주므로,
+    // ago()가 Date.now()(진짜 epoch)와 비교할 수 있게 9h를 빼서 진짜 epoch로 되돌린다(2026-08-12).
+    try{var _h=document.getElementById('hago');
+        if(_h&&M.time)_h.textContent=ago(toTs(M.time)*1000-32400000);}catch(e){}
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
     updateLiveCandle(M); // 실시간 봉 갱신 + 현재가 라인 + 다음 봉 카운트다운
   }
@@ -1491,6 +1501,7 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
+            .replace("__AGO_JS__", _AGO_JS)
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)

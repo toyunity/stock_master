@@ -62,3 +62,13 @@ def test_rail_component_exists():
 
 def test_direction_bar_variants_exist():
     assert ".card--up{" in BASE_CSS and ".card--down{" in BASE_CSS
+
+
+def test_hero_headline_is_sans_tabular_48():
+    """kospinow 문법: 히어로는 모노가 아니라 sans 볼드 tabular다.
+    Pretendard는 굽기당 766~791KB라 못 싣는다(2026-08-12 실측) — SF Pro로 같은 효과를 낸다."""
+    hero = BASE_CSS.split(".hero .price{", 1)[1].split("}", 1)[0]
+    assert "font-size:48px" in hero
+    assert "font-weight:800" in hero
+    assert "tabular-nums" in hero
+    assert "var(--font-num)" not in hero      # 모노를 쓰지 않는다

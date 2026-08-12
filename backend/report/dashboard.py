@@ -24,6 +24,7 @@ _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-chart
 
 # 공유 디자인 시스템(theme.py)에서 재노출 — live_page/scanner_page가 이 이름들을 import.
 from backend.report.theme import (  # noqa: E402
+    AGO_JS as _AGO_JS,
     BASE_CSS as _BASE_CSS,
     CHART_THEME_JS as _CHART_THEME_JS,
     DISCLAIMER as _DISCLAIMER,

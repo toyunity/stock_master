@@ -146,11 +146,16 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
   border-bottom:1px solid var(--border)}
 .hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
 .hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
-.hero .price{font-family:var(--font-num);font-size:34px;margin:6px 0 0;font-weight:700;
-  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
-.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
-  font-variant-numeric:tabular-nums}
-.hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
+/* 2026-08-12 6차: 히어로 숫자는 모노가 아니라 sans 볼드 tabular.
+   Pretendard(굽기당 766~791KB)는 자기완결 규칙과 양립 불가라 SF Pro로 같은 효과를 낸다.
+   하위 계기용 .price(37px 모노)는 theme.py에 그대로 남아 있다 — 이건 히어로 전용 덮어쓰기. */
+.hero .price{font-family:inherit;font-size:48px;margin:10px 0 0;font-weight:800;
+  letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.02}
+.hero .plabel{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
+.hero .chg{margin:10px 0 0}
+.hero .hstate{display:flex;align-items:center;gap:6px;margin-top:12px;
+  padding-top:11px;border-top:1px solid var(--border-2)}
+.hero .hstate .ago{margin-left:auto}
 .hero .sig{margin-top:8px}
 
 /* 상태·등락 필 — 모노 유틸. 2026-08-12: live_page 로컬에서 승격(3화면이 쓴다).
