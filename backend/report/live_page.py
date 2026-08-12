@@ -28,18 +28,6 @@ __PWA_HEAD__
 <style>
 __BASE_CSS__
 /* ── /live 고유 스타일 ── */
-.hero{background:var(--bg);margin:0 -16px 4px;
-  padding:8px 16px 12px;
-  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
-  border-bottom:1px solid var(--border)}
-.hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
-.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
-.hero .price{font-family:var(--font-num);font-size:34px;margin:6px 0 0;font-weight:700;
-  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
-.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
-  font-variant-numeric:tabular-nums}
-.hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
-.hero .sig{margin-top:8px}
 .ob{margin-top:8px}
 /* 기업 체력(접힘) — 접힌 줄엔 숫자 요약, 펼치면 지표별 쉬운말 + ⓘ 개념 */
 .findig{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--text-2);

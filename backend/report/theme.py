@@ -126,6 +126,22 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
   letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 .price.up{color:var(--up)} .price.down{color:var(--down)} .price.flat{color:var(--text)}
 
+/* 종목 상세 히어로 — /live·/live/{미국티커} 공용.
+   2026-08-12: live_page.py 페이지 로컬에만 있어 us_page 히어로가 민짜로 렌더됐다.
+   화면 두 개가 쓰는 순간 단일 출처(theme.py)로 올라와야 한다. */
+.hero{background:var(--bg);margin:0 -16px 4px;
+  padding:8px 16px 12px;
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+  border-bottom:1px solid var(--border)}
+.hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
+.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
+.hero .price{font-family:var(--font-num);font-size:34px;margin:6px 0 0;font-weight:700;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
+.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
+  font-variant-numeric:tabular-nums}
+.hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
+.hero .sig{margin-top:8px}
+
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
 .note:empty{display:none}
