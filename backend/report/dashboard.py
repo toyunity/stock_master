@@ -583,9 +583,26 @@ function renderIdx(){
       +(WIDX&&WIDX.asof?' · '+String(WIDX.asof).slice(11,16)+' 조회':'');
   }
 }
-// 5분 — 서버 캐시(재무부 1시간·FDR 10분·KIS 지수 60초)가 대부분 흡수한다.
-// 접힌 줄에 값이 보여야 해서 VKOSPI처럼 펼칠 때 조회로 미룰 수 없다.
-loadWorldidx(); setInterval(loadWorldidx,300000);
+// 폴링 주기 — 펼치면 60초, 접히면 5분. 접힌 줄(digest)의 세 값은 분 단위로 안 변하고,
+// 아무도 안 보는 값을 분당 여러 번 두드릴 이유가 없다. 실제 원격 호출량은 서버 캐시가
+// 정한다(금리·원자재 600초, KIS 지수 60초) — 펼침 60초가 CNBC 호출을 늘리지는 않는다.
+let _widxTimer=null, _widxMs=0;
+function widxSchedule(){
+  const sec=document.getElementById('gsec');
+  const ms=(sec&&sec.open)?60000:300000;
+  if(ms===_widxMs) return;                 // 같은 주기면 타이머를 새로 만들지 않는다
+  _widxMs=ms;
+  if(_widxTimer) clearInterval(_widxTimer);
+  _widxTimer=setInterval(loadWorldidx, ms);
+}
+(function(){
+  const sec=document.getElementById('gsec');
+  if(sec&&sec.addEventListener) sec.addEventListener('toggle', function(){
+    widxSchedule();
+    if(sec.open) loadWorldidx();           // 펼치는 즉시 한 번 — 5분 묵은 값을 안 보여준다
+  });
+})();
+loadWorldidx(); widxSchedule();
 __OPT_JS__
 __VOL_JS__
 // 시장상태 펄스(헤더 시그니처): KR 세션 중=초록 / 야간(미국장 시간)=인디고 / 그 외=회색.

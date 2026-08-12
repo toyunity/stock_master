@@ -44,7 +44,14 @@ global.document = {
 };
 global.window = {devicePixelRatio: 1, addEventListener: () => {}};
 global.getComputedStyle = () => ({getPropertyValue: () => ''});
-global.setInterval = () => 0;
+// 폴링 주기를 **로더 이름과 함께** 기록한다. 주기만 모으면 이 페이지의 다른 로더
+// (loadSemi·marketPulse가 60초, loadOptions·loadFundamentals·loadOutlook이 5분)와
+// 구별되지 않아, worldidx 주기를 검사하려던 단언이 남의 타이머를 보게 된다.
+const timers = [];
+global.setInterval = (fn, ms) => {
+  timers.push({fn: (fn && fn.name) || '?', ms: ms});
+  return timers.length;
+};
 global.clearInterval = () => {};
 // **/api/worldidx에만** 이 페이로드를 준다 — 같은 스크립트의 다른 로더(가격·시장·
 // 반도체·옵션)까지 같은 응답을 받으면 무엇을 검증했는지 알 수 없다.
@@ -67,6 +74,7 @@ global.fetch = async (u) => {
       dig: (els['gsec-dig'] || {}).textContent || '',
       foot: (els['gsec-foot'] || {}).textContent || '',
       display: ((els['gsec'] || {}).style || {}).display,
+      timers: timers,
     }));
   } catch (e) { console.log(JSON.stringify({error: String(e && e.stack || e)})); }
 })();
@@ -344,3 +352,27 @@ def test_worldidx_poll_does_not_erase_the_domestic_groups(tmp_path):
     합치지 않으면 worldidx 폴링(느림)이 국내 그룹(빠름)을 덮어써서 지운다."""
     res = _run(tmp_path, _payload(), mkt=_mkt())
     assert "코스피" in res["body"] and "미국 금리" in res["body"]
+
+
+# ── 폴링 주기 ─────────────────────────────────────────────────────────────
+
+@needs_node
+def test_polling_is_slow_while_the_section_is_collapsed(tmp_path):
+    """접히면 5분, 펼치면 60초.
+
+    접힌 줄의 세 값은 분 단위로 안 변한다. 아무도 안 보는 값에 CNBC를 분당 3콜씩
+    때릴 이유가 없다. (서버 캐시가 실제 원격 호출량을 정하므로 60초 폴링이 CNBC
+    호출을 늘리지는 않지만, 굳이 두드릴 이유도 없다.)"""
+    res = _run(tmp_path, _payload(), mkt=_mkt())    # 하니스 mock은 open:false
+    # **worldidx 타이머만** 본다. 이 페이지엔 loadSemi·marketPulse가 이미 60초로
+    # 돌고 있어, 주기 목록 전체에서 60000을 찾으면 남의 타이머를 보게 된다.
+    widx = [t["ms"] for t in res["timers"] if t["fn"] == "loadWorldidx"]
+    assert widx == [300000], res["timers"]          # 접힘 = 5분, 타이머는 하나뿐
+    assert 60000 not in widx, "접힌 채로 60초 폴링 — 접힘 분기 없음"
+
+
+def test_section_registers_a_toggle_listener():
+    """펼침/접힘 전환에 주기를 다시 잡으려면 toggle을 들어야 한다."""
+    html = render_dashboard([], [], "2026-08-11")
+    assert "'toggle'" in html or '"toggle"' in html
+    assert "widxSchedule" in html
