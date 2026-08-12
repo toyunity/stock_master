@@ -24,6 +24,7 @@ def test_pill_is_shared_and_has_direction_variants():
 
 
 def _selectors(css: str) -> set:
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)  # 주석이 셀렉터에 붙는 것 방지
     return {re.sub(r"\s+", "", m.group(1))
             for m in re.finditer(r"([^{}\n][^{}]*)\{[^{}]*\}", css)}
 
