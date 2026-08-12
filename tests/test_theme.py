@@ -73,6 +73,8 @@ def test_pages_do_not_hardcode_colors():
     새로 걸렸다(문서화된 예외 목록 아래, 전부 아래 사유 중 하나).
     auth.py는 이 글롭(backend/report/*.py) 밖이라 검사 대상이 아니다 — 6차
     리디자인 이전 토큰을 자체 복제한 별도 파일이라 통합은 범위 밖(auth.py:328 주석 참고).
+    이 검사는 줄 단위 정규식이라 주석 안 텍스트를 구분하지 않는다 — 한글 주석
+    산문에 `#fff` 같은 문자열이 새로 들어가면 오탐(허용 목록에 없으면 걸림)한다.
 
     예외 사유:
     - options_panel.py·vol_panel.py: `CV('--x')||'#hex'` 폴백. theme.py의
