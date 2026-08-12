@@ -16,9 +16,13 @@ needs_node = pytest.mark.skipif(shutil.which("node") is None,
 @pytest.fixture(autouse=True)
 def _isolate_watch_cache(tmp_path, monkeypatch):
     # render_live_page가 data/cache/watch_lines.json(사용자 편집분)을 읽어 WATCH를 주입하므로,
-    # 실제 캐시 상태에 의존하지 않도록 격리한다(파일 없음 → config 기본값 절대선+예약매도).
+    # 실제 캐시 상태에 의존하지 않도록 격리한다(파일 없음 → config 시드로 폴백).
+    # config 시드의 기본값은 비어 있으므로(개인 매매 목표 비노출) 테스트가 자기 시드를 든다.
     from backend.config import settings
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "watch_lines", {
+        "000660": [{"price": 100_000, "label": "시드A"},
+                   {"price": 150_000, "label": "시드B"}]})
 
 _HARNESS = r"""
 const fs = require('fs');
@@ -207,7 +211,7 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert "빚내서 산 주식" in page and "반대매매" in page
     # 감시선(P1-8): 설정 기본값 2개가 라벨 달린 수평선으로 렌더
     # (현재가 이동 라인도 createPriceLine으로 추가되므로 부분집합으로 검사)
-    assert "절대선" in texts["watch-lines"] and "예약매도" in texts["watch-lines"]
+    assert "시드A" in texts["watch-lines"] and "시드B" in texts["watch-lines"]
     # 확정 밴드 · 태그(설계 2026-07-20)
     page = html_p.read_text(encoding="utf-8")
     assert "tag-fixed" in page and "tag-live" in page
@@ -333,23 +337,23 @@ def test_render_js_stall_overlay_on_halt(tmp_path):
 
 @needs_node
 def test_render_js_watch_line_alert_fires_once(tmp_path):
-    # 감시선 1,853,000 ±0.5% 진입 → 인페이지 알림 문구(브라우저 알림·사운드는
+    # 감시선 100,000 ±0.5% 진입 → 인페이지 알림 문구(브라우저 알림·사운드는
     # node 환경에 없어 가드로 무시됨) — 렌더가 죽지 않아야 한다(P1-8)
     snap = _full_snapshot()
-    snap["market"]["price"] = 1_858_000  # |1858000-1853000|/1853000 = 0.27%
+    snap["market"]["price"] = 100_270  # |100270-100000|/100000 = 0.27%
     _, texts = _run_harness(tmp_path, snap)
-    assert "절대선" in texts["walert"] and "1,853,000" in texts["walert"]
+    assert "시드A" in texts["walert"] and "100,000" in texts["walert"]
 
 
 @needs_node
 def test_render_js_watch_alert_on_gap_through_crossing(tmp_path):
     # 스냅샷(1초) 사이 급변으로 밴드를 건너뛴 경우에도 부호 교차로 알림(리뷰 확정)
     snap1 = _full_snapshot()
-    snap1["market"]["price"] = 1_880_000   # 감시선 위 1.46% — 밴드 밖
-    snap2 = dict(snap1, market=dict(snap1["market"], price=1_830_000))  # 아래로 점프
+    snap1["market"]["price"] = 101_460   # 감시선 위 1.46% — 밴드 밖
+    snap2 = dict(snap1, market=dict(snap1["market"], price=98_800))    # 아래로 점프
     _, texts = _run_harness(tmp_path, snap1, snap2)
-    assert "절대선" not in texts["walert"]        # 첫 스냅샷은 미발동
-    assert "절대선" in texts["walert2"]           # 교차 감지 → 발동
+    assert "시드A" not in texts["walert"]         # 첫 스냅샷은 미발동
+    assert "시드A" in texts["walert2"]            # 교차 감지 → 발동
 
 
 @needs_node
@@ -802,7 +806,7 @@ global.fetch = async (u, opt) => {
   if (String(u).indexOf('/api/watch/') >= 0) {
     captured = {url:String(u), method:opt&&opt.method, body:opt&&opt.body};
     return {ok:true, json: async () => ({lines:[
-      {price:1853000,label:'절대선'},{price:2600000,label:'예약매도'},{price:1700000,label:'손절'}]})};
+      {price:100000,label:'시드A'},{price:150000,label:'시드B'},{price:90000,label:'손절'}]})};
   }
   return {ok:false, status:200, json: async () => ({})};
 };
@@ -844,7 +848,7 @@ def test_watch_editor_save_builds_payload_and_applies_response(tmp_path):
     body = json.loads(out["BODY"])
     labels = [x["label"] for x in body["lines"]]
     # config 기본 2줄은 유효 → 전송, 가격 없는 '빈줄'은 클라 검증에서 제외
-    assert "절대선" in labels and "예약매도" in labels
+    assert "시드A" in labels and "시드B" in labels
     assert "빈줄" not in labels
     assert all(isinstance(x["price"], int) and x["price"] > 0 for x in body["lines"])
     assert "저장됨" in out["STATUS"]                   # 성공 상태 표시

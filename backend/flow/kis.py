@@ -457,7 +457,18 @@ class KisClient:
 
         락을 잡은 뒤 캐시를 **다시 읽는다** — 기다리는 동안 앞선 코루틴이 이미
         받아왔으면 그걸 쓴다(이중 검사). 이게 없으면 락은 발급을 줄 세우기만 하고
-        횟수는 그대로다."""
+        횟수는 그대로다.
+
+        키가 비면 **캐시 토큰도 쓰지 않는다.** 하네스(harness/core/server.py)는
+        SM_KIS_APP_KEY를 비워 'KIS 미접촉'을 보장하는데, 디스크에 남은 토큰이
+        24시간 유효하므로 그것만으로는 인증이 통과해 실 KIS로 호출이 나갔다
+        (2026-08-12 실측: `harness verify`가 index-daily·overseas-chartprice를
+        실제로 때렸다). worldidx._index_group의 "키가 없으면 토큰 발급이 예외로
+        떨어진다"는 전제도 이 가드가 있어야 참이 된다. 게이트를 candles._get_client
+        앞이 아니라 여기 두는 이유는 그래야 테스트의 클라이언트 주입 지점을
+        가리지 않기 때문이다."""
+        if not (self.appkey and self.appsecret):
+            raise RuntimeError("KIS 키 없음 — 호출 차단(캐시 토큰도 쓰지 않는다)")
         tok = self._cached_token()
         if tok:
             return tok
@@ -492,7 +503,11 @@ class KisClient:
         """웹소켓 승인키. 토큰과 같은 이유로 **발급을 직렬화한다**(token() 주석 참조).
 
         여기 캐시는 메모리뿐이라(프로세스 수명) 파일 재확인이 없고, 락을 잡은 뒤
-        `self._approval`을 다시 본다 — 기다리는 사이 남이 받아왔으면 그걸 쓴다."""
+        `self._approval`을 다시 본다 — 기다리는 사이 남이 받아왔으면 그걸 쓴다.
+
+        키 없음 가드는 token()과 같은 이유다(하네스의 'KIS 미접촉' 보장)."""
+        if not (self.appkey and self.appsecret):
+            raise RuntimeError("KIS 키 없음 — 승인키 요청 차단")
         if self._approval:
             return self._approval
         async with self._lock():

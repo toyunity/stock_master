@@ -265,3 +265,25 @@ def test_token_expired_cache_ignored(tmp_path, monkeypatch):
     assert tok == "FRESH"
     saved = json.loads((tmp_path / "kis_token.json").read_text(encoding="utf-8"))
     assert saved["token"] == "FRESH"  # 새 토큰이 디스크에 저장됨
+
+
+def test_no_key_refuses_even_with_valid_cached_token(tmp_path):
+    """키가 비면 디스크에 **유효한** 토큰이 남아 있어도 호출을 막는다.
+
+    하네스(harness/core/server.py)는 SM_KIS_APP_KEY를 비워 'KIS 미접촉'을 보장하는데,
+    가드가 없으면 24시간짜리 캐시 토큰으로 인증이 통과해 실 KIS로 나간다
+    (2026-08-12 실측: `harness verify`가 index-daily·overseas-chartprice를 실제로 때렸다).
+    worldidx._index_group의 "키가 없으면 토큰 발급이 예외로 떨어진다"는 전제도 이 가드가
+    있어야 참이 된다."""
+    cache = {"token": "CACHED-AND-VALID", "expires_at": time.time() + 86400}
+    (tmp_path / "kis_token.json").write_text(json.dumps(cache), encoding="utf-8")
+    c = KisClient("", "", str(tmp_path))
+    assert c._cached_token() == "CACHED-AND-VALID"      # 캐시 자체는 멀쩡하다
+    loop = asyncio.get_event_loop()
+    for coro in (c.token(), c.approval_key()):
+        try:
+            loop.run_until_complete(coro)
+        except RuntimeError as e:
+            assert "키 없음" in str(e)
+        else:
+            raise AssertionError("키가 없는데 통과했다 — 실 KIS로 나갈 수 있다")

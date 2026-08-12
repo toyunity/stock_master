@@ -242,6 +242,87 @@ console.log(JSON.stringify(out));
 
 
 @_needs_node
+def test_dashboard_news_title_cannot_inject_a_placeholder(tmp_path):
+    """뉴스 제목이 자리표시자 문자열이어도 치환되면 안 된다 — `.replace()` 체인은 앞서 넣은
+    문자열을 뒤 단계가 **다시 스캔**하므로, 데이터를 먼저 넣으면 제목 안의 '__LIB__'에
+    400KB 차트 라이브러리가 통째로 주입돼 JSON이 깨지고 메인 스크립트가 전멸한다.
+
+    원천은 한경·연합 RSS다 — 저장소가 통제하지 않는 입력이다(감사 B-F2). 데이터 치환을
+    체인 맨 뒤로 옮기면 뒤에 스캔할 단계가 없어 주입이 성립하지 않는다."""
+    s = _stock(news=[{"title": "속보 __LIB__ 어쩌구", "link": "https://x/1",
+                      "source": "한경", "published": ""}])
+    html = render_dashboard([s], [], "2026-06-22")
+    # 제목은 원문 그대로, **딱 한 번만** 나와야 한다. 데이터를 맨 뒤로 옮겼으므로 이제
+    # 앞선 값들(400KB 라이브러리·패널 JS)이 '__DATA__'를 품고 있으면 거꾸로 데이터가
+    # 그 안에 주입된다 — 그때는 미치환 토큰이 남지 않아 개수로만 잡힌다.
+    assert html.count("속보 __LIB__ 어쩌구") == 1
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    js = tmp_path / "dash_inject.js"
+    js.write_text(main, encoding="utf-8")
+    r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "제목 주입으로 메인 JS가 깨졌다:\n" + r.stderr
+
+
+@_needs_node
+def test_dashboard_index_chip_marks_server_stale_not_live(tmp_path):
+    """/api/market이 갱신에 실패해 옛 값을 주면(stale:true) 지수 칩은 '실시간'이라 우기지 않는다 —
+    실행 검증(감사 D-H1: 10시 값이 14시에 '실시간'으로 걸리던 자리).
+
+    벽시계 판정(krIndexLive)만 보던 라벨이 서버가 실은 나이를 우선하는지, 그리고 같은 라벨을
+    물려받는 '코스피 온도' 그룹까지 함께 정직해지는지를 본다. 신선한 경우의 라벨은 실행
+    시각에 따라 실시간/마감이 갈리므로 둘 중 하나인지만 확인한다(밤에 돌려도 안 깨지게)."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    harness = "\n".join(_extract_js_function(main, f)
+                        for f in ("krIndexLive", "gadapt", "gdomestic")) + """
+let FUT={}, MKT={}, TEMP={items:[{key:'disp',label:'이격도',value:1.2,unit:'%',verdict:'보통'}]};
+function fresh(){ const gs=gdomestic();
+  return gs.map(function(g){return [g.label, g.items.map(function(x){return x.fresh;})];}); }
+MKT={stale:true, kospi:{price:6820.6, rate:-6.37}, kosdaq:{price:791.8, rate:-4.53}};
+const staleOut = fresh();
+MKT={kospi:{price:6820.6, rate:-6.37}, kosdaq:{price:791.8, rate:-4.53}};
+const liveOut = fresh();
+console.log(JSON.stringify({stale: staleOut, live: liveOut}));
+"""
+    js = tmp_path / "gdomestic_stale_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "gdomestic 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    stale = dict((label, fs) for label, fs in out["stale"])
+    assert stale["국내 지수"] == ["지연", "지연"], stale
+    assert stale["코스피 온도"] == ["지연"], stale        # 같은 봉이므로 함께 지연
+    live = dict((label, fs) for label, fs in out["live"])
+    assert set(live["국내 지수"]) <= {"실시간", "마감"}, live   # 서버가 안 실으면 벽시계 판정 그대로
+
+
+@_needs_node
+def test_dashboard_index_strip_shows_delay_badge_when_stale(tmp_path):
+    """상단 스트립(항상 보이는 면)의 지수 칩도 옛 값이면 '지연' 배지를 단다 — 지수 섹션은
+    접힌 <details>라 신선도 줄이 안 보일 수 있다. 선물 칩(fxchip)이 쓰던 배지 그대로."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    harness = _extract_js_function(main, "ix") + """
+console.log(JSON.stringify({
+  stale: ix({price:6820.6, rate:-6.37}, '코스피', true),
+  live:  ix({price:6820.6, rate:-6.37}, '코스피', false),
+}));
+"""
+    js = tmp_path / "ix_badge_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "ix 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert "지연" in out["stale"] and "6,820.6" in out["stale"]
+    assert "지연" not in out["live"]
+
+
+@_needs_node
 def test_dashboard_pulse_state_matches_nxt_session_un(tmp_path, monkeypatch):
     """헤더 펄스(marketPulse) — UN(기본, KRX+NXT 통합)에서 NXT 프리·애프터 시간에도
     '장 마감'으로 오표시하지 않는다(2026-07-27 실사용자 리포트: 16:16 NXT 애프터마켓

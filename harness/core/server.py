@@ -26,8 +26,13 @@ def _child_env() -> dict:
     env = dict(os.environ)
     env["SM_FLOW_MODE"] = "demo"
     env["SM_AUTH_ENABLED"] = "false"
-    # KIS 미접촉 보장: 키를 비우면 marketdata._client()가 None → asking/financials 등
-    # 모든 KIS REST 경로가 차단된다(demo 시드만 사용, 토큰 발급/알림톡 없음)
+    # KIS 미접촉 보장: 키를 비운다. 두 겹으로 막힌다 —
+    #  (1) marketdata._client()가 None을 돌려줘 asking/financials 등이 안 나간다.
+    #  (2) KisClient.token()/approval_key()가 키 없음을 보고 거절한다.
+    # (2)가 없던 동안 이 주석은 거짓이었다: candles._get_client()를 직접 쓰는 경로
+    # (kospitemp·worldidx)는 (1)을 안 타고, data/cache/kis_token.json의 24시간짜리
+    # 캐시 토큰으로 인증이 통과해 verify가 실 KIS를 때렸다(2026-08-12 실측).
+    # 회귀 방지: tests/test_flow_kis_rest.py::test_no_key_refuses_even_with_valid_cached_token
     env["SM_KIS_APP_KEY"] = ""
     env["SM_KIS_APP_SECRET"] = ""
     return env

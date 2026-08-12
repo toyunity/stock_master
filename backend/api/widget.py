@@ -22,6 +22,20 @@ from backend.news.names import resolve_name
 _SEM = 5   # KIS 동시 호출 상한 — 연속 호출 간헐 500 완화(kis.py 실측 주석)
 
 
+def _universe_mtime():
+    """universe 캐시 파일이 **쓰인** 시각(KST). 없으면 None.
+
+    폴백값의 나이는 요청 시각이 아니라 이 시각이다 — get_cached는 나이를 보지 않아
+    수집 배치가 며칠 멈춰도 같은 얼굴로 값을 준다."""
+    import datetime as _dt
+    import os
+    try:
+        mt = os.path.getmtime(_universe._cache_path(settings.cache_dir))
+    except OSError:
+        return None
+    return _dt.datetime.fromtimestamp(mt, kst.KST)
+
+
 def _us_name(code):
     """US 티커 표시명 — semi.US_NAMES 우선, 없으면 티커 그대로(Task 12 usquote.us_name 예정)."""
     from backend.flow.semi import US_NAMES
@@ -45,6 +59,7 @@ async def widget_data(email, items):
         except Exception:
             client = None
 
+    fetched = kst.now()
     prices = {}
     if client is not None:
         from backend.flow import usquote     # 모듈 경유(테스트가 price_us 모킹 가능)
@@ -83,6 +98,9 @@ async def widget_data(email, items):
                   for c in kr_codes}
         if not any(v is not None for v in prices.values()):
             return None
+        # 위젯은 fetched_at을 'HH:MM 갱신'으로 그대로 찍는다 — 폴백값에 '지금' 도장을
+        # 찍으면 10:56 종가가 14:00 값으로 보이고 평가손익까지 그 값으로 계산된다.
+        fetched = _universe_mtime() or fetched
 
     st = await market_status.get_status(client)
     from backend.flow.adr import us_market_open
@@ -113,5 +131,5 @@ async def widget_data(email, items):
             row["us_open"] = us_open_now   # ET 정규장 여부(US 행 신선도) — 갱신 힌트와 동일 값 공유
         out.append(row)
     return {"open": st["open"], "trade_date": st["trade_date"],
-            "fetched_at": kst.now().isoformat(timespec="seconds"),
+            "fetched_at": fetched.isoformat(timespec="seconds"),
             "refresh_after_sec": refresh, "items": out}

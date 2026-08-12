@@ -2,6 +2,13 @@
 
 작성: 2026-07-18 · 대상: Stock Master(개인용 KR주식 실시간 조언 PWA)
 
+> ⚠️ **조사 스냅샷이다 — "미사용" 목록을 현재 상태로 읽지 마라.**
+> ①휴장일 ③실시간호가(REST 스냅샷으로 의도적 대체 — 1키1세션 회피) ④밸류 ⑤재무제표
+> ⑥순위 ⑦국내지수는 **그 뒤 전부 구현됐다**(`flow/market_status.py`, `/api/asking/{code}`,
+> `/api/fundamentals`, `/api/financials/{code}`, `flow/scanner.py`, `/api/market`).
+> 완료 표와 커밋 해시는 같은 날짜의 자매 문서 `docs/kis-integration-plan.md`에 있다.
+> 여기서 아직 유효한 건 ②잔고 · ⑧~⑪매매/알림 · ⑫⑬해외뿐이고, §4 추천 로드맵은 폐기됐다.
+
 ---
 
 ## 0. 지금 쓰는 것 (baseline)

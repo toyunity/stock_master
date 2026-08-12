@@ -421,11 +421,15 @@ async function loadMarket(){
     // 섹션이 읽어 쓴다 — 상단 스트립과 **같은 순간의 같은 값**이라 두 곳 숫자가
     // 어긋나지 않는다. 국내 그룹에 새 API 호출이 없는 것도 이 때문이다.
     MKT=d||{}; FUT=f||{};
-    function ix(o,label){
+    function ix(o,label,stale){
       if(!o||o.price==null)return '';
       const cls=o.rate>0?'up':(o.rate<0?'down':'flat');
       const ar=o.rate>0?'▲':(o.rate<0?'▼':'·');
-      return '<div class="mchip"><div class="ml">'+label+'</div>'
+      // 서버가 갱신 실패로 옛 캐시를 줬으면(stale) 선물 칩과 같은 지연 배지를 단다.
+      // 지수 섹션의 신선도 줄은 접힌 <details> 안이라 안 보일 수 있다 — 이 스트립이
+      // 항상 보이는 면이고, 여기 숫자가 표식 없이 늙는 게 D-H1의 실패였다.
+      const badge=stale?'<span class="mbadge">지연</span>':'';
+      return '<div class="mchip"><div class="ml">'+label+badge+'</div>'
         +'<div class="mv">'+o.price.toLocaleString()
         +'<span class="mr '+cls+'">'+ar+Math.abs(o.rate||0).toFixed(2)+'%</span></div></div>';
     }
@@ -445,7 +449,7 @@ async function loadMarket(){
         +'<div class="mv">'+cur+o.price.toLocaleString()
         +'<span class="mr '+cls+'">'+pct+'</span></div></div>';
     }
-    const parts=[ix(d.kospi,'코스피'),ix(d.kosdaq,'코스닥'),
+    const parts=[ix(d.kospi,'코스피',d.stale),ix(d.kosdaq,'코스닥',d.stale),
                  fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
     if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
     try{
@@ -457,7 +461,9 @@ async function loadMarket(){
 }
 loadMarket(); setInterval(loadMarket,30000);
 // ── 글로벌 지표(미국채·원자재·해외지수) — /api/worldidx 5분 폴링. ──
-// 여긴 라이브가 아니다: 재무부·FDR은 직전 영업일 종가고 KIS 해외지수도 지연이다.
+// 여긴 라이브가 아니다: 재무부는 직전 영업일 확정치, KIS 해외지수는 지연,
+// FDR(금·WTI)은 10~12분 지연된 '진행 중 세션의 현재가'인데 날짜 라벨만 어제다
+// (worldidx.parse_fdr_last 참조 — 그래서 신선도는 basis가 아니라 basis_kind로 정한다).
 // 그래서 **칩마다 기준일을 찍는다** — 바로 위 코스피 칩이 살아 있어서, 날짜가 없으면
 // 이 숫자들까지 지금 값으로 읽힌다(설계 문서가 basis를 항목마다 실은 이유).
 // 단위도 서버가 준 unit 문자열을 그대로 쓴다. 프런트가 '$'를 지어내는 순간, 설계
@@ -486,7 +492,11 @@ function gadapt(label, o, fresh){
           basis:null, src:'kr', rate_unit:'%', basis_kind:'live', fresh:fresh};
 }
 function gdomestic(){
-  const gs=[], live=krIndexLive()?'실시간':'마감';
+  // 벽시계보다 **서버가 실은 나이**가 우선이다: /api/market이 갱신에 실패해 옛 캐시를
+  // 주면(MKT.stale) 장중이라도 '실시간'이 아니다(감사 D-H1). 코스피 온도 그룹도 같은
+  // 라벨을 물려받는다 — /api/kospi-temp는 별도 API라 실제로는 신선할 수 있지만,
+  // 지수와 같은 봉을 근거로 판정하는 값이라 보수적으로 함께 지연으로 본다.
+  const gs=[], live=MKT.stale?'지연':(krIndexLive()?'실시간':'마감');
   const idx=[gadapt('코스피',MKT.kospi,live),
              gadapt('코스닥',MKT.kosdaq,live)].filter(Boolean);
   if(idx.length) gs.push({label:'국내 지수', items:idx});
@@ -927,7 +937,6 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
             .replace("__PWA_HEAD__", _PWA_HEAD if pwa else "")
             .replace("__REFRESH__", refresh)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
-            .replace("__DATA__", data_json)
             .replace("__PULSE_EXT__", _pulse_ext_js())
             .replace("__OPT_CSS__", _optp.CSS)
             .replace("__OPT_HTML__", _optp.HTML)
@@ -935,4 +944,9 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
             .replace("__VOL_CSS__", _volp.CSS)
             .replace("__VOL_HTML__", _volp.HTML)
             .replace("__VOL_JS__", _volp.JS)
-            .replace("__LIB__", lib))
+            .replace("__LIB__", lib)
+            # 외부/사용자 데이터는 **항상 맨 마지막**이다. 체인은 앞서 넣은 문자열을 뒤
+            # 단계가 다시 스캔하므로, 데이터가 먼저 들어가면 RSS 제목 속 '__LIB__' 같은
+            # 문자열에 400KB 라이브러리가 주입돼 JSON이 깨지고 스크립트가 전멸한다.
+            # 뒤에 스캔할 단계가 없으면 주입 자체가 성립하지 않는다.
+            .replace("__DATA__", data_json))

@@ -88,8 +88,10 @@ class WsSession:
 
         같은 키에 핸들러가 여럿 붙어도 구독 프레임은 처음 한 번만 나간다."""
         key = (tr_id, tr_key)
-        self._subs.setdefault(key, []).append(handler)
-        await self._ensure_subscribed(key)
+        handlers = self._subs.setdefault(key, [])
+        if handler not in handlers:   # 중복 등록 금지 — unregister는 한 겹만 벗기므로
+            handlers.append(handler)  # 두 겹이면 해지 프레임이 영영 안 나가고, 그 구독은
+        await self._ensure_subscribed(key)   # 재접속마다 되살아난다(등록 실패 재시도 경로)
 
     async def unregister(self, tr_id: str, tr_key: str, handler) -> None:
         """마지막 핸들러가 빠질 때만 구독을 해지한다."""

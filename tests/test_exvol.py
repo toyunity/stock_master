@@ -49,6 +49,23 @@ def test_distortion_warns_on_thin_market_move():
     assert distortion(None, 2_000_000, 1, 1) is None
 
 
+def test_boundary_cache_is_bounded():
+    """날짜가 키에 들어간 유일한 캐시 — 가동일수에 비례해 무조건 증가한다.
+    경계값은 언제든 재조회 가능하므로 상한에 닿으면 통째로 비워도 손실이 없다."""
+    class Client:
+        async def _get(self, path, tr, params):
+            return {"rt_cd": "0", "output2": [{"acml_vol": "863404"}]}
+
+    exvol._boundary.clear()
+    try:
+        for i in range(250):
+            exvol._boundary[("000660", "2026-0%d-01" % (i % 9 + 1), "%06d" % i)] = i
+        assert _run(exvol._acml_at(Client(), "000660", "085959")) == 863404
+        assert len(exvol._boundary) <= 201
+    finally:
+        exvol._boundary.clear()
+
+
 def test_get_split_raises_on_soft_error_and_does_not_cache():
     # 한쪽 다리(J/NX) 소프트 오류 → 반쪽 스냅샷 캐시 금지, 예외 위임(리뷰 확정)
     class HalfFailClient:

@@ -166,6 +166,7 @@ def create_app(settings=None) -> FastAPI:
 
         장외에도 부르면 화면이 열릴 때마다 KIS 해외 TR이 나간다. 장이 닫혀 있으면
         일봉 종가가 최신이고 그게 차트와도 일치하므로, 조회할 이유 자체가 없다."""
+        from backend.api import marketdata
         from backend.flow import adr, userstore, usquote
         if userstore.market_of(sym) != "US":
             return Response(status_code=404)
@@ -193,6 +194,10 @@ def create_app(settings=None) -> FastAPI:
         미국은 400으로 거절한다 — 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이
         시장엔 아예 없다'가 화면에서 구분되지 않는다."""
         from backend.flow import userstore
+        # 대문자 정규화 — market_of는 내부에서 대문자로 봐 소문자도 통과시키는데,
+        # 여기서부터는 코드가 **파일명**(<code>.parquet)·dict 키로 쓰인다. 안 맞추면
+        # aapl.parquet / AAPL.parquet 두 벌이 생긴다(국내는 숫자라 무영향).
+        code = code.upper()
         market = userstore.market_of(code)
         if market is None:
             return Response(status_code=404)
@@ -247,6 +252,7 @@ def create_app(settings=None) -> FastAPI:
         """감시선(참조선) 조회(계정별) — 파일 저장값 우선, 없으면 마스터만 config 폴백.
         국내·미국 공용(가격 정밀도는 userstore가 코드로 판정해 가른다)."""
         from backend.flow import userstore
+        code = code.upper()          # 저장 키 통일 — /api/watch/aapl 로 넣고 AAPL로 못 찾는 것 방지
         if userstore.market_of(code) is None:
             return Response(status_code=404)
         return JSONResponse({"lines": userstore.get_lines(_req_email(request, settings), code)})
@@ -256,6 +262,7 @@ def create_app(settings=None) -> FastAPI:
         """감시선 저장(계정별) — body {"lines":[{"price":num,"label":str}, ...]}.
         검증 실패 400(사용자 메시지), 성공 시 정규화된 {"lines": [...]}."""
         from backend.flow import userstore
+        code = code.upper()          # 저장 키 통일(watch_get과 같은 이유)
         if userstore.market_of(code) is None:
             return Response(status_code=404)
         try:

@@ -230,6 +230,60 @@ def test_attach_ma_includes_5_and_10():
     assert "ma20" in out[0] and "ma60" in out[0] and "ma120" in out[0]
 
 
+# ── 자원 수명주기(감사 A2·A3) ─────────────────────────────────────
+
+def test_daily_and_wm_fetch_are_time_capped(monkeypatch):
+    """상한 없는 blocking FDR 호출은 기본 스레드풀(14슬롯)을 말린다.
+
+    야후(FDR 배경)가 RST 없이 무응답이 되면 요청도 스레드도 영영 안 끝난다 —
+    폴링마다 스레드가 하나씩 매달려 풀이 마르면 옵션 로드·글로벌 지표까지
+    시작조차 못 한다(감사 2026-08-12 실측). 상한은 요청만 돌려준다.
+    매달린 스레드는 못 돌려받는다(worldidx.py:194-196에 같은 한계가 적혀 있다).
+    """
+    import time as _t
+
+    import pytest
+
+    import backend.flow.candles as cd
+    monkeypatch.setattr(cd, "_FETCH_TIMEOUT", 0.05)
+    monkeypatch.setattr(cd, "_daily_candles", lambda code: _t.sleep(0.3) or [])
+    monkeypatch.setattr(cd, "_wm_candles", lambda code, tf: _t.sleep(0.3) or [])
+    loop = asyncio.new_event_loop()
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            loop.run_until_complete(cd.get_candles("000660", "1d"))
+        with pytest.raises(asyncio.TimeoutError):
+            loop.run_until_complete(cd.get_candles("000660", "1w"))
+    finally:
+        loop.close()
+
+
+def test_long_cache_is_bounded(monkeypatch, tmp_path):
+    """주·월봉 원료(일봉 15년)는 종목당 1.9MB다 — 상한이 없으면 스캐너로 종목을
+    넘겨보는 것만으로 수십 MB가 재기동 전까지 안 돌아온다(TTL은 신선도만 정할 뿐
+    엔트리를 지우지 않는다)."""
+    import time as _t
+
+    import pandas as pd
+
+    import backend.flow.candles as cd
+    from backend.adapters import prices
+    from backend.config import settings
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))  # 실캐시 미접촉
+    df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0], "Close": [1.5],
+                       "Volume": [100]}, index=pd.to_datetime(["2026-08-10"]))
+    monkeypatch.setattr(prices.PriceAdapter, "get_ohlcv",
+                        lambda self, code, start, end, force=False: df)
+    cd._long_cache.clear()
+    try:
+        for i in range(25):
+            cd._long_cache["X%03d" % i] = (_t.time(), [])
+        cd._long_daily_bars("005930")
+        assert len(cd._long_cache) <= 21
+    finally:
+        cd._long_cache.clear()
+
+
 # ── NXT 미상장 종목의 분봉(2026-08-10 실사고: 금현물 ETF 411060 차트가 통째로 빔) ──
 
 def _min_row(hhmmss, price, date="20260810"):

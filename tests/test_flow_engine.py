@@ -81,8 +81,12 @@ def test_unsubscribe_lingers_not_immediate_stop(monkeypatch):
 
 
 def _no_shortbal(monkeypatch):
-    """_poll_rest 테스트 공통 — 대차잔고 원격 조회 차단(외부 네트워크 금지)."""
-    from backend.flow import shortbal
+    """_poll_rest 테스트 공통 — 원격 조회 차단(외부 네트워크 금지).
+
+    ADR도 같이 막는다: 가짜 클라이언트엔 `_get`이 없어 adr.get_quote가 네이버
+    폴백으로 새는데, 지금까지는 앞서 도는 test_adr.py가 adr._cache를 데워둔 덕에
+    가려져 있었다(이 파일만 돌리면 conftest 네트워크 가드에 걸린다)."""
+    from backend.flow import adr, shortbal
 
     async def fake(code, cache_dir, days=20):
         return {"rows": [{"date": "2026-07-10", "qty": 14140221,
@@ -90,6 +94,10 @@ def _no_shortbal(monkeypatch):
                           "src": "kofia"}],
                 "asof": "2026-07-10", "source": "kofia", "updated": "t"}
     monkeypatch.setattr(shortbal, "get_history", fake)
+
+    async def no_adr(client, code):
+        return None
+    monkeypatch.setattr(adr, "get_quote", no_adr)
 
 
 def test_poll_rest_daily_survives_estimate_failure(monkeypatch):
@@ -223,6 +231,48 @@ def test_ws_fallback_fills_market_while_disconnected(monkeypatch):
     assert snap["market"]["price"] == 2244000          # 시세 채워짐
     assert snap["program"]["net_qty"] == -550000       # 프로그램도 백필
     assert snap["tape"] == []                          # 테이프는 오염 안 됨
+
+
+def test_run_live_stops_siblings_when_one_branch_dies(monkeypatch):
+    """gather 한 갈래가 죽으면 나머지 둘도 세운다.
+
+    asyncio.gather는 형제 태스크를 죽이지 않는다 — 세우지 않으면 다음 구독의
+    _ensure_running이 self._stop을 새 Event로 갈아치워, 고아 폴러가 재기동 전까지
+    영원히 산다. /live를 다시 열 때마다 한 벌씩 쌓여 KIS 호출이 2배·3배가 된다
+    (감사 2026-08-12 인프로세스 재현). 도달 경로는 _ws_link의 _ws_attach 실패다.
+    """
+    eng = FlowEngine("000660", interval=0.05)
+    ticks = {"n": 0}
+
+    class FakeClient:
+        async def token(self):
+            return "T"
+
+    async def boom(client, stop):
+        raise RuntimeError("구독 거부 — _ws_attach 실패")
+
+    async def poller(client, stop):
+        while not stop.is_set():
+            ticks["n"] += 1
+            await asyncio.sleep(0.01)
+
+    eng._client = FakeClient()
+    monkeypatch.setattr(eng, "_ws_link", boom)
+    monkeypatch.setattr(eng, "_poll_rest", poller)
+    monkeypatch.setattr(eng, "_ws_fallback", poller)
+
+    async def go():
+        stop = asyncio.Event()
+        try:
+            await eng._run_live(stop)
+        except RuntimeError:
+            pass
+        n = ticks["n"]
+        assert stop.is_set(), "형제 갈래를 세울 stop이 서지 않았다"
+        await asyncio.sleep(0.05)
+        assert ticks["n"] == n, "러너가 죽었는데 폴러가 계속 돈다(고아 폴러)"
+
+    _run(go())
 
 
 def test_registry_returns_same_engine():

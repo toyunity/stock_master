@@ -75,6 +75,22 @@ def test_get_session_secret_prefers_env_then_persists(tmp_path):
     assert os.path.exists(os.path.join(str(tmp_path), "session_secret.txt"))
 
 
+def test_secret_files_are_owner_only(tmp_path):
+    """M8 — session_secret.txt 하나면 OAuth+TOTP를 통째로 우회하는 쿠키를 만들 수 있다.
+    이미 0644로 만들어진 파일도 다음 기동에 조여야 한다(실서버에 이미 있다)."""
+    import os
+    import stat
+    from backend.api.auth import get_session_secret, get_totp_secret
+    for name, fn in (("session_secret.txt", get_session_secret),
+                     ("totp_secret.txt", get_totp_secret)):
+        fn(str(tmp_path))
+        path = os.path.join(str(tmp_path), name)
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600, name
+        os.chmod(path, 0o644)               # 기존 배포분 모사
+        fn(str(tmp_path))
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600, name + " (기존 파일)"
+
+
 # ── 게이트: 전 경로가 실제로 잠겼는가 (최우선 불변식) ──────────────────
 import pytest
 
@@ -212,6 +228,81 @@ def test_callback_rejects_disallowed_email(tmp_path):
     assert c.get("/api/auth/check").status_code == 401     # 세션 안 생김
 
 
+# ── 접근 취소 · 2FA 남용 방지 (감사 M3·M4, 2026-08-12) ─────────────────
+def _stage1(app):
+    """OAuth 콜백만 통과한(=email 세션만 있고 2FA 미완) 클라이언트."""
+    from fastapi.testclient import TestClient
+
+    async def fake_token(request):
+        return {"userinfo": {"email": "master@gmail.com", "email_verified": True}}
+    app.state.oauth_client.authorize_access_token = fake_token
+    c = TestClient(app, follow_redirects=False)
+    c.get("/auth/callback")
+    return c
+
+
+def _code(tmp_path, s):
+    import pyotp
+    from backend.api.auth import get_totp_secret
+    return pyotp.TOTP(get_totp_secret(str(tmp_path), s.totp_secret)).now()
+
+
+def test_removed_email_is_blocked_on_next_request(tmp_path):
+    """M3 — allowlist 대조가 로그인 순간 1회뿐이면, 계정을 빼도 기존 쿠키가 30일 통과한다.
+    (한계: install()이 기동 시 읽으므로 제거는 재기동 후 적용 — 그 재기동을 여기서 모사한다.)"""
+    from fastapi.testclient import TestClient
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    c = _stage1(create_app(s))
+    assert c.post("/2fa", data={"code": _code(tmp_path, s)}).status_code == 302
+    assert c.get("/api/watch/000660").status_code == 200      # 전제: 지금은 통과 중
+    # 같은 cache_dir(=같은 session_secret) + allowlist에서 제거 → 재기동
+    app2 = create_app(_auth_settings(tmp_path, allowed_emails="other@gmail.com"))
+    c2 = TestClient(app2, follow_redirects=False, cookies=c.cookies)
+    assert c2.get("/api/watch/000660").status_code == 401
+    assert c2.get("/api/auth/check").status_code == 401   # 공개 라우트라 게이트를 안 탄다 — 여기서도 대조
+
+
+def test_2fa_rejects_reused_code(tmp_path):
+    """M4 — pyotp는 쓴 코드를 기억하지 않는다. 어깨너머로 본 6자리가 90초간 재사용됐다."""
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    app = create_app(s)
+    code = _code(tmp_path, s)
+    assert _stage1(app).post("/2fa", data={"code": code}).status_code == 302   # 첫 사용
+    c2 = _stage1(app)                                                          # 다른 기기
+    assert c2.post("/2fa", data={"code": code}).status_code == 401             # 재사용 차단
+    assert c2.get("/api/auth/check").status_code == 401
+
+
+def test_2fa_locks_out_after_too_many_wrong_codes(tmp_path):
+    """M4 — 상한이 없으면 1단계를 뚫은 공격자가 6자리를 무제한 대입한다.
+    카운터는 세션이 아니라 이메일 키 — 쿠키를 버려도 초기화되면 안 된다."""
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    app = create_app(s)
+    c = _stage1(app)
+    for i in range(5):
+        assert c.post("/2fa", data={"code": "00000%d" % i}).status_code == 401
+    assert c.post("/2fa", data={"code": "000009"}).status_code == 429
+    assert c.post("/2fa", data={"code": _code(tmp_path, s)}).status_code == 429  # 맞아도 막힘
+    assert _stage1(app).post("/2fa", data={"code": "000009"}).status_code == 429  # 새 쿠키도
+
+
+def test_2fa_lockout_expires_by_itself(tmp_path, monkeypatch):
+    """마스터가 자기 서비스에서 잠기면 안 된다 — 시간창이 지나면 자동 해제(영구 잠금 없음)."""
+    from backend.api import auth
+    from backend.api.app import create_app
+    s = _auth_settings(tmp_path)
+    c = _stage1(create_app(s))
+    for i in range(5):
+        c.post("/2fa", data={"code": "00000%d" % i})
+    assert c.post("/2fa", data={"code": "000009"}).status_code == 429
+    t0 = auth._now()
+    monkeypatch.setattr(auth, "_now", lambda: t0 + 301)      # 창 밖으로 시계를 옮긴다
+    assert c.post("/2fa", data={"code": _code(tmp_path, s)}).status_code == 302
+
+
 # ── 위젯 Bearer (게이트 안의 두 번째 잠금 — 공개 예외 아님, 설계 2026-07-16) ──
 def test_widget_bearer_valid_token_passes_gate(tmp_path, monkeypatch):
     """유효 계정 토큰은 게이트 통과 — 핸들러 도달(데이터 없음 503이지 게이트 401이 아님).
@@ -256,6 +347,18 @@ def test_widget_bearer_non_ascii_token_401_not_500():
 
 
 # ── 위젯 토큰 계정화 (Task 7 — Bearer→계정 매핑, default 폴백 금지) ──────
+def test_widget_token_of_removed_email_is_401(tmp_path, monkeypatch):
+    """M3 — allowlist에서 뺀 계정의 위젯 토큰도 죽어야 한다(위젯은 보유수량·평단·평가손익을 준다)."""
+    from backend.config import settings as _gs
+    from backend.flow import userstore
+    monkeypatch.setattr(_gs, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(_gs, "default_account", "master@gmail.com")
+    monkeypatch.setattr(_gs, "kis_app_key", None)    # 실 KIS 호출 방지(게이트가 뚫려도 오프라인)
+    tok = userstore.ensure_token("master@gmail.com")
+    c = _client(_auth_settings(tmp_path, allowed_emails="other@gmail.com"))
+    assert c.get("/api/widget", headers={"Authorization": "Bearer " + tok}).status_code == 401
+
+
 def test_widget_token_maps_to_account(tmp_path, monkeypatch):
     """계정 토큰으로 그 계정 데이터 도달, 미매칭 401(default 폴백 금지 — 교차계정 유출 차단).
 

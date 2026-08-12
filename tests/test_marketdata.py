@@ -45,6 +45,63 @@ def test_get_indices_assembles_and_caches(monkeypatch):
     assert c.idx_calls == 2
 
 
+def test_reset_caches_knows_every_cache_in_the_module():
+    """캐시를 새로 만들면서 reset_caches에 안 넣으면 **여기서** 걸린다.
+
+    conftest의 autouse가 매 테스트 앞에 reset_caches를 부르는 덕에 테스트는 손으로
+    리셋하지 않아도 격리된다 — 그 약속은 이 목록이 모듈과 일치할 때만 참이다.
+    새 캐시가 목록 밖에 있으면 앞 테스트가 남긴 값이 TTL 안에 반환돼 가짜 클라이언트를
+    한 번도 안 부르고 초록이 뜬다(감사 B-F3)."""
+    from backend.api import marketdata as md
+    found = {n for n, v in vars(md).items()
+             if isinstance(v, dict) and (n.endswith("_cache") or n == "_opt_mem")}
+    assert found <= set(md.reset_caches.__code__.co_names)   # 목록만 고쳐선 못 빠져나간다
+
+
+def test_get_indices_marks_stale_when_refresh_fails():
+    """갱신 실패 폴백은 옛 캐시를 그대로 주되 **나이 표식**을 얹는다 — 선물 칩과 같은 stale 규약.
+
+    표식이 없으면 대시보드가 10시 값을 14시에 '실시간'이라 우긴다(감사 D-H1). 캐시 자체엔
+    굽지 않는다 — 다음 조회가 성공하면 표식 없이 나가야 한다."""
+    from backend.api import marketdata as md
+    c = _FakeC()
+    assert "stale" not in asyncio.run(md.get_indices(client=c))     # 정상 조회엔 안 붙는다
+
+    class _Boom:
+        async def index(self, iscd="0001"):
+            raise RuntimeError("KIS 500")
+
+    md._idx_cache["ts"] = 0.0                                       # TTL 만료 → 실제 재조회
+    d = asyncio.run(md.get_indices(client=_Boom()))
+    assert d["kospi"]["price"] == 6820.6 and d["stale"] is True     # 값 유지 + 지연 표식
+    assert "stale" not in md._idx_cache["data"]
+
+
+def test_get_indices_marks_stale_when_response_is_empty():
+    """빈 응답도 실패다 — 캐시를 갱신하지 않으므로 나가는 값은 옛 값이고 표식이 붙어야 한다."""
+    from backend.api import marketdata as md
+    asyncio.run(md.get_indices(client=_FakeC()))
+
+    class _Empty:
+        async def index(self, iscd="0001"):
+            return None
+
+    md._idx_cache["ts"] = 0.0
+    d = asyncio.run(md.get_indices(client=_Empty()))
+    assert d["kosdaq"]["price"] == 791.8 and d["stale"] is True
+
+
+def test_get_indices_cold_failure_stays_none():
+    """콜드 상태의 실패엔 얹을 값이 없다 — None 그대로(라우트가 {} → 칩이 통째로 빠진다)."""
+    from backend.api import marketdata as md
+
+    class _Boom:
+        async def index(self, iscd="0001"):
+            raise RuntimeError("KIS 500")
+
+    assert asyncio.run(md.get_indices(client=_Boom())) is None
+
+
 def test_get_fundamentals_maps_skips_failure_and_caches(monkeypatch):
     from backend.api import marketdata as md
     _reset(md)
@@ -112,6 +169,30 @@ def test_get_asking_caches():
     assert a["bid_ratio"] == 44.0 and a["total_ask"] == 61953
     asyncio.run(md.get_asking("000660", client=c))     # 2초 캐시 → 재호출 없음
     assert c.calls == 1
+
+
+def test_get_asking_marks_stale_on_failure():
+    """호가 조회가 실패하면 직전 스냅샷 + stale:True — /live가 얼어붙은 사다리를 '지금'처럼
+    그리지 않게 한다(감사 D-M9). 벽/받침을 보고 매매를 정하는 화면이라 표식이 곧 안전장치다."""
+    from backend.api import marketdata as md
+
+    class _C:
+        def __init__(self, boom=False):
+            self.boom = boom
+
+        async def asking_price(self, code):
+            if self.boom:
+                raise RuntimeError("KIS 500")
+            return {"total_ask": 61953, "total_bid": 48666, "bid_ratio": 44.0,
+                    "asks": [], "bids": []}
+
+    a = asyncio.run(md.get_asking("000660", client=_C()))
+    assert "stale" not in a
+    md._ask_cache["000660"] = (0.0, md._ask_cache["000660"][1])     # 2초 TTL 만료
+    b = asyncio.run(md.get_asking("000660", client=_C(boom=True)))
+    assert b["bid_ratio"] == 44.0 and b["stale"] is True
+    assert "stale" not in md._ask_cache["000660"][1]                 # 캐시엔 안 굽는다
+    assert asyncio.run(md.get_asking("999999", client=_C(boom=True))) == {}   # 콜드 실패는 {}
 
 
 def test_no_client_returns_empty(monkeypatch):
@@ -407,6 +488,64 @@ def test_get_futures_nq_failure_after_good_value_keeps_cache_and_marks_stale():
     rate = (28404.25 - 28237.75) / 28237.75 * 100
     assert d2["nq"] == {"label": "나스닥 선물", "price": 28404.25, "rate": rate, "stale": True}
     assert d2["k200"]["code"] == "A01609" and "stale" not in d2["k200"]   # K200은 여전히 라이브
+
+
+def test_get_futures_nq_hang_is_capped_by_timeout(monkeypatch):
+    """FDR이 예외 없이 그냥 매달리면(TCP 블랙홀) 상한이 없어 이 코루틴이 영영 안 끝났다 —
+    /api/futures 응답 자체가 안 돌아오고 대시보드는 30초마다 스레드를 하나씩 더 매단다.
+
+    파이썬은 스레드를 못 죽인다(worldidx._blocking이 같은 한계를 적어뒀다) — 상한이 하는
+    일은 '응답을 돌려주는 것'까지다. 스레드 유출 속도는 아래 쿨다운 테스트가 지킨다."""
+    import datetime as dt
+    import time as _t
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    def hang(start):
+        _t.sleep(0.5)                              # 예외 없이 안 끝나는 원천
+        return _nq_df([28237.75, 28404.25])
+
+    async def go():
+        t0 = _t.monotonic()
+        d = await md.get_futures(client=_FakeFut(), fetch=hang,
+                                 now=dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST))
+        return _t.monotonic() - t0, d
+
+    monkeypatch.setattr(md, "_NQ_TIMEOUT", 0.05)
+    elapsed, d = asyncio.run(go())
+    assert elapsed < 0.4, "상한이 안 걸렸다(원천이 끝날 때까지 기다렸다)"
+    assert "nq" not in d                           # 콜드 + 실패 → 칩 생략
+    assert d["k200"]["code"] == "A01609"            # K200은 영향 없음
+
+
+def test_get_futures_nq_failure_starts_a_cooldown():
+    """실패 뒤 곧바로 재시도하지 않는다 — 매달린 스레드는 회수할 방법이 없으므로 유출
+    속도 자체를 묶는다. 30초 폴링마다 한 개씩 새면 14슬롯 기본 풀이 7분이면 전멸하고,
+    그 뒤로는 일봉·옵션·글로벌 지표까지 같은 풀에서 시작조차 못 한다(감사 A2)."""
+    import datetime as dt
+    from backend.api import marketdata as md
+    from backend.flow.kst import KST
+
+    calls = []
+
+    def boom(start):
+        calls.append(start)
+        raise RuntimeError("FDR 네트워크 오류")
+
+    now = dt.datetime(2026, 7, 30, 11, 0, tzinfo=KST)
+    md._fut_cache["nq"].update({"ts": 0.0, "data": {"label": "나스닥 선물",
+                                                    "price": 28404.25, "rate": 0.1}})
+    d1 = asyncio.run(md.get_futures(client=_FakeFut(), fetch=boom, now=now))
+    assert d1["nq"]["stale"] is True and len(calls) == 1
+
+    md._fut_cache["nq"]["ts"] = 0.0                 # TTL은 만료 — 쿨다운만이 재시도를 막는다
+    d2 = asyncio.run(md.get_futures(client=_FakeFut(), fetch=boom, now=now))
+    assert len(calls) == 1, "쿨다운 중인데 또 발사했다"
+    assert d2["nq"]["stale"] is True                 # 값은 유지하되 계속 지연 표시
+
+    md._nq_fail_ts = 0.0                             # 쿨다운이 끝나면 다시 시도한다
+    asyncio.run(md.get_futures(client=_FakeFut(), fetch=boom, now=now))
+    assert len(calls) == 2
 
 
 def test_get_futures_both_cold_and_failing_returns_empty():

@@ -86,6 +86,8 @@ async def _acml_at(client, code: str, hhmmss: str) -> Optional[int]:
                             "FID_INPUT_HOUR_1": hhmmss})
     v = parse_time_acml(js)
     if v is not None:
+        if len(_boundary) > 200:   # 날짜가 키라 가동일수에 비례해 증가하는 유일한 캐시.
+            _boundary.clear()      # 경계값은 재조회 가능하므로 통째로 비워도 손실 없다
         _boundary[key] = v
     return v
 

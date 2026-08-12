@@ -237,6 +237,36 @@ def test_collect_options_writes_the_board_to_disk(monkeypatch):
     assert len(files) == 1 and os.path.basename(files[0]) == "options_202608.json"
 
 
+def test_opt_save_disk_keeps_the_old_board_when_the_write_dies(monkeypatch, caplog):
+    """쓰다 죽어도 직전 보드가 남아야 한다 — 배치(launchd)와 웹서버는 **다른 프로세스**라
+    락으로는 못 막고, 원자적 교체만이 맞는 답이다(감사 A4/D-M5).
+
+    'w'로 직접 열면 그 순간 파일이 0바이트로 잘린다: 배치가 쓰는 중에 서버가 읽으면 잘린
+    JSON을 만나 옵션 섹션이 통째로 사라지고, 배치가 그 상태로 죽으면 다음 회차(최대 1시간,
+    15:50 뒤엔 다음 영업일)까지 영구 손상으로 남는다. 저장 실패를 조용히 삼키지도 않는다(D-L6)."""
+    import glob
+    import json
+    import logging
+    import os
+    from backend.api import marketdata as md
+    from backend.config import settings
+    _install_master(monkeypatch, md, _master_rows())
+    good = asyncio.run(md.collect_options(client=_FakeBoard()))
+
+    def boom(*a, **kw):
+        raise OSError("디스크가 찼다")
+
+    monkeypatch.setattr(json, "dump", boom)
+    with caplog.at_level(logging.WARNING):
+        md._opt_save_disk(dict(good, spot=1.0))
+    _reset_opt(md)
+    assert md._opt_load_disk()["spot"] == 1039.35        # 직전 보드 그대로(0바이트 절단 없음)
+    # 남은 .tmp가 보드로 뽑히면 안 된다 — glob('options_*.json')이 확장자로 걸러낸다.
+    assert os.path.basename(md._opt_latest_path()) == "options_202608.json"
+    assert glob.glob(os.path.join(settings.cache_dir, "options_*.json"))
+    assert any("옵션" in r.message for r in caplog.records)   # 조용히 삼키지 않는다
+
+
 def test_get_options_never_calls_kis(monkeypatch):
     """**서버는 절대 수집하지 않는다.** 이 파일의 핵심 회귀다.
 

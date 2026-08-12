@@ -72,6 +72,16 @@ def test_us_minute_candles_are_refused_not_faked(cli):
     assert "미국" in r.json()["error"]
 
 
+def test_lowercase_ticker_is_normalized_by_the_route(cli):
+    """소문자 티커로 부르면 저장 키가 갈린다 — market_of는 내부에서 대문자로 재봐서
+    통과시키는데, 저장은 원문 그대로라 감시선이 "aapl" 키에 들어간다. 화면은 항상
+    대문자로 조회하므로 그 값은 영영 안 보이고, 일봉 캐시도 aapl.parquet /
+    AAPL.parquet 두 벌로 갈린다. 정규화는 진입점(라우트)에서 한 번에 한다."""
+    p = cli.post("/api/watch/skhy", json={"lines": [{"price": 100.5, "label": "저점"}]})
+    assert p.status_code == 200
+    assert cli.get("/api/watch/SKHY").json()["lines"] == [{"price": 100.5, "label": "저점"}]
+
+
 def test_us_watch_lines_roundtrip_keeps_cents(cli):
     p = cli.post("/api/watch/SKHY", json={"lines": [{"price": 153.16, "label": "절대선"}]})
     assert p.status_code == 200 and p.json()["lines"][0]["price"] == 153.16
@@ -158,10 +168,50 @@ def test_no_placeholder_survives_the_render():
     import re
     from backend.report.dashboard import render_dashboard
     from backend.report.live_page import render_live_page
+    from backend.report.scanner_page import render_scanner_page
     from backend.report.us_page import render_us_page
+    from backend.report.widget_setup import render_widget_setup
     # 대시보드도 __LIB__를 심는다 — 처음엔 빠져 있어 같은 사고를 다시 맞을 자리였다
     for html in (render_us_page("SKHY", "SKHY"),
                  render_live_page("005930", "삼성전자", "demo"),
+                 render_scanner_page(),
+                 render_widget_setup("t" * 32, "https://x"),
                  render_dashboard([], [], "2026-08-10", pwa=True)):
         left = set(re.findall(r"__[A-Z][A-Z0-9_]*__", html))
         assert not left, left
+
+
+@pytest.mark.parametrize("render", ["live", "us"])
+def test_watch_label_cannot_inject_a_placeholder(tmp_path, monkeypatch, render):
+    """감시선 라벨이 자리표시자 문자열이어도 치환되면 안 된다.
+
+    `.replace()` 체인은 앞 단계가 넣은 문자열을 뒤 단계가 **다시 스캔**한다. 사용자
+    데이터를 자산(__LIB__ = 400KB 차트 라이브러리)보다 먼저 넣으면, 라벨이
+    "__LIB__"일 때 라이브러리 본문이 JSON 안으로 주입돼 페이지 JS가 통째로 죽는다.
+    그러면 감시선 편집기가 **그 죽은 페이지 안에만** 있어 자력 복구가 불가능하다
+    (data/cache/users/<hash>.json을 손으로 고쳐야 한다).
+
+    라벨은 자유 문자열이다(watch.py:106 검증 통과, 최대 20자) — 막을 곳은 렌더 쪽뿐.
+    줄 길이 assert는 쓰지 말 것: 주입본이 첫 줄에서 개행돼 오히려 짧아진다(실측)."""
+    import re
+    import shutil
+    import subprocess
+    if shutil.which("node") is None:
+        pytest.skip("node 미설치 — JS 문법 게이트 생략")
+    from backend.config import settings
+    from backend.flow import userstore
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    code = "000660" if render == "live" else "SKHY"
+    userstore.set_lines("x@y.com", code, [{"price": 200000, "label": "__LIB__"}])
+    if render == "live":
+        from backend.report.live_page import render_live_page
+        html = render_live_page(code, "SK하이닉스", "live", "x@y.com")
+    else:
+        from backend.report.us_page import render_us_page
+        html = render_us_page(code, code, "x@y.com")
+    src = next(s for s in re.findall(r"<script>([\s\S]*?)</script>", html)
+               if "loadCandles" in s)
+    js = tmp_path / "page.js"
+    js.write_text(src, encoding="utf-8")
+    r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "라벨이 자산 자리표시자를 주입했다:\n" + r.stderr[:400]
