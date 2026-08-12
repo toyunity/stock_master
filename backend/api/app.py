@@ -345,6 +345,17 @@ def create_app(settings=None) -> FastAPI:
         from backend.api import marketdata
         return JSONResponse(await marketdata.get_indices() or {})
 
+    @app.get("/api/kospi-temp")
+    async def kospi_temp_api():
+        """코스피 온도 — 지수값이 최근 흐름에서 어디쯤인지(이격도·EMA 이격·하락폭).
+
+        판정 단어까지 서버가 실어 내린다. 프런트가 임계값을 들고 있으면 판정 기준이
+        두 군데로 갈라진다(unit·rate_unit·basis_kind를 데이터에 실은 것과 같은 이유).
+
+        실패하면 items=[]로 200이다 — 그룹 하나가 빠질 뿐 섹션은 떠야 한다."""
+        from backend.flow import kospitemp
+        return JSONResponse(await kospitemp.get_temp())
+
     @app.get("/api/vkospi")
     async def vkospi_api():
         """코스피200 변동성지수 — 현재값 + 최근 100거래일. 섹션을 펼칠 때만 호출된다.

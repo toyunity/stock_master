@@ -97,3 +97,84 @@ def test_todays_measured_values_are_reproducible():
     assert glossary.read_temp("ma_gap", d["ma_gap"]) == "눌림"
     assert glossary.read_temp("ema_gap", d["ema_gap"]) == "위"
     assert glossary.read_temp("down_avg", d["down_avg"]) == "거침"
+
+
+# ── 조회·조립 ─────────────────────────────────────────────────────────────
+
+import asyncio
+import datetime as dt
+
+from backend.flow import candles
+from backend.flow.kst import KST
+
+FIXED_NOW = dt.datetime(2026, 8, 12, 12, 50, tzinfo=KST)
+
+
+class _FakeKis:
+    """index_daily만 답하는 가짜 클라이언트 — 요청 인자도 기록한다."""
+
+    def __init__(self, days=None, boom=False):
+        self.days = days
+        self.boom = boom
+        self.calls = []
+
+    async def index_daily(self, iscd, date):
+        self.calls.append((iscd, date))
+        if self.boom:
+            raise RuntimeError("KIS 실패 스텁")
+        return {"now": None, "days": self.days}
+
+
+@pytest.fixture(autouse=True)
+def _reset_cache(monkeypatch):
+    """캐시 리셋 + 클라이언트 기본 스텁(터짐). 스텁 주입을 빼먹으면 라이브가 아니라 예외."""
+    kt._cache["ts"], kt._cache["data"] = 0.0, None
+
+    def _boom():
+        raise RuntimeError("KIS 스텁 미지정")
+
+    monkeypatch.setattr(candles, "_get_client", _boom)
+    monkeypatch.setattr(kt.kst, "now", lambda: FIXED_NOW)
+
+
+def _days(closes):
+    return [{"d": "2026080%d" % (i % 9 + 1), "v": v} for i, v in enumerate(closes)]
+
+
+def test_get_temp_carries_the_verdict_from_the_server(monkeypatch):
+    """판정은 서버가 실어 내린다 — 프런트가 임계값을 들면 기준이 두 군데로 갈라진다."""
+    c = _FakeKis(days=_days(_KOSPI_20260812))
+    monkeypatch.setattr(candles, "_get_client", lambda: c)
+    d = asyncio.run(kt.get_temp())
+    keys = {i["key"]: i for i in d["items"]}
+    assert set(keys) == {"ma_gap", "ema_gap", "down_avg"}
+    assert keys["ma_gap"]["verdict"] == "눌림"
+    assert keys["ma_gap"]["unit"] == "%"
+    assert keys["down_avg"]["unit"] == "%p"
+    assert keys["ma_gap"]["label"] == "100일 평균"
+    assert d["asof"].startswith("2026-08-12T12:50")
+    assert c.calls == [("0001", "20260812")]
+
+
+def test_unknown_items_are_dropped_not_nulled(monkeypatch):
+    """None인 항목은 items에서 빠진다 — null로 보내면 프런트가 대시를 그린다."""
+    c = _FakeKis(days=_days([100.0, 101.0, 102.0]))   # 하락일 0 → down_avg None
+    monkeypatch.setattr(candles, "_get_client", lambda: c)
+    d = asyncio.run(kt.get_temp())
+    assert {i["key"] for i in d["items"]} == {"ma_gap", "ema_gap"}
+
+
+def test_dead_source_yields_empty_items_not_an_error(monkeypatch):
+    """KIS가 죽으면 items=[]다 — 그건 에러가 아니라 '그룹을 감추라'는 신호다."""
+    monkeypatch.setattr(candles, "_get_client", lambda: _FakeKis(boom=True))
+    assert asyncio.run(kt.get_temp())["items"] == []
+
+
+def test_second_call_within_ttl_does_not_hit_kis(monkeypatch):
+    """60초 캐시 — 마지막 봉이 장중에 움직이므로 해외지수와 같은 주기."""
+    c = _FakeKis(days=_days(_KOSPI_20260812))
+    monkeypatch.setattr(candles, "_get_client", lambda: c)
+    asyncio.run(kt.get_temp())
+    asyncio.run(kt.get_temp())
+    assert len(c.calls) == 1
+    assert kt._TTL == 60.0

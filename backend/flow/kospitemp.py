@@ -14,7 +14,12 @@ from __future__ import annotations
 Python 3.9 호환.
 """
 
+import logging
+import time
 from typing import Optional
+
+from backend.education import glossary
+from backend.flow import candles, kst
 
 _EMA_SPAN = 12
 _DOWN_WINDOW = 20
@@ -70,3 +75,46 @@ def compute(closes) -> dict:
     return {"ma_gap": round((cur - ma) / ma * 100, 2) if ma else None,
             "ema_gap": round((cur - ema) / ema * 100, 2) if ema else None,
             "down_avg": _down_avg(vals)}
+
+
+# ── KIS 조회 + 조립 ───────────────────────────────────────────────────────
+
+log = logging.getLogger(__name__)
+
+_ISCD = "0001"                      # 코스피
+_TTL = 60.0                         # 마지막 봉이 장중에 움직인다 — 해외지수와 같은 주기
+_cache = {"ts": 0.0, "data": None}
+
+# (key, label, unit) — 화면 순서. 장기 → 단기 → 변동폭.
+_ITEMS = (("ma_gap", "100일 평균", "%"),
+          ("ema_gap", "12일 평균", "%"),
+          ("down_avg", "하락폭(20일)", "%p"))
+
+
+async def get_temp() -> dict:
+    """{'asof': ISO(KST), 'items': [{key,label,value,unit,verdict}, …]}.
+
+    실패하면 items=[]다 — 에러가 아니라 '그룹을 감추라'는 신호다(빈 껍데기 금지).
+    키 없음도 여기서 막지 않는다: 클라이언트 생성 실패가 아래 except로 흡수된다
+    (/api/worldidx와 같은 관례 — 게이트를 앞에 두면 테스트가 설정에 끌려간다)."""
+    now = kst.now().replace(microsecond=0).isoformat()
+    if _cache["data"] is not None and time.time() - _cache["ts"] < _TTL:
+        return {"asof": now, "items": _cache["data"]}
+    try:
+        client = candles._get_client()      # 모듈 경유 — 테스트가 이 지점만 갈아끼운다
+        d = await client.index_daily(_ISCD, kst.now().strftime("%Y%m%d"))
+    except Exception:
+        log.warning("코스피 온도 조회 실패 — 그룹 생략", exc_info=True)
+        return {"asof": now, "items": []}
+    vals = [x.get("v") for x in ((d or {}).get("days") or [])]
+    got = compute(vals)
+    items = []
+    for key, label, unit in _ITEMS:
+        v = got.get(key)
+        if v is None:
+            continue                        # 모르는 항목은 빼고 보낸다(null 금지)
+        items.append({"key": key, "label": label, "value": v, "unit": unit,
+                      "verdict": glossary.read_temp(key, v)})
+    if items:
+        _cache["ts"], _cache["data"] = time.time(), items
+    return {"asof": now, "items": items}
