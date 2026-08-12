@@ -83,7 +83,7 @@ log = logging.getLogger(__name__)
 
 _ISCD = "0001"                      # 코스피
 _TTL = 60.0                         # 마지막 봉이 장중에 움직인다 — 해외지수와 같은 주기
-_cache = {"ts": 0.0, "data": None}
+_cache = {"ts": 0.0, "data": None, "asof": None}
 
 # (key, label, unit) — 화면 순서. 장기 → 단기 → 변동폭.
 _ITEMS = (("ma_gap", "100일 평균", "%"),
@@ -99,7 +99,10 @@ async def get_temp() -> dict:
     (/api/worldidx와 같은 관례 — 게이트를 앞에 두면 테스트가 설정에 끌려간다)."""
     now = kst.now().replace(microsecond=0).isoformat()
     if _cache["data"] is not None and time.time() - _cache["ts"] < _TTL:
-        return {"asof": now, "items": _cache["data"]}
+        # asof는 **데이터의 시각**이지 요청 시각이 아니다. 여기서 now를 찍으면 캐시
+        # 히트 때 최대 60초 묵은 값에 방금 조회한 얼굴을 씌운다 — 이 저장소가 반복해서
+        # 잡아온 '신선도를 확신 있게 틀리게 말하는' 결함과 같은 부류다.
+        return {"asof": _cache["asof"], "items": _cache["data"]}
     try:
         client = candles._get_client()      # 모듈 경유 — 테스트가 이 지점만 갈아끼운다
         d = await client.index_daily(_ISCD, kst.now().strftime("%Y%m%d"))
@@ -116,5 +119,5 @@ async def get_temp() -> dict:
         items.append({"key": key, "label": label, "value": v, "unit": unit,
                       "verdict": glossary.read_temp(key, v)})
     if items:
-        _cache["ts"], _cache["data"] = time.time(), items
+        _cache["ts"], _cache["data"], _cache["asof"] = time.time(), items, now
     return {"asof": now, "items": items}

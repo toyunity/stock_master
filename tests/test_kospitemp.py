@@ -128,7 +128,7 @@ class _FakeKis:
 @pytest.fixture(autouse=True)
 def _reset_cache(monkeypatch):
     """캐시 리셋 + 클라이언트 기본 스텁(터짐). 스텁 주입을 빼먹으면 라이브가 아니라 예외."""
-    kt._cache["ts"], kt._cache["data"] = 0.0, None
+    kt._cache["ts"], kt._cache["data"], kt._cache["asof"] = 0.0, None, None
 
     def _boom():
         raise RuntimeError("KIS 스텁 미지정")
@@ -178,3 +178,18 @@ def test_second_call_within_ttl_does_not_hit_kis(monkeypatch):
     asyncio.run(kt.get_temp())
     assert len(c.calls) == 1
     assert kt._TTL == 60.0
+
+
+def test_cached_asof_reports_the_data_time_not_the_request_time(monkeypatch):
+    """asof는 **데이터의 시각**이다. 캐시 히트 때 요청 시각을 찍으면 최대 60초 묵은
+    값에 방금 조회한 얼굴을 씌운다 — 이 저장소가 반복해서 잡아온 '신선도를 확신
+    있게 틀리게 말하는' 결함과 같은 부류다."""
+    c = _FakeKis(days=_days(_KOSPI_20260812))
+    monkeypatch.setattr(candles, "_get_client", lambda: c)
+    first = asyncio.run(kt.get_temp())
+    later = FIXED_NOW + dt.timedelta(seconds=30)
+    monkeypatch.setattr(kt.kst, "now", lambda: later)
+    second = asyncio.run(kt.get_temp())         # TTL 안 — 캐시 히트
+    assert len(c.calls) == 1, "TTL 안인데 KIS를 다시 불렀다"
+    assert second["asof"] == first["asof"], "묵은 값에 새 시각을 씌웠다"
+    assert second["items"] == first["items"]
