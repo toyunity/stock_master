@@ -543,7 +543,9 @@ async function pollOB(){
     const br=a.bid_ratio, ar=Math.max(0,100-br);
     el.innerHTML='<div class="obbar"><span class="obbid" style="width:'+br+'%"></span>'
       +'<span class="obask" style="width:'+ar+'%"></span></div>'
-      +'<div class="obtxt">📖 매수세 '+br.toFixed(0)+'%  ·  매수 '+num(a.total_bid)+'  ·  매도 '+num(a.total_ask)+'</div>';
+      // 서버가 갱신 실패로 직전 스냅샷을 줬으면(stale) 지연이라고 말한다 — 사다리가
+      // 마지막 성공값에 굳어 있는 걸 '지금 호가'로 읽으면 매매 판단이 틀어진다(감사 D-M9).
+      +'<div class="obtxt">📖 매수세 '+br.toFixed(0)+'%  ·  매수 '+num(a.total_bid)+'  ·  매도 '+num(a.total_ask)+(a.stale?'  ·  지연':'')+'</div>';
     el.style.display='block';
   }catch(e){}
 }
@@ -1522,7 +1524,6 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
-            .replace("__WATCH__", watch_js)
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
@@ -1533,4 +1534,9 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
             .replace("__MODE_CLS__", "live" if mode == "live" else "demo")
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
-            .replace("__LIB__", lib))
+            .replace("__LIB__", lib)
+            # 사용자 데이터는 **항상 맨 마지막**이다. 체인은 앞 단계가 넣은 문자열을
+            # 뒤 단계가 다시 스캔하므로, 감시선 라벨이 "__LIB__"면 400KB 차트
+            # 라이브러리가 JSON 안으로 주입돼 페이지 JS가 통째로 죽는다(재현 확인).
+            # 뒤에 스캔할 단계가 없으면 주입 자체가 성립하지 않는다.
+            .replace("__WATCH__", watch_js))

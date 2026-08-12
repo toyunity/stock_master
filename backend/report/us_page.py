@@ -329,11 +329,13 @@ def render_us_page(sym: str, name: str, email=None) -> str:
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
-            .replace("__WATCH__", watch_js)
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__DISCLAIMER__", escape(_DISCLAIMER))
             .replace("__NAME__", escape(name))
             .replace("__SYM__", escape(sym))
-            .replace("__LIB__", lib))
+            .replace("__LIB__", lib)
+            # 사용자 데이터는 **항상 맨 마지막**(live_page와 같은 이유) — 라벨이
+            # "__LIB__"면 뒤 단계가 다시 스캔해 차트 라이브러리를 JSON에 주입한다.
+            .replace("__WATCH__", watch_js))

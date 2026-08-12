@@ -45,6 +45,28 @@ def test_icon_unknown_size_404():
     assert client.get("/icons/icon-999.png").status_code == 404
 
 
+def test_bare_routes_do_not_500(tmp_path, monkeypatch):
+    """핸들러를 한 번은 실제로 때린다 — 배선을 안 부르면 미정의 이름도 통과한다.
+
+    2026-08-12 실사고: `/api/usprice`의 `marketdata` 미정의(NameError)가 753개
+    테스트를 전부 통과했다. 프런트 fetch를 목킹한 테스트(test_us_page_js.py:61)는
+    서버 핸들러를 한 번도 안 부르기 때문이다. 여기 세 라우트가 그 구멍이었다.
+
+    KIS 키를 비워 조회 경로는 곧바로 빠지고(_client()→None) **배선만** 남는다 —
+    실 KIS 호출 0, 네트워크 0. usprice는 장외면 :173에서 204로 먼저 빠져나가
+    :174에 닿지도 않으므로 us_market_open을 True로 눌러야 재현된다."""
+    from backend.config import settings
+    from backend.flow import adr
+    monkeypatch.setattr(settings, "kis_app_key", "")
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(adr, "us_market_open", lambda *a, **k: True)
+    # 정규장이고 키가 없으면 = '줄 게 없다' → 204. != 500만 보면 404(배선 미도달)도
+    # 통과해버려 이 테스트가 지키려는 것을 못 지킨다.
+    assert client.get("/api/usprice/AAPL").status_code == 204
+    assert client.get("/api/outlook").status_code == 200
+    assert client.get("/api/topview").status_code == 200
+
+
 def test_options_route_returns_empty_when_no_board_has_been_collected(tmp_path, monkeypatch):
     """수집된 보드가 없으면 빈 dict — 프론트가 섹션을 통째로 숨긴다(에러 토스트 금지).
 
