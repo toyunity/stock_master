@@ -1011,6 +1011,13 @@ function renderSizes(S){
   fresh.textContent='· '+SES_KO[ses]+' · 표본 '+n.toLocaleString('ko-KR')+'건 · 추정치';
 }
 
+// #hago 페인트용 마지막 체결시각(epoch ms). render()에만 두면 SSE가 멈춰 render()가
+// 안 불릴 때 "방금"에 영구 고착한다 — 그래서 워치독(1450행 근처 setInterval)도
+// 이 변수로 다시 그린다(2026-08-13).
+let _hagoTs=null;
+function paintHago(){
+  try{var _h=document.getElementById('hago'); if(_h&&_hagoTs!=null)_h.textContent=ago(_hagoTs);}catch(e){}
+}
 function render(S){
   KDATE=S.kst_date; KTIME=S.kst_time; // 모든 표시 시각의 기준(서버 KST)
   LAST_S=S; renderSizes(S);
@@ -1046,9 +1053,10 @@ function render(S){
     cg.textContent=(M.change!=null?sgn[M.sign]+won(Math.abs(M.change)):'')
       +(M.rate!=null?'  '+(M.rate>0?'+':(M.rate<0?'-':''))+Math.abs(M.rate).toFixed(2)+'%':'');
     cg.className='pill '+M.sign;
-    document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 거래대금 <span class="n">'+eok(M.value).replace('+','')
-      +'</span> · 체결강도 <span class="n">'+(M.strength==null?'–':M.strength.toFixed(1))+'</span> · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
-    // 히어로 근거 레일(#hrail) — pmeta 줄과 같은 포맷터 재사용, 새로 안 만든다.
+    // 2026-08-13: 거래대금·체결강도는 여기서 뺐다 — 히어로 근거 레일(#hrail)이 이미
+    // 말해서, 히어로와 200px 아래에 같은 숫자가 두 번 보이던 중복이었다(리뷰 지적).
+    document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    // 히어로 근거 레일(#hrail) — 거래대금·체결강도는 여기서만 말한다(위 pmeta 참고).
     // 전일 종가는 스냅샷에 별도 필드가 없어 현재가-부호있는전일대비로 역산한다.
     // sign(up/down)으로 부호를 만들고 change는 abs()로 씌워, 와이어가 change를
     // 이미 부호 있는 값으로 주든(데모) 크기만 주든(실 KIS, 부호는 별도 필드) 둘 다 맞는다.
@@ -1059,8 +1067,8 @@ function render(S){
     // 히어로 하단 상대시간(#hago) — M.time은 체결시각 "HH:MM:SS"(KST), 날짜 없음.
     // toTs()는 이 벽시계를 UTC인 척 만들어(차트 라벨용) 9h(32400000ms) 앞선 값을 주므로,
     // ago()가 Date.now()(진짜 epoch)와 비교할 수 있게 9h를 빼서 진짜 epoch로 되돌린다(2026-08-12).
-    try{var _h=document.getElementById('hago');
-        if(_h&&M.time)_h.textContent=ago(toTs(M.time)*1000-32400000);}catch(e){}
+    if(M.time)_hagoTs=toTs(M.time)*1000-32400000;
+    paintHago();
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
     updateLiveCandle(M); // 실시간 봉 갱신 + 현재가 라인 + 다음 봉 카운트다운
   }
@@ -1452,6 +1460,7 @@ setInterval(()=>{   // 워치독: 오류 이벤트 없이 멈춘 half-open을 �
     setConn('응답 없음 · 재접속');
     authGuardThen(()=>{esBackoff=1000;connect();});
   }
+  paintHago(); // render()에만 두면 SSE가 멈췄을 때 "방금"에 고착한다(2026-08-13)
 },5000);
 function resume(){   // 화면/네트워크 복귀 — 죽었거나 멈췄으면 즉시 되살린다(iOS PWA 잠금 복귀)
   if(!es||es.readyState===EventSource.CLOSED||Date.now()-lastMsg>STALL_MS){

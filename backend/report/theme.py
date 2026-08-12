@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-"""공유 디자인 시스템 — 4개 PWA 화면(대시보드·라이브·스캐너·인증)의 단일 스타일 출처.
+"""공유 디자인 시스템 — dashboard.py·live_page.py·us_page.py·scanner_page.py·widget_setup.py
+5개 화면의 단일 스타일 출처(2026-08-13 실측, 이 5개가 BASE_CSS/PWA_HEAD를 import).
+인증(/login·/2fa·/2fa/setup)은 여기 안 들어간다 — auth.py:328이 이 파일을 import하지
+않고 자체 토큰을 복제해 쓴다(6차 리디자인 미반영, auth.py 주석 참고).
 
 - 토큰(CSS 커스텀 프로퍼티)으로 라이트/다크 자동 대응(prefers-color-scheme).
 - 공통 컴포넌트(카드·배지·시그널 콜아웃·스탯 타일·세그먼트·테이블 스크롤)를 여기서 정의.
@@ -148,12 +151,17 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
 /* 2026-08-12 6차: 히어로 숫자는 모노가 아니라 sans 볼드 tabular.
    Pretendard(굽기당 766~791KB)는 자기완결 규칙과 양립 불가라 SF Pro로 같은 효과를 낸다.
-   하위 계기용 .price(37px 모노)는 theme.py에 그대로 남아 있다 — 이건 히어로 전용 덮어쓰기. */
+   2026-08-13 정정: class="price" 소비자는 live_page.py:235·us_page.py:59 둘뿐이고
+   둘 다 .hero 안이다 — 베이스 .price(37px 모노)의 타이포 선언은 이 규칙에 항상
+   덮인다. 살아남는 건 font-feature-settings와 .price.up/.down/.flat 색 변형뿐이라
+   규칙 자체는 지우지 않는다(색은 여기서 안 건드린다). */
 .hero .price{font-family:inherit;font-size:48px;margin:10px 0 0;font-weight:800;
   letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.02}
 .hero .plabel{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
 /* 2026-08-13: .hero .chg 규칙 삭제. us_page의 등락 표시가 class="pill"로 옮겨갔고
-   .pill이 모노·볼드를 자체적으로 나른다 — 리포 전체에 class="chg" 사용처가 0건이다. */
+   .pill이 모노·볼드를 자체적으로 나른다 — .hero 안에서는 class="chg" 사용처가 0건이다.
+   히어로 밖 .chg(dashboard 관심종목 카드 등락)는 dashboard.py:73에 따로 산다 —
+   스코프가 .hero 안이라 이 삭제와 무관하다(다음 에이전트가 그 규칙까지 지우지 않게). */
 .hero .hstate{display:flex;align-items:center;gap:6px;margin-top:12px;
   padding-top:11px;border-top:1px solid var(--border-2)}
 .hero .hstate .ago{margin-left:auto}
@@ -192,7 +200,6 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .rail .k{font-size:13px;color:var(--text-2);font-weight:500;flex:0 1 auto;word-break:keep-all}
 .rail .v{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
   font-variant-numeric:tabular-nums;letter-spacing:-.01em;text-align:right;white-space:nowrap}
-.rail .v.up{color:var(--up)} .rail .v.down{color:var(--down)} .rail .v.flat{color:var(--text-2)}
 
 /* 시그널 콜아웃(판정) */
 .sig{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-top:10px;
@@ -248,7 +255,7 @@ details.sec{background:var(--surface);border:1px solid var(--border);border-radi
   margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
 details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
   padding:18px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
-  letter-spacing:-.02em;min-height:54px;color:var(--text)}
+  letter-spacing:-.02em;min-height:54px;color:var(--text);word-break:keep-all}
 details.sec>summary::-webkit-details-marker{display:none}
 details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .secic{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;

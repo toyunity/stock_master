@@ -65,8 +65,14 @@ def test_rail_component_exists():
 def test_pages_do_not_hardcode_colors():
     """CSS 단일 출처 — 페이지 파일에 색을 직접 쓰지 않는다(CLAUDE.md).
 
-    허용 목록은 파일별 "정확한 헥스 값" 단위로 좁힌다 — 같은 파일에 새 하드코딩
+    허용 목록은 파일별 "정확한 헥스/rgba 값" 단위로 좁힌다 — 같은 파일에 새 하드코딩
     색이 섞여도 그 값이 목록에 없으면 여전히 걸린다(2026-08-13 감사).
+
+    2026-08-13 확장: 6자리 hex뿐이던 정규식에 3자리 hex(`#fff`)와 `rgba?(...)`를
+    더했다 — 리뷰에서 이 둘이 빠져나가는 게 실측됐다. 확장하자 기존 색 16개가
+    새로 걸렸다(문서화된 예외 목록 아래, 전부 아래 사유 중 하나).
+    auth.py는 이 글롭(backend/report/*.py) 밖이라 검사 대상이 아니다 — 6차
+    리디자인 이전 토큰을 자체 복제한 별도 파일이라 통합은 범위 밖(auth.py:328 주석 참고).
 
     예외 사유:
     - options_panel.py·vol_panel.py: `CV('--x')||'#hex'` 폴백. theme.py의
@@ -80,11 +86,20 @@ def test_pages_do_not_hardcode_colors():
       (알려진 갭, 이번 범위 아님: us_page.py 캔들은 registerSemSeries를 안 불러
       다크에서 라이트 색 그대로다. live_page.py:717 현재가 색·891 매물벽 마커도
       다크 재적용 없이 라이트 값 고정.)
+    - live_page.py rgba(229,52,47,.15)/rgba(31,102,224,.15)/rgba(229,52,47,.5)/
+      rgba(31,102,224,.5)/rgba(168,85,247,.7): 위와 같은 이유의 LWC 인자
+      (baseline 채우기색·거래량 히스토그램·공매도 히스토그램) — up/down/violet
+      토큰의 리터럴 사본이고 var()를 받을 수 없는 JS 객체 리터럴 안이다.
+    - dashboard.py·live_page.py·widget_setup.py `#fff`: 원색 배경(뱃지·칩·버튼)
+      위 흰 글자 — theme.py 자체도 이 패턴을 토큰화하지 않고 `#fff`로 직접 쓴다
+      (`.badge`, `.tf.on` 참고). 밝기 반전이 필요 없는 값이라 토큰이 필요 없다.
+      widget_setup.py:374는 브라우저 설치 페이지(_TEMPLATE)의 버튼이다 — 아래
+      Scriptable 예외(다른 런타임)와는 다른 자리.
     - dashboard.py `#b3a4ff`: 앱 아이콘 마크 그라디언트의 보조색. 라이트·다크
       공통 고정값이 의도다 — `--primary-ink`로 바꾸면 라이트(#5238d8, 더 어두움)와
       다크(#9a86ff·b3a4ff, 더 밝음)가 반대 방향이라 그라디언트가 뒤집힌다.
-    - widget_setup.py: iOS Scriptable 위젯 스크립트 — 다른 런타임·다른 색 시스템
-      (Color.dynamic)이라 CSS 토큰과 무관하다.
+    - widget_setup.py 나머지(#d32f2f 등): iOS Scriptable 위젯 스크립트 — 다른
+      런타임·다른 색 시스템(Color.dynamic)이라 CSS 토큰과 무관하다.
     """
     import re
     from pathlib import Path
@@ -96,14 +111,16 @@ def test_pages_do_not_hardcode_colors():
     allowed_hex = {
         "options_panel.py": {"#e5342f", "#1f66e0", "#dcdfe6", "#8b93a4"},
         "vol_panel.py": {"#dcdfe6", "#8b93a4", "#1a1d24", "#e5342f", "#1f66e0"},
-        "dashboard.py": {"#e5342f", "#1f66e0", "#b3a4ff"},
+        "dashboard.py": {"#e5342f", "#1f66e0", "#b3a4ff", "#fff"},
         "live_page.py": {
             "#e5342f", "#1f66e0", "#8a94a6", "#a855f7",
-            "#9aa0a6", "#ec4899", "#f59e0b", "#22c55e", "#3b82f6",
+            "#9aa0a6", "#ec4899", "#f59e0b", "#22c55e", "#3b82f6", "#fff",
+            "rgba(229,52,47,.15)", "rgba(31,102,224,.15)", "rgba(168,85,247,.7)",
+            "rgba(229,52,47,.5)", "rgba(31,102,224,.5)",
         },
         "us_page.py": {"#e5342f", "#1f66e0", "#f0a020", "#6a4ff0", "#8a8f9a"},
         "widget_setup.py": {
-            "#d32f2f", "#ff6b6b", "#1565c0", "#6ba3ff", "#000000", "#ffffff",
+            "#d32f2f", "#ff6b6b", "#1565c0", "#6ba3ff", "#000000", "#ffffff", "#fff",
         },
     }
 
@@ -118,7 +135,7 @@ def test_pages_do_not_hardcode_colors():
             # 토큰과 하드코딩이 한 줄에 섞인 경우 hex가 검사에서 통째로
             # 빠진다(2026-08-13 리뷰에서 발견 — 허용 목록에서 지워도 통과했다).
             stripped = re.sub(r"var\(--[a-z0-9-]+\)", "", line)
-            for m in re.finditer(r"#[0-9a-fA-F]{6}\b", stripped):
+            for m in re.finditer(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)", stripped):
                 if m.group(0).lower() not in allowed:
                     bad.append("%s:%d:%s" % (p.name, i, m.group(0)))
     assert bad == [], "허용 목록 밖 하드코딩 색: %s" % bad

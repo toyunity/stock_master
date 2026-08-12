@@ -292,6 +292,30 @@ def test_render_js_fills_hago(tmp_path):
     assert texts["hago"] not in ("", "undefined")
 
 
+def test_pmeta_does_not_duplicate_hero_rail():
+    """#pmeta(가격 아래 캡션)가 근거 레일(#hrail)의 거래대금·체결강도를 그대로 반복하면
+    실캡처에서 같은 숫자가 히어로와 200px 아래에 두 번 보인다(2026-08-13 리뷰).
+    pmeta는 거래량·기준시각·신선도만 말한다 — 거래대금/체결강도는 레일이 이미 말한다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    start = html.index("getElementById('pmeta').innerHTML=")
+    end = html.index(";", start)
+    stmt = html[start:end]
+    assert "거래대금" not in stmt
+    assert "체결강도" not in stmt
+    # __MKT__는 render_live_page()가 이미 치환한 뒤라 리터럴로는 안 남는다 — fresh 클래스로 확인
+    assert "거래량" in stmt and "기준" in stmt and 'class="fresh"' in stmt
+
+
+def test_hago_repaints_from_watchdog_too():
+    """#hago 페인트가 render() 안에만 있으면 SSE가 멈췄을 때 render()가 안 불려
+    '방금'에 영구 고착한다(2026-08-13 리뷰). 워치독(setInterval, es 하트비트 감시)에서도
+    다시 그려야 한다 — 문자열 가드: 페인트 호출이 정확히 두 곳(render()·워치독)에 있어야 한다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert html.count("paintHago();") == 2
+
+
 @needs_node
 def test_render_js_fills_hero_rail(tmp_path):
     """히어로 근거 레일(3행) — 큰 숫자를 만든 재료를 바로 밑에 편다.
@@ -312,9 +336,9 @@ def test_render_js_fills_hero_rail(tmp_path):
     _, texts = _run_harness(tmp_path, _full_snapshot())
     # 전일 종가 = 현재가 - 부호 있는 전일대비 (2,254,000 - 68,000)
     assert texts["hr-prev"] == "2,186,000원"
-    # 거래대금 = M.value를 eok()로(부호 접두 제거, pmeta 줄과 동일 재사용)
+    # 거래대금 = M.value를 eok()로(부호 접두 제거)
     assert texts["hr-amt"] == "90,000억"
-    # 체결강도 = M.strength.toFixed(1)(pmeta 줄과 동일 재사용)
+    # 체결강도 = M.strength.toFixed(1) — 2026-08-13부터 pmeta엔 없고 레일에만 있다(중복 제거)
     assert texts["hr-str"] == "88.5"
 
 

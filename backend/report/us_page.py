@@ -224,6 +224,9 @@ async function pollLive(){
         if(q.change!=null){el.textContent=(q.change>=0?'+':'')+Number(q.change).toFixed(2)+'%';
           el.className='pill '+(q.change>0?'up':(q.change<0?'down':'flat'));}
         document.getElementById('pbasis').textContent='정규장 · 60초 갱신';
+        // 정규장 중엔 실시간 값인데 히어로 라벨이 초기값 "종가"에 머물던 결함
+        // (2026-08-13 리뷰) — #pbasis가 이미 세션을 말하니 같은 분기에서 얹는다.
+        document.getElementById('plabel').textContent='현재가';
         checkWatch(q.price);
       }}
   }catch(e){}
