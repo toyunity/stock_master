@@ -119,6 +119,10 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
    말하므로 둘은 대체재가 아니다. 우리 basis_kind 규율이 후자다. */
 .ago{font-size:11.5px;color:var(--text-3);font-weight:500;
   font-variant-numeric:tabular-nums;letter-spacing:0;white-space:nowrap}
+/* 값이 아직 없을 때(첫 데이터 도착 전·데모처럼 소스가 구조적으로 비는 경우) flex gap이
+   빈 요소 앞뒤에도 그대로 붙어 부모 필/뱃지에 여백만 남긴다(2026-08-13, dashboard #mkago
+   실측) — .note:empty·#today-line:empty와 같은 관행. */
+.ago:empty{display:none}
 
 /* 배지(상태) — 모노 대문자 유틸 태그 */
 .badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;

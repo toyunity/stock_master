@@ -163,3 +163,13 @@ def test_empty_candles_degrade_to_a_message_not_a_crash(tmp_path):
     """일봉을 못 받아도 화면이 죽지 않는다 — 감시선 섹션은 살아야 한다."""
     o = _run(tmp_path, [])
     assert "못 불러왔" in o["basis"]
+
+
+def test_us_hero_matches_live_structure():
+    """미국 상세도 같은 히어로 문법을 쓴다 — 두 화면이 다른 문법을 쓰면
+    theme.py 단일 출처의 의미가 없다."""
+    from backend.report.us_page import render_us_page
+    html = render_us_page("NVDA", "NVIDIA")
+    assert 'class="plabel"' in html
+    assert 'class="pill' in html          # 등락이 텍스트가 아니라 필
+    assert 'class="hstate"' in html

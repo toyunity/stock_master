@@ -55,12 +55,15 @@ __ICONS__
 
 <div class="hero">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
-    <span class="hname">__NAME__</span> <span class="code">__SYM__</span>
-    <span class="badge b-live">미국</span>
-    <span class="usbadge" id="pbasis">불러오는 중</span></div>
+    <span class="hname">__NAME__</span> <span class="code">__SYM__</span></div>
   <div class="price" id="price">–</div>
-  <div class="chg flat" id="chg"></div>
+  <div class="plabel" id="plabel">종가</div>
+  <span class="pill flat" id="chg"></span>
   <div class="note" id="walert"></div>
+  <div class="hstate">
+    <span class="badge b-live">미국</span>
+    <span class="usbadge" id="pbasis">불러오는 중</span>
+  </div>
 </div>
 
 <div class="meta" id="mylines"></div>
@@ -199,8 +202,8 @@ function setPrice(price, base, basis){
   if(base){
     const p=(price-base)/base*100;
     el.textContent=(p>=0?'+':'')+p.toFixed(2)+'%';
-    el.className='chg '+(p>0?'up':(p<0?'down':'flat'));
-  }else{el.textContent='';el.className='chg flat';}
+    el.className='pill '+(p>0?'up':(p<0?'down':'flat'));
+  }else{el.textContent='';el.className='pill flat';}
   document.getElementById('pbasis').textContent=basis;
   checkWatch(price);
 }
@@ -219,7 +222,7 @@ async function pollLive(){
         const el=document.getElementById('chg');
         document.getElementById('price').textContent=usd(q.price);
         if(q.change!=null){el.textContent=(q.change>=0?'+':'')+Number(q.change).toFixed(2)+'%';
-          el.className='chg '+(q.change>0?'up':(q.change<0?'down':'flat'));}
+          el.className='pill '+(q.change>0?'up':(q.change<0?'down':'flat'));}
         document.getElementById('pbasis').textContent='정규장 · 60초 갱신';
         checkWatch(q.price);
       }}

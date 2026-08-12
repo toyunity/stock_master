@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from html import escape
 
-from backend.report.dashboard import (_BASE_CSS, _DISCLAIMER, _ICON_SPRITE,
-                                      _NAV_LOADER, _PWA_HEAD, _TABBAR)
+from backend.report.dashboard import (_AGO_JS, _BASE_CSS, _DISCLAIMER,
+                                      _ICON_SPRITE, _NAV_LOADER, _PWA_HEAD,
+                                      _TABBAR)
 
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -42,12 +43,23 @@ __ICONS__
   <button class="refresh" onclick="load()">🔄 새로고침</button>
 </div>
 <div class="topmeta">외국인/기관 가집계는 증권사 수기 잠정치(하루 4~5회 갱신 · 1,000주 단위 반올림).
-확정치는 다음 영업일 제공. <span id="asof"></span></div>
+확정치는 다음 영업일 제공. <span id="asof"></span> <span class="ago" id="asof-ago"></span></div>
 <div id="err"></div>
 <div id="body">불러오는 중…</div>
 <div id="topview"></div>
 <div class="disc">__DISCLAIMER__ 스캐너의 종목 나열은 데이터 정렬 결과일 뿐 매수 추천이 아닙니다.</div>
 <script>
+__AGO_JS__
+// D.asof는 서버 벽시계 'HH:MM:SS'(KST, 날짜 없음) — 오늘 날짜와 합쳐야 ago()가 받는
+// epoch millis가 된다. 브라우저가 KST라는 전제(국내 전용 개인 앱)로 자정을 넘겼으면
+// (변환 시각이 지금보다 미래면) 하루를 물린다(2026-08-13).
+function agoFromHms(hms){
+  if(!hms) return '';
+  const p=hms.split(':').map(Number), n=new Date();
+  let t=new Date(n.getFullYear(),n.getMonth(),n.getDate(),p[0],p[1],p[2]||0).getTime();
+  if(t>Date.now()) t-=86400000;
+  return ago(t);
+}
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
 const eok=n=>n==null?'–':(n>0?'+':'')+(n/1e8).toLocaleString('ko-KR',{maximumFractionDigits:0})+'억';
 const cls=n=>n>0?'up':(n<0?'down':'flat');
@@ -68,6 +80,7 @@ function tbl(rows,cols,limit){
 
 function render(D){
   document.getElementById('asof').textContent='조회 '+D.asof+' 기준';
+  document.getElementById('asof-ago').textContent=agoFromHms(D.asof);
   const S=D.sections;
   // 순위 크기를 눈으로 — 셀 뒤 비례 막대(상단=최대). 방향색(적/청)·거래대금은 무채색.
   const maxAbs=(rows,key)=>Math.max(1,...rows.map(r=>Math.abs(r[key]!=null?r[key]:0)));
@@ -157,6 +170,7 @@ def render_scanner_page() -> str:
     return (_TEMPLATE
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
+            .replace("__AGO_JS__", _AGO_JS)
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)
             .replace("__PWA_HEAD__", _PWA_HEAD)
