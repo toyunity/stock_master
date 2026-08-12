@@ -73,6 +73,17 @@ def _no_external_network():
     del _leaks[:]
 
 
+@pytest.fixture(autouse=True)
+def _cold_marketdata():
+    """marketdata 모듈 전역 캐시를 매 테스트 앞에 콜드로 — 네트워크 가드와 같은 이유다.
+
+    파일마다 손으로 리셋하면 새 캐시가 생길 때마다 빠뜨릴 자리가 늘고, 빠뜨리면 앞
+    테스트가 남긴 값이 TTL 안에 반환돼 가짜 클라이언트를 한 번도 안 부르고 통과한다
+    (실행 순서에 따라 결과가 갈린다). 되돌리기만 한 곳으로 모은다."""
+    from backend.api import marketdata
+    marketdata.reset_caches()
+
+
 @pytest.fixture
 def offline_guard_probe():
     """가드 자체를 검사하는 테스트 전용 — 기록을 소비해 위 autouse가 안 물게 한다.

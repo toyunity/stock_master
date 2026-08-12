@@ -24,6 +24,15 @@ _idx_cache = {"ts": 0.0, "data": None}
 _fun_cache: dict = {}     # code -> (ts, dict|None)
 
 
+def _stale(d):
+    """옛 캐시를 그대로 주되 **나이 표식**을 얹는다 — 선물 칩이 쓰던 규약(stale=True)을
+    그대로 재사용한다. 새 규약을 만들면 화면마다 배지 어휘가 갈린다.
+
+    사본에 얹는다 — 캐시에 구우면 다음 조회가 성공해도 표식이 안 떨어진다.
+    보여줄 값 자체가 없으면(콜드) None: 표식만 남은 빈 값은 아무 뜻이 없다."""
+    return dict(d, stale=True) if d else None
+
+
 def _client():
     if not settings.kis_app_key:
         return None
@@ -35,7 +44,11 @@ def _client():
 
 
 async def get_indices(client=None):
-    """{'kospi':{price,change,rate,sign}, 'kosdaq':{...}} — 30초 캐시. 키없음/실패면 None."""
+    """{'kospi':{price,change,rate,sign}, 'kosdaq':{...}, 'stale'?} — 30초 캐시. 키없음/실패면 None.
+
+    갱신 실패(예외든 빈 응답이든)는 옛 캐시를 **stale:True와 함께** 준다. TTL 폴백은
+    시간 상한이 없어서(원인이 계속되는 한 무기한) 표식이 없으면 10시 값이 14시에
+    '실시간'으로 걸린다 — 선물 칩이 이미 쓰는 규약을 지수에도 적용한 것뿐이다."""
     client = client or _client()
     if client is None:
         return None
@@ -45,10 +58,11 @@ async def get_indices(client=None):
         kospi = await client.index("0001")
         kosdaq = await client.index("1001")
     except Exception:
-        return _idx_cache["data"]
+        return _stale(_idx_cache["data"])
     if kospi or kosdaq:
         _idx_cache["ts"], _idx_cache["data"] = time.time(), {"kospi": kospi, "kosdaq": kosdaq}
-    return _idx_cache["data"]
+        return _idx_cache["data"]
+    return _stale(_idx_cache["data"])
 
 
 _VK_TTL = 60.0            # 변동성지수 60초. 지연 로딩이라 폭주 위험이 낮다.
@@ -250,24 +264,30 @@ async def _k200_leg(client, fx, ses, ttl):
     return out
 
 
+_NQ_COOLDOWN = 300.0   # 실패 후 재시도 금지 구간(초)
+_nq_fail_ts = 0.0      # 마지막 실패 시각 — 매달린 스레드는 회수할 수 없으므로 유출
+                       # 속도를 재시도 간격으로 묶는다(30초 폴링당 1개 → 5분당 1개).
+
+
 async def _nq_leg(client, ttl, fetch=None):
     """나스닥 선물(NQ=F) 칩 — K200 성공/실패와 무관하게 항상 시도한다."""
+    global _nq_fail_ts
     slot = _fut_cache["nq"]
     if slot["data"] is not None and time.time() - slot["ts"] < ttl:
         return dict(slot["data"])
+    if time.time() - _nq_fail_ts < _NQ_COOLDOWN:
+        return _stale(slot["data"])          # 쿨다운 중 — 직전값을 지연 표시로만 준다
     nq = await _nq_quote(client, fetch)
     if nq is None:
-        if slot["data"] is None:
-            return None
-        out = dict(slot["data"])
-        out["stale"] = True
-        return out
+        _nq_fail_ts = time.time()
+        return _stale(slot["data"])
     slot["ts"], slot["data"] = time.time(), nq
     return dict(nq)
 
 
 _NQ_SYMBOL = "NQ=F"
 _NQ_LOOKBACK_DAYS = 7   # 주말 + NaN 결측 행을 넉넉히 건너뛸 만큼(약 1주일)
+_NQ_TIMEOUT = 8.0       # FDR 한 번 호출의 하드 상한(worldidx._CALL_TIMEOUT과 같은 값)
 
 
 def _fetch_nq(start: str):
@@ -296,13 +316,21 @@ async def _nq_quote(client, fetch=None):
     앱을 공개로 열면 이 칩은 반드시 제거해야 한다(제한 자체는 실시간 시세 재배포
     금지라는 기존 원칙과 같다).
 
-    어떤 이유로든(임포트 실패·네트워크·빈 프레임·전부 NaN) 실패하면 함수 전체가
-    감싸져 있어 이 칩만 죽고 K200 칩은 항상 유지된다."""
+    어떤 이유로든(임포트 실패·네트워크·빈 프레임·전부 NaN·상한 초과) 실패하면 함수
+    전체가 감싸져 있어 이 칩만 죽고 K200 칩은 항상 유지된다.
+
+    **하드 상한이 있어야 한다**: FDR엔 timeout 인자가 없어 야후가 RST 없이 무응답이면
+    (TCP 블랙홀) 이 호출은 영영 안 끝난다 — 대시보드가 30초마다 폴링하므로 기본
+    스레드풀(14개)이 몇 분이면 마르고, 같은 풀을 쓰는 일봉·옵션 마스터·글로벌 지표까지
+    시작조차 못 한다. 상한은 응답을 돌려줄 뿐 스레드는 못 죽인다(파이썬엔 강제종료가
+    없다 — worldidx._blocking이 같은 한계를 적어뒀다). 유출 속도는 _nq_leg의 쿨다운이
+    묶는다."""
     from backend.flow import futures as fx, kst
     try:
         start = (kst.now() - dt.timedelta(days=_NQ_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-        df = await asyncio.get_event_loop().run_in_executor(
-            None, fetch or _fetch_nq, start)
+        df = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, fetch or _fetch_nq, start),
+            _NQ_TIMEOUT)
         price, prev = fx.pick_latest_pair(list(df["Close"]))
         if price is None:
             return None
@@ -377,7 +405,6 @@ async def _collect_chain(client, rows, rate=None, conc=None):
 
 _OPT_TTL = 3600.0        # 장중 1시간. 회차당 1,012건·약 3.5분이라 더 자주 돌 이유가 없다.
 _OPT_FILE = "options_%s.json"
-_opt_cache = {"ts": 0.0, "data": None, "busy": False}
 
 
 def _opt_path(expiry):
@@ -386,15 +413,25 @@ def _opt_path(expiry):
 
 
 def _opt_save_disk(data):
-    """수집 결과를 디스크에 남긴다 — 서버 재기동에도 직전 보드가 살아 있어야 한다."""
+    """수집 결과를 디스크에 남긴다 — 서버 재기동에도 직전 보드가 살아 있어야 한다.
+
+    **원자적 교체가 필수다**: 쓰는 쪽은 launchd 배치, 읽는 쪽은 웹서버로 프로세스가
+    달라 threading.Lock으로는 아무것도 못 막는다. 'w'로 바로 열면 그 순간 파일이
+    0바이트로 잘려, 그 사이에 들어온 요청은 잘린 JSON을 만나 옵션 섹션을 통째로 잃고,
+    쓰다 죽으면 다음 회차까지 그 상태로 남는다. (.tmp는 _opt_latest_path의 glob
+    'options_*.json'에 안 걸린다 — 확장자가 다르다.)"""
     import json
     import os
     try:
+        path = _opt_path(data["expiry"])
         os.makedirs(settings.cache_dir, exist_ok=True)
-        with open(_opt_path(data["expiry"]), "w", encoding="utf-8") as f:
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+        os.replace(path + ".tmp", path)
     except Exception:
-        pass                     # 캐시 저장 실패가 화면을 죽이면 안 된다
+        # 화면을 죽이지는 않되(직전 파일로 계속 뜬다) 조용히 넘기지도 않는다 — 디스크가
+        # 차면 배치는 성공으로 끝나고 아침에 섹션만 비어 원인을 찾을 단서가 없었다.
+        log.warning("옵션 보드 저장 실패 — 화면은 직전 파일로 계속한다", exc_info=True)
 
 
 def _opt_latest_path():
@@ -567,10 +604,16 @@ async def get_options(client=None, now=None):
 
 _ASK_TTL = 2.0            # 호가 스냅샷 2초(빠르게 변함, 다중 뷰어 폭주만 방지)
 _ask_cache: dict = {}     # code -> (ts, dict|None)
+# 키 상한 없음 — 임의 6자리로 무한히 쌓을 수 있지만(_detail_cache도 같다) 1인용에선
+# 무해로 판정했다(감사 A6): 항목당 2~3KB, 인증 게이트 뒤, 사람이 화면을 열어야 키가
+# 생긴다(100만 코드를 다 긁어야 2GB). 다시 조사하지 말 것.
 
 
 async def get_asking(code, client=None):
-    """호가 사다리 스냅샷 — 2초 캐시. 키없음/실패면 {}(‌/live가 조용히 생략)."""
+    """호가 사다리 스냅샷 — 2초 캐시. 키없음/실패면 {}(‌/live가 조용히 생략).
+
+    갱신 실패는 직전 스냅샷 + stale:True. 표식이 없으면 사다리가 마지막 성공값에
+    얼어붙은 채 계속 '지금'처럼 보인다 — 벽/받침으로 매매를 정하는 화면이다."""
     client = client or _client()
     if client is None:
         return {}
@@ -580,7 +623,7 @@ async def get_asking(code, client=None):
     try:
         a = await client.asking_price(code)
     except Exception:
-        return (hit[1] if hit else {}) or {}
+        return _stale(hit[1] if hit else None) or {}
     _ask_cache[code] = (time.time(), a)
     return a or {}
 
@@ -751,3 +794,21 @@ async def get_fundamentals(codes, client=None):
             if f:
                 fresh[code] = f
     return fresh
+
+
+def reset_caches():
+    """**테스트 전용** — 이 모듈의 전역 캐시를 전부 콜드로 되돌린다.
+
+    캐시 8개를 하나로 합치지는 않는다(미스/실패 시 행동이 전부 달라 합치면 나빠진다).
+    합칠 값어치가 있는 건 '되돌리기'뿐이다: 테스트가 파일마다 손으로 리셋하면
+    새 캐시가 생길 때마다 빠뜨릴 자리가 늘고, 빠뜨리면 앞 테스트가 남긴 값이
+    TTL 안에 반환돼 **가짜 클라이언트를 한 번도 안 부르고 초록으로 통과한다**.
+    tests/conftest.py가 autouse로 매 테스트 앞에 부른다(네트워크 가드와 같은 처방)."""
+    global _night_tick, _night_reg, _nq_fail_ts
+    for c in (_idx_cache, _vk_cache, _topview_cache, *_fut_cache.values()):
+        c.update({"ts": 0.0, "data": None})
+    for c in (_fun_cache, _ask_cache, _detail_cache, _outlook_cache):
+        c.clear()
+    _opt_mem.update({"mtime": 0.0, "data": None})
+    _night_tick = _night_reg = None
+    _nq_fail_ts = 0.0

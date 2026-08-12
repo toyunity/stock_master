@@ -222,6 +222,29 @@ def test_widget_data_contract_whitelist(tmp_path, monkeypatch):
     assert d["items"][1]["price"] is None                 # 캐시에 없는 종목 = null(행 유지)
 
 
+def test_widget_fallback_fetched_at_is_cache_time_not_now(tmp_path, monkeypatch):
+    """universe 폴백값에 '지금' 도장을 찍지 않는다 — 위젯이 그 시각을 'HH:MM 갱신'으로
+    그대로 표시하기 때문이다(감사 D-H2).
+
+    KIS가 죽은 14시에 10:56 캐시값을 '14:00 갱신 · 장중'으로 띄우면 보유 수량이 있는 화면이
+    그 값으로 평가손익까지 계산해 보여준다. 캐시 파일 mtime을 과거로 박아두고, 응답의
+    fetched_at이 요청 시각이 아니라 그 시각인지 본다."""
+    import datetime as dt
+    from backend.config import settings
+    from backend.flow.kst import KST
+    from backend.api.widget import widget_data
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "kis_app_key", None)     # KIS 없음 → universe 폴백 경로
+    _seed_universe(str(tmp_path), [
+        {"code": "005930", "name": "삼성전자", "close": 247500.0, "change": 1.25}])
+    old = dt.datetime(2026, 8, 12, 10, 56, 3, tzinfo=KST)
+    os.utime(os.path.join(str(tmp_path), "universe_v2.json"),
+             (old.timestamp(), old.timestamp()))
+    d = asyncio.run(widget_data("m@x.com", [{"code": "005930", "market": "KR"}]))
+    assert d["items"][0]["price"] == 247500.0
+    assert d["fetched_at"] == old.isoformat(timespec="seconds")
+
+
 def test_widget_us_market_open_shortens_refresh(tmp_path, monkeypatch):
     """US 종목 보유 + 미국 정규장 개장이면, 한국장 마감이어도 갱신 힌트를 장중값으로 당긴다.
 
