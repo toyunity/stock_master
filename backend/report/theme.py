@@ -104,10 +104,6 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 /* 카드/패널 — 계기 베이(플랫·크리스프 1px, 반경은 24px로 넉넉하게 — 2026-08-12 6차) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:18px;margin:16px 0;box-shadow:var(--shadow)}
-/* 카드 윗변 방향색 바 — 색이 곧 정보. box-shadow inset을 쓰면 border-radius가
-   깎아주므로 별도 의사요소가 필요 없다(가장 짧은 구현). */
-.card--up{box-shadow:inset 0 3px 0 0 var(--up), var(--shadow)}
-.card--down{box-shadow:inset 0 3px 0 0 var(--down), var(--shadow)}
 .panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
 /* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
@@ -156,11 +152,8 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .hero .price{font-family:inherit;font-size:48px;margin:10px 0 0;font-weight:800;
   letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.02}
 .hero .plabel{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
-/* 미국 상세(us_page)가 여전히 class="chg"를 쓴다 — 2026-08-12: 이 규칙을 지웠다가
-   그 화면 등락 표시가 모노·볼드·tabular를 통째로 잃었다. /live의 히어로 필은
-   class="pill flat"이라 이 셀렉터에 안 걸리므로 양쪽이 공존한다. */
-.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
-  font-variant-numeric:tabular-nums}
+/* 2026-08-13: .hero .chg 규칙 삭제. us_page의 등락 표시가 class="pill"로 옮겨갔고
+   .pill이 모노·볼드를 자체적으로 나른다 — 리포 전체에 class="chg" 사용처가 0건이다. */
 .hero .hstate{display:flex;align-items:center;gap:6px;margin-top:12px;
   padding-top:11px;border-top:1px solid var(--border-2)}
 .hero .hstate .ago{margin-left:auto}

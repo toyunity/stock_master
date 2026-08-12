@@ -11,7 +11,9 @@ from backend.report.theme import BASE_CSS, PWA_HEAD
 
 def test_hero_classes_live_in_shared_css():
     # us_page.py는 _BASE_CSS만 싣는다 — 히어로 클래스가 여기 없으면 그 화면이 민짜가 된다.
-    for cls in (".hero{", ".hero .htop{", ".hero .hname{", ".hero .price{", ".hero .chg{"):
+    # .hero .chg는 없다 — us_page의 등락 표시는 2026-08-13부터 .pill(공유 컴포넌트,
+    # 아래 test_pill_is_shared_and_has_direction_variants가 덮는다)을 쓴다.
+    for cls in (".hero{", ".hero .htop{", ".hero .hname{", ".hero .price{"):
         assert cls in BASE_CSS, cls
     assert ".hero{" in _BASE_CSS      # dashboard 재수출 경로도 같은 내용이어야 한다
 
@@ -58,10 +60,6 @@ def test_live_page_does_not_redefine_shared_rules():
 def test_rail_component_exists():
     for sel in (".rail{", ".rail>div{", ".rail .k{", ".rail .v{"):
         assert sel in BASE_CSS, sel
-
-
-def test_direction_bar_variants_exist():
-    assert ".card--up{" in BASE_CSS and ".card--down{" in BASE_CSS
 
 
 def test_hero_headline_is_sans_tabular_48():

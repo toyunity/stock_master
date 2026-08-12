@@ -298,10 +298,7 @@ function cardHtml(s){
   // 상세 링크는 국내·미국 모두 건다(2026-08-06~). 미국은 /live가 US 전용 화면으로
   // 갈라져 가격 차트·감시선만 그린다 — 예전엔 404라 링크를 뺐었다.
   const isUS = s.market === 'US';
-  // 카드 윗변 방향색 바(.card--up/--down, theme.py) — 등락 방향만 반영, 매매 판정(action)과는
-  // 무관. 보합(0)·데이터 없음(null)은 아무것도 안 붙여 기본 카드 그대로 둔다(2026-08-13).
-  const dirCls = s.change>0?' card--up':(s.change<0?' card--down':'');
-  let h='<div class="card '+esc(s.action)+dirCls+'">';
+  let h='<div class="card '+esc(s.action)+'">';
   // 헤더 행: 이름·판정 태그(좌) · 큰 가격/등락(우)
   const nameHtml = '<a class="name" href="/live/'+esc(s.code)+'">'+esc(s.name)+'</a>';
   h+='<div class="cardhd"><div class="chinfo">'

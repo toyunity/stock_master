@@ -461,46 +461,6 @@ def test_every_dashboard_section_starts_collapsed():
 
 
 @_needs_node
-def test_dashboard_watchlist_card_gets_direction_color_bar(tmp_path):
-    """관심종목 카드(.card)에 등락 방향색 바(.card--up/--down, theme.py — Task 6에서
-    정의됐지만 여태 소비자가 없던 죽은 CSS)가 붙는다. 보합·데이터 없음이면 기본 카드
-    그대로(아무 것도 안 붙임) — 실제 실행으로 검증(문자열 존재 검사만으론 아무도 안
-    붙여도 통과해버린다, 이 저장소의 반복된 함정)."""
-    html = render_dashboard([_stock()], [], "2026-06-22")
-    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
-    main = next((s for s in scripts if "cardHtml" in s), None)
-    assert main, "메인 스크립트 블록을 찾지 못함"
-    fn = _extract_js_function(main, "cardHtml")
-    harness = fn + """
-function issuesHtml(){ return ''; }
-const esc = s => String(s==null?'':s);
-const won = n => n==null?'–':String(n);
-const chg = c => '';
-const stars = n => '';
-const base = {code:'005930', name:'삼성전자', action:'hold', action_ko:'관망',
-  confidence:1, advice:false, reasons:[], backtest:null, candles:[]};
-function cls(o){ return cardHtml(Object.assign({}, base, o)).match(/^<div class="([^"]*)"/)[1]; }
-console.log(JSON.stringify({
-  up: cls({close:71000, change:1.2}),
-  down: cls({close:71000, change:-1.2}),
-  flat: cls({close:71000, change:0}),
-  none: cls({close:71000, change:null}),
-}));
-"""
-    js = tmp_path / "carddir_check.js"
-    js.write_text(harness, encoding="utf-8")
-    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
-    assert r.returncode == 0, "cardHtml 실행 실패:\n" + r.stderr
-    out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert "card--up" in out["up"] and "card--down" not in out["up"]
-    assert "card--down" in out["down"] and "card--up" not in out["down"]
-    assert "card--up" not in out["flat"] and "card--down" not in out["flat"]
-    assert "card--up" not in out["none"] and "card--down" not in out["none"]
-    for v in out.values():                    # 추가만 — 기존 클래스는 그대로 남아야 한다
-        assert "card" in v.split() and "hold" in v.split(), v
-
-
-@_needs_node
 def test_dashboard_pulse_shows_relative_time_of_last_market_fetch(tmp_path):
     """헤더 시장상태 펄스(#mkpulse/#mktxt) 옆 #mkago — /api/market이 마지막으로 성공한
     시점을 ago()로 보여준다(theme.py .ago 규약: 절대시각(.fresh)의 대체재가 아니라
