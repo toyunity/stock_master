@@ -1090,3 +1090,17 @@ def test_toggle_listener_survives_private_mode_localstorage(tmp_path):
     out_raw, out = _toggle_harness(tmp_path, throw=True)
     assert "RESTORE_OK" in out_raw
     assert int(out["FIT_AFTER_OPEN"]) >= 1, "프라이빗 모드에서 재핏이 전부 죽었다(개별 try 가드 회귀)"
+
+
+def test_watch_section_below_chart_collapsed_and_flow_panel_order():
+    # 2026-08-21 배치 변경: 감시선은 차트 아래·기본 접힘, 수급 섹션은
+    # 거래원 → 거래소별 거래량 → 일별 확정 수급 순. bake 스크린샷은 details.sec을
+    # 강제로 열어 캡처하므로 '기본 접힘'을 증명하지 못한다 — 마크업으로 고정한다.
+    import re
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert html.index('id="pchart"') < html.index('id="wl-panel"')  # 차트 아래
+    tag = re.search(r'<details[^>]*id="wl-panel"[^>]*>', html).group(0)
+    assert " open" not in tag                                       # 최초 진입 시 접힘
+    assert (html.index('id="mb-tbl"') < html.index('id="xv-krx"')
+            < html.index('id="daily"'))
