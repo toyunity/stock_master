@@ -1107,3 +1107,24 @@ def test_watch_section_below_chart_collapsed_and_flow_panel_order():
     assert " open" not in tag                                       # 최초 진입 시 접힘
     assert (html.index('id="mb-tbl"') < html.index('id="xv-krx"')
             < html.index('id="sz-bars"') < html.index('id="daily"'))
+
+
+def test_hero_goes_two_column_on_wide_screens():
+    """2026-08-21 마스터 스크린샷: 넓은 화면(≈700px)에서 히어로 우측이 통째로 비고
+    근거 레일만 아래로 길어졌다. 560px↑ 2열로 그 여백을 채운다.
+
+    make verify는 390에서만 찍어 이 미디어쿼리가 아예 안 걸린다 — 마크업·CSS 배선을
+    여기서 고정한다(실렌더 확인은 `harness verify --width 700`).
+    """
+    from backend.report.live_page import render_live_page
+    from backend.report.theme import BASE_CSS
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'class="hero hgrid"' in html                  # 2열 스위치(us_page 히어로는 제외)
+    assert (html.index('class="hmain"') < html.index('id="price"')
+            < html.index('class="rail"'))               # 왼쪽 열 묶음 → 오른쪽 열 레일
+    assert "@media (min-width:560px)" in BASE_CSS
+    assert ".hero.hgrid{display:grid" in BASE_CSS
+    # us_page 히어로엔 .hgrid를 달지 않는다 — 레일이 없어 죽은 열만 생긴다.
+    # (CSS는 공유라 BASE_CSS의 .hero.hgrid 규칙 자체는 us_page에도 실려 있다.)
+    from backend.report.us_page import render_us_page
+    assert 'class="hero hgrid"' not in render_us_page("SKHY", "SK하이닉스 DR")

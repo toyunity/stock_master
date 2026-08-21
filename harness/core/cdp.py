@@ -107,7 +107,7 @@ def _wait_cdp(base: str, timeout: float = 40.0, proc=None,
                        % (timeout, _chrome_stderr(err_path)))
 
 
-async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> dict:
+async def _shot_async(cdp_base, url, out_path, scheme, width=390):
     async with httpx.AsyncClient() as c:
         tgt = (await c.put(cdp_base + "/json/new?about:blank")).json()
     tid = tgt.get("id")
@@ -131,7 +131,8 @@ async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> di
 
             await cmd("Page.enable")
             await cmd("Emulation.setDeviceMetricsOverride",
-                      {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True})
+                      {"width": width, "height": 844, "deviceScaleFactor": 3,
+                       "mobile": width <= 430})
             await cmd("Emulation.setEmulatedMedia",
                       {"media": "screen",
                        "features": [{"name": "prefers-color-scheme", "value": scheme}]})
@@ -157,5 +158,6 @@ async def _shot_async(cdp_base: str, url: str, out_path: str, scheme: str) -> di
                 await c.get(cdp_base + "/json/close/" + tid)
 
 
-def shot(cdp_base: str, url: str, out_path: str, scheme: str) -> dict:
-    return asyncio.run(_shot_async(cdp_base, url, out_path, scheme))
+def shot(cdp_base: str, url: str, out_path: str, scheme: str, width: int = 390) -> dict:
+    """width는 CSS px 뷰포트 폭 — 기본 390(아이폰). 넓은 폭 미디어쿼리 확인용으로 올린다."""
+    return asyncio.run(_shot_async(cdp_base, url, out_path, scheme, width))

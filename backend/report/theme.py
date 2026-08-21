@@ -200,6 +200,20 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .rail .k{font-size:13px;color:var(--text-2);font-weight:500;flex:0 1 auto;word-break:keep-all}
 .rail .v{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
   font-variant-numeric:tabular-nums;letter-spacing:-.01em;text-align:right;white-space:nowrap}
+/* 2026-08-21: 넓은 화면(맥·아이패드)에선 히어로 우측이 통째로 비어 있고 근거 레일만
+   아래로 길어졌다(마스터 스크린샷). 560px부터 레일을 우측으로 띄워 그 여백을 채운다.
+   .hgrid 클래스로 켜는 이유: .hero는 us_page와 공유인데 그쪽엔 레일이 없다 —
+   .hero에 그냥 걸면 미국 히어로에 죽은 열이 생긴다. 왼쪽 열은 .hmain 래퍼 하나로
+   묶었다(자식 개수를 세는 grid-row 지정을 피한다 — 히어로에 줄이 늘면 바로 깨진다).
+   float은 안 된다: 레일이 가격·필 뒤에 오므로 그 블록들 아래로만 떠서 여백이 안 메워진다
+   (2026-08-21 700px 실캡처로 확인).
+   아이폰 폭(390)에선 48px 가격이 한 줄을 다 먹어 두 열이 안 나온다 — 그대로 쌓인다. */
+@media (min-width:560px){
+  .hero.hgrid{display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,36%,300px);
+    column-gap:28px;align-items:start}
+  .hero.hgrid>.htop,.hero.hgrid>.hstate{grid-column:1/-1}
+  .hero.hgrid>.rail{margin-top:4px}
+}
 
 /* 시그널 콜아웃(판정) */
 .sig{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-top:10px;

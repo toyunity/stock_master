@@ -229,14 +229,18 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 </style></head><body>
 __ICONS__
 <div id="app"><div id="app-scroll">
-<div class="hero">
+<div class="hero hgrid">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
     <span class="hname">__NAME__</span> <span class="code">__CODE__</span></div>
-  <div class="price" id="price">–</div>
-  <div class="plabel" id="plabel">현재가</div>
-  <span class="pill flat" id="chg"></span>
-  <div class="note" id="walert"></div>
-  <div id="today-line"></div>
+  <!-- .hmain — 560px↑에서 히어로가 2열이 될 때 왼쪽 열로 통째로 들어가는 묶음.
+       래퍼가 없으면 CSS가 자식 개수를 세야 하고, 히어로에 줄이 하나 늘 때마다 깨진다. -->
+  <div class="hmain">
+    <div class="price" id="price">–</div>
+    <div class="plabel" id="plabel">현재가</div>
+    <span class="pill flat" id="chg"></span>
+    <div class="note" id="walert"></div>
+    <div id="today-line"></div>
+  </div>
   <!-- 근거 레일 — 히어로 숫자를 만든 재료. 2026-08-13: 시가·고가·저가는 넣지 않는다.
        SSE 스냅샷(_market)에 price/sign/change/rate/vol/value/strength/time 8필드뿐이라
        그 값이 아예 없다. 호가는 /api/asking 별도 5초 폴링이라 갱신 주기가 달라 #ob 패널에 둔다.

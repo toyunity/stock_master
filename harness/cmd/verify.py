@@ -31,6 +31,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="harness verify")
     ap.add_argument("--only", default="", help="쉼표구분 화면명(기본 전체)")
     ap.add_argument("--theme", choices=["light", "dark", "both"], default="both")
+    ap.add_argument("--width", type=int, default=390,
+                    help="뷰포트 CSS 폭(기본 390=아이폰). 560↑ 히어로 2열 등 넓은 폭 확인용")
     args = ap.parse_args(argv)
     if cdp.find_chrome() is None:
         print("헤드리스 크롬 미설치 — verify 생략")
@@ -50,12 +52,13 @@ def main(argv=None) -> int:
                 html = src() if callable(src) else src
                 url = "file://" + _write_tmp(html)
             for scheme in schemes:
-                out = os.path.join(_ART, "%s-%s.png" % (name, scheme))
-                m = cdp.shot(cdp_base, url, out, scheme)
-                flag = " ⚠ OVERFLOW" if m.get("sw", 0) > 390 else ""
+                suffix = "" if args.width == 390 else "-w%d" % args.width
+                out = os.path.join(_ART, "%s-%s%s.png" % (name, scheme, suffix))
+                m = cdp.shot(cdp_base, url, out, scheme, args.width)
+                flag = " ⚠ OVERFLOW" if m.get("sw", 0) > args.width else ""
                 print("%-10s %-5s sw=%s bh=%s -> %s%s"
                       % (name, scheme, m.get("sw"), m.get("bh"), out, flag))
-                if m.get("sw", 0) > 390:
+                if m.get("sw", 0) > args.width:
                     bad.append("%s-%s" % (name, scheme))
     if bad:
         print("가로 오버플로 검출: " + ", ".join(bad))
