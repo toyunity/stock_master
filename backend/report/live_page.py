@@ -17,7 +17,7 @@ SSE(/api/live/{code}/stream)로 1초마다 전체 스냅샷을 받아 그린다(
 
 from html import escape
 
-from backend.report.dashboard import (_BASE_CSS, _CHART_THEME_JS, _DISCLAIMER,
+from backend.report.dashboard import (_AGO_JS, _BASE_CSS, _CHART_THEME_JS, _DISCLAIMER,
                                       _ICON_SPRITE, _LIB_PATH, _NAV_LOADER,
                                       _PWA_HEAD, _TABBAR)
 
@@ -28,18 +28,6 @@ __PWA_HEAD__
 <style>
 __BASE_CSS__
 /* ── /live 고유 스타일 ── */
-.hero{background:var(--bg);margin:0 -16px 4px;
-  padding:8px 16px 12px;
-  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
-  border-bottom:1px solid var(--border)}
-.hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
-.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
-.hero .price{font-family:var(--font-num);font-size:34px;margin:6px 0 0;font-weight:700;
-  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
-.hero .chg{font-family:var(--font-num);font-size:14px;font-weight:700;margin:3px 0 0;
-  font-variant-numeric:tabular-nums}
-.hero .chg.up{color:var(--up)}.hero .chg.down{color:var(--down)}.hero .chg.flat{color:var(--text-2)}
-.hero .sig{margin-top:8px}
 .ob{margin-top:8px}
 /* 기업 체력(접힘) — 접힌 줄엔 숫자 요약, 펼치면 지표별 쉬운말 + ⓘ 개념 */
 .findig{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--text-2);
@@ -73,9 +61,6 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 /* 지연 데이터 초보 카드 */
 .dp .dp-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .dp .dp-h h2{font-size:16px}
-.pill{font-family:var(--font-mono,ui-monospace,Menlo,monospace);font-size:11px;font-weight:700;
-  white-space:nowrap;display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:3px 9px}
-.pill.fixed{background:var(--warn-bg);color:var(--warn)}
 .dp-key{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
 .dp-num{font-family:var(--font-num);font-size:26px;font-weight:700;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums}
@@ -238,24 +223,6 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 #today-line{margin-top:9px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.5;
   padding-left:13px;border-left:3px solid var(--primary)}
 #today-line:empty{display:none}
-details.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
-details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
-  padding:15px 16px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
-  letter-spacing:-.02em;min-height:54px;color:var(--text)}
-details.sec>summary::-webkit-details-marker{display:none}
-details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
-.secic{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
-  stroke-linecap:round;stroke-linejoin:round;color:var(--primary)}
-.seccap{font-size:11.5px;font-weight:500;color:var(--text-3);letter-spacing:0}
-.chev{margin-left:auto;color:var(--text-3);font-size:12px;font-weight:700;transition:transform .2s}
-details.sec[open]>summary .chev{transform:rotate(180deg)}
-details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
-.sec-body{padding:2px 15px 15px}
-/* 섹션 내부 패널은 카드 크롬 제거 → 하위구획(하이라인 구분)으로 평평하게 */
-.sec-body>.panel,.sec-body>.panel.dp{background:transparent;border:0;box-shadow:none;
-  border-radius:0;padding:16px 0;margin:0;border-top:1px solid var(--border-2)}
-.sec-body>.panel:first-child{border-top:0}
 .sec-body>.glance,.sec-body>.ob{margin:12px 0 0}
 .fixed-note{font-size:12.5px;color:var(--text-2);line-height:1.55;padding:10px 0 2px}
 .fixed-note .whyfixed{margin-top:6px}
@@ -264,14 +231,27 @@ __ICONS__
 <div id="app"><div id="app-scroll">
 <div class="hero">
   <div class="htop"><a class="back" href="/" style="margin:0">← 목록</a>
-    <span class="hname">__NAME__</span> <span class="code">__CODE__</span>
-    <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
-    <span id="conn" class="badge b-off">연결 중…</span>
-    <span id="mstate" class="badge b-off">상태 확인 중</span></div>
+    <span class="hname">__NAME__</span> <span class="code">__CODE__</span></div>
   <div class="price" id="price">–</div>
-  <div class="chg flat" id="chg"></div>
+  <div class="plabel" id="plabel">현재가</div>
+  <span class="pill flat" id="chg"></span>
   <div class="note" id="walert"></div>
   <div id="today-line"></div>
+  <!-- 근거 레일 — 히어로 숫자를 만든 재료. 2026-08-13: 시가·고가·저가는 넣지 않는다.
+       SSE 스냅샷(_market)에 price/sign/change/rate/vol/value/strength/time 8필드뿐이라
+       그 값이 아예 없다. 호가는 /api/asking 별도 5초 폴링이라 갱신 주기가 달라 #ob 패널에 둔다.
+       대시만 남는 행은 화면만 길어지고 아무것도 말하지 않는다. -->
+  <div class="rail" id="hrail">
+    <div><span class="k">전일 종가</span><span class="v" id="hr-prev">–</span></div>
+    <div><span class="k">거래대금</span><span class="v" id="hr-amt">–</span></div>
+    <div><span class="k">체결강도</span><span class="v" id="hr-str">–</span></div>
+  </div>
+  <div class="hstate">
+    <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
+    <span id="conn" class="badge b-off">연결 중…</span>
+    <span id="mstate" class="badge b-off">상태 확인 중</span>
+    <span class="ago" id="hago"></span>
+  </div>
 </div>
 
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
@@ -321,7 +301,7 @@ __ICONS__
   <div class="mylines" id="mylines"></div>
 </div>
 
-<details class="sec" open>
+<details class="sec" id="sec-flow" open>
   <summary><svg class="hic secic"><use href="#i-flows"/></svg> 수급 <span class="seccap">누가 사고파나</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="glance" id="glance"></div>
@@ -346,6 +326,14 @@ __ICONS__
       <div class="meta">당일 누적 순매수 금액 추이(억원) — Y축은 당일 전체 범위 고정</div>
     </div>
     <div class="panel">
+      <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
+      <div class="tbl-wrap"><table id="mb-tbl"></table></div>
+      <div class="sig" id="mb-sig"></div>
+      <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
+      외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
+      창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
+    </div>
+    <div class="panel">
       <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh" id="daily-fresh">· 전일까지 확정치</span></h2>
       <div class="tbl-wrap"><table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table></div>
     </div>
@@ -354,18 +342,10 @@ __ICONS__
       <div class="fresh" id="dt-fresh">확정 · 기준일 대기 · 기관계를 주체별로 분해한 확정치</div>
       <div class="tbl-wrap"><table id="detail"></table></div>
     </div>
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
-      <div class="tbl-wrap"><table id="mb-tbl"></table></div>
-      <div class="sig" id="mb-sig"></div>
-      <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
-      외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
-      창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
-    </div>
   </div>
 </details>
 
-<details class="sec" open>
+<details class="sec" id="sec-risk" open>
   <summary><svg class="hic secic"><use href="#i-short"/></svg> 위험 지표 <span class="seccap">공매도·빚 · 며칠 전 확정</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="fixed-note"><span class="tag-fixed">🕐 확정</span> 하루~이틀 전 · 실시간 아님 · 떨어질 때 연료
@@ -459,7 +439,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" open>
+<details class="sec" id="sec-xvol" open>
   <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·거래소·체결 <span class="chev">▾</span></summary>
   <div class="sec-body">
 __ADR_PANEL__
@@ -493,7 +473,7 @@ __ADR_PANEL__
   </div>
 </details>
 
-<details class="sec">
+<details class="sec" id="sec-tape">
   <summary><svg class="hic secic"><use href="#i-activity"/></svg> 실시간 체결 <span class="seccap">최근 30건 · 계속 갱신</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="panel">
@@ -528,6 +508,7 @@ __ADR_PANEL__
 
 <script>__LIB__</script>
 <script>
+__AGO_JS__
 const CODE='__CODE__';
 let WATCH=__WATCH__; // 감시선 [{price,label}] — 서버 저장(/api/watch)에서 주입, 편집 시 가변
 const num=n=>n==null?'–':Math.round(n).toLocaleString('ko-KR');
@@ -1030,6 +1011,13 @@ function renderSizes(S){
   fresh.textContent='· '+SES_KO[ses]+' · 표본 '+n.toLocaleString('ko-KR')+'건 · 추정치';
 }
 
+// #hago 페인트용 마지막 체결시각(epoch ms). render()에만 두면 SSE가 멈춰 render()가
+// 안 불릴 때 "방금"에 영구 고착한다 — 그래서 워치독(1450행 근처 setInterval)도
+// 이 변수로 다시 그린다(2026-08-13).
+let _hagoTs=null;
+function paintHago(){
+  try{var _h=document.getElementById('hago'); if(_h&&_hagoTs!=null)_h.textContent=ago(_hagoTs);}catch(e){}
+}
 function render(S){
   KDATE=S.kst_date; KTIME=S.kst_time; // 모든 표시 시각의 기준(서버 KST)
   LAST_S=S; renderSizes(S);
@@ -1064,9 +1052,23 @@ function render(S){
     var cg=document.getElementById('chg');
     cg.textContent=(M.change!=null?sgn[M.sign]+won(Math.abs(M.change)):'')
       +(M.rate!=null?'  '+(M.rate>0?'+':(M.rate<0?'-':''))+Math.abs(M.rate).toFixed(2)+'%':'');
-    cg.className='chg '+M.sign;
-    document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 거래대금 <span class="n">'+eok(M.value).replace('+','')
-      +'</span> · 체결강도 <span class="n">'+(M.strength==null?'–':M.strength.toFixed(1))+'</span> · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    cg.className='pill '+M.sign;
+    // 2026-08-13: 거래대금·체결강도는 여기서 뺐다 — 히어로 근거 레일(#hrail)이 이미
+    // 말해서, 히어로와 200px 아래에 같은 숫자가 두 번 보이던 중복이었다(리뷰 지적).
+    document.getElementById('pmeta').innerHTML='거래량 <span class="n">'+num(M.vol)+'</span>주 · 기준 <span class="n">'+esc(M.time||'')+'</span> (KST) <span class="fresh">· 실시간 · __MKT__</span>';
+    // 히어로 근거 레일(#hrail) — 거래대금·체결강도는 여기서만 말한다(위 pmeta 참고).
+    // 전일 종가는 스냅샷에 별도 필드가 없어 현재가-부호있는전일대비로 역산한다.
+    // sign(up/down)으로 부호를 만들고 change는 abs()로 씌워, 와이어가 change를
+    // 이미 부호 있는 값으로 주든(데모) 크기만 주든(실 KIS, 부호는 별도 필드) 둘 다 맞는다.
+    var _pc=M.change!=null?M.price-(M.sign==='up'?1:(M.sign==='down'?-1:0))*Math.abs(M.change):null;
+    document.getElementById('hr-prev').textContent=won(_pc);
+    document.getElementById('hr-amt').textContent=eok(M.value).replace('+','');
+    document.getElementById('hr-str').textContent=M.strength==null?'–':M.strength.toFixed(1);
+    // 히어로 하단 상대시간(#hago) — M.time은 체결시각 "HH:MM:SS"(KST), 날짜 없음.
+    // toTs()는 이 벽시계를 UTC인 척 만들어(차트 라벨용) 9h(32400000ms) 앞선 값을 주므로,
+    // ago()가 Date.now()(진짜 epoch)와 비교할 수 있게 9h를 빼서 진짜 epoch로 되돌린다(2026-08-12).
+    if(M.time)_hagoTs=toTs(M.time)*1000-32400000;
+    paintHago();
     checkWatch(M.price); // 감시선 ±0.5% 진입 알림(P1-8)
     updateLiveCandle(M); // 실시간 봉 갱신 + 현재가 라인 + 다음 봉 카운트다운
   }
@@ -1458,6 +1460,7 @@ setInterval(()=>{   // 워치독: 오류 이벤트 없이 멈춘 half-open을 �
     setConn('응답 없음 · 재접속');
     authGuardThen(()=>{esBackoff=1000;connect();});
   }
+  paintHago(); // render()에만 두면 SSE가 멈췄을 때 "방금"에 고착한다(2026-08-13)
 },5000);
 function resume(){   // 화면/네트워크 복귀 — 죽었거나 멈췄으면 즉시 되살린다(iOS PWA 잠금 복귀)
   if(!es||es.readyState===EventSource.CLOSED||Date.now()-lastMsg>STALL_MS){
@@ -1473,8 +1476,18 @@ try{
 connect();
 // 드릴다운 섹션이 열릴 때 그 안의 차트(프로그램)를 재-핏 — LWC는 접힌(width:0) 컨테이너에서
 // 생성되면 크기가 0이라, 펼칠 때 fitContent로 강제 리사이즈(하니스엔 addEventListener 가드).
+// 2026-08-12: 여기에 접힘 상태 저장·복원을 얹었다 — 같은 핸들러가 저장도 재핏도 책임진다.
+// 2026-08-13 실측: chart·pchart는 616·640행 top-level const로 먼저 생성되고 이 복원
+// 블록은 1470행(connect() 뒤)에서 돈다 — 같은 <script>의 동기 실행이라 #chart는 항상
+// 섹션이 열린 뒤 생성되고 그 다음에 닫힌다. '접힌 채로 생성 → 폭 0'은 #chart엔 재현되지
+// 않는다. fitContent는 그대로 둔다(접힘→펼침 왕복에서 LWC가 0폭으로 굳던 원래 이유).
 try{document.querySelectorAll('details.sec').forEach(function(d){
-  d.addEventListener('toggle',function(){ if(!d.open)return;
+  if(!d.id)return;                       // id 없는 섹션은 기억하지 않는다(순서 밀림 방지)
+  var key='livesec:'+d.id;
+  try{var v=localStorage.getItem(key); if(v==='0')d.open=false; else if(v==='1')d.open=true;}catch(e){}
+  d.addEventListener('toggle',function(){
+    try{localStorage.setItem(key, d.open?'1':'0');}catch(e){}
+    if(!d.open)return;
     try{chart.timeScale().fitContent();}catch(e){}
     try{pchart.timeScale().fitContent();syncVol();}catch(e){} });
 });}catch(e){}
@@ -1524,6 +1537,7 @@ def render_live_page(code: str, name: str, mode: str, email=None) -> str:
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
+            .replace("__AGO_JS__", _AGO_JS)
             .replace("__MKT__", _MKT_LABEL.get(settings.market_div, "KRX+NXT 통합"))
             .replace("__TABBAR__", _TABBAR)
             .replace("__NAV_LOADER__", _NAV_LOADER)

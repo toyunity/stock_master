@@ -55,13 +55,15 @@ eval(code);
 render(snap);
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
-                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl'])
+                  'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl',
+                  'hr-prev','hr-amt','hr-str'])
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
-                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh'])
+                  'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago',
+                  'hr-prev','hr-amt','hr-str'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -276,6 +278,68 @@ def _run_harness(tmp_path, snap, snap2=None):
     r = subprocess.run(args, capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
     return _parse_harness(r.stdout)
+
+
+@needs_node
+def test_render_js_fills_hago(tmp_path):
+    """#hago(히어로 상대시간)가 실제로 채워지는지 — render() 안의 갱신 코드가
+    try/catch로 감싸여 있어, 인자를 잘못 넘기거나 toTs 오프셋 산술이 틀려도
+    조용히 아무 것도 안 하고 다른 모든 테스트가 초록으로 남는다(2026-08-12 리뷰 지적).
+    정확한 문자열은 스냅샷/실행 시각에 따라 달라지므로 '비어있지 않다'만 확인한다."""
+    _, texts = _run_harness(tmp_path, _full_snapshot())
+    # els['hago']가 아예 안 만들어지면(코드가 안 돌면) 하니스가 String(undefined)="undefined"를
+    # 찍어 truthy로 위장한다 — 빈 문자열과 함께 명시적으로 걸러야 진짜 가드가 된다.
+    assert texts["hago"] not in ("", "undefined")
+
+
+def test_pmeta_does_not_duplicate_hero_rail():
+    """#pmeta(가격 아래 캡션)가 근거 레일(#hrail)의 거래대금·체결강도를 그대로 반복하면
+    실캡처에서 같은 숫자가 히어로와 200px 아래에 두 번 보인다(2026-08-13 리뷰).
+    pmeta는 거래량·기준시각·신선도만 말한다 — 거래대금/체결강도는 레일이 이미 말한다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    start = html.index("getElementById('pmeta').innerHTML=")
+    end = html.index(";", start)
+    stmt = html[start:end]
+    assert "거래대금" not in stmt
+    assert "체결강도" not in stmt
+    # __MKT__는 render_live_page()가 이미 치환한 뒤라 리터럴로는 안 남는다 — fresh 클래스로 확인
+    assert "거래량" in stmt and "기준" in stmt and 'class="fresh"' in stmt
+
+
+def test_hago_repaints_from_watchdog_too():
+    """#hago 페인트가 render() 안에만 있으면 SSE가 멈췄을 때 render()가 안 불려
+    '방금'에 영구 고착한다(2026-08-13 리뷰). 워치독(setInterval, es 하트비트 감시)에서도
+    다시 그려야 한다 — 문자열 가드: 페인트 호출이 정확히 두 곳(render()·워치독)에 있어야 한다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert html.count("paintHago();") == 2
+
+
+@needs_node
+def test_render_js_fills_hero_rail(tmp_path):
+    """히어로 근거 레일(3행) — 큰 숫자를 만든 재료를 바로 밑에 편다.
+    빈 문자열로 남으면 '값이 없는 라벨 줄'이 되어 안 넣느니만 못하다.
+
+    LEN(filled) 대신 TXT(texts, 실제 textContent)로 검증한다 — 마크업에 id가 아직
+    없어도 하니스가 (els[id]||{}).textContent를 String(undefined)="undefined"(길이 9)로
+    찍어 LEN 검사 "not in (None,'0')"을 무의미하게 통과시킨다(2026-08-13 실측,
+    구현 전 상태로 이 테스트를 그대로 돌려서 확인함). 값 자체를 대조해야
+    "안 채워졌는데 초록"을 막는다. 값은 _full_snapshot()의 마지막 tick
+    (13:00:00, price=2,254,000·change=68,000·sign=up·value=9e12·strength=88.5)에서
+    역산한 정확한 문자열이다 — 이 픽스처는 rng·시각 등 비결정 요소가 없는 고정
+    리터럴이라(파일 상단 참고) 정확 문자열 비교가 스냅샷 값 변화로 부서질 일은 없다.
+
+    시가·고·저(hr-ohl) 행은 넣지 않는다(2026-08-13, 마스터 확인) — 스냅샷
+    (FlowState.market)에 그 필드가 애초에 없고, KIS 와이어 인덱스를 추정해 채우면
+    실 연결 없이는 검증할 길이 없다. live_page.py의 #hrail 위 마크업 주석 참고."""
+    _, texts = _run_harness(tmp_path, _full_snapshot())
+    # 전일 종가 = 현재가 - 부호 있는 전일대비 (2,254,000 - 68,000)
+    assert texts["hr-prev"] == "2,186,000원"
+    # 거래대금 = M.value를 eok()로(부호 접두 제거)
+    assert texts["hr-amt"] == "90,000억"
+    # 체결강도 = M.strength.toFixed(1) — 2026-08-13부터 pmeta엔 없고 레일에만 있다(중복 제거)
+    assert texts["hr-str"] == "88.5"
 
 
 @needs_node
@@ -917,3 +981,112 @@ def test_adr_absent_page_still_renders_the_rest_of_the_section():
     html = render_live_page("005930", "삼성전자", "live")
     assert "거래소별 거래량" in html and 'id="xv-fresh"' in html
     assert "체결 규모 분포" in html
+
+
+@needs_node
+def test_render_js_persists_section_open_state(tmp_path):
+    """접힘 상태를 기억한다. localStorage가 없는 환경(사파리 프라이빗)에서도
+    죽지 않아야 한다 — try/catch 가드가 핵심이다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert "livesec:" in html            # 저장 키 접두사
+    assert "localStorage" in html
+    # 프라이빗 모드 가드 — 저장 호출이 try 안에 있어야 한다
+    seg = html.split("livesec:", 1)[0][-400:]
+    assert "try{" in seg
+
+
+# ── 접힘 상태 저장·복원: 위 문자열 검사는 forEach 루프 본문을 한 번도 안 돌려도 통과한다
+# (_HARNESS·_SAVE_HARNESS 둘 다 querySelectorAll을 빈 배열로 스텁하는 게 이 리포 관례라 —
+# 2026-08-13 자문에서 지적됨). details.sec을 흉내내는 페이크 노드로 실제 실행까지 검증한다.
+_TOGGLE_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const throwMode = process.argv[3] === 'throw';
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
+
+function D(id, open){
+  var h = null;
+  return { id: id, open: open,
+    addEventListener: function(t, f){ if (t === 'toggle') h = f; },
+    fire: function(){ if (h) h(); } };
+}
+const secFlow = D('sec-flow', true);   // markup은 open — 저장값 '0'이 이걸 뒤집어야 한다
+const secTape = D('sec-tape', false);  // 저장값 없음 — 원래 상태 그대로여야 한다
+const noId = D('', true);              // id 없음 — 절대 안 건드려야 한다(순서 밀림 방지 가드)
+const secs = [secFlow, secTape, noId];
+
+const store = { 'livesec:sec-flow': '0' };
+global.localStorage = {
+  getItem: function(k){ if (throwMode) throw new Error('private'); return (k in store) ? store[k] : null; },
+  setItem: function(k, v){ if (throwMode) throw new Error('private'); store[k] = String(v); },
+};
+let fitCount = 0;
+global.document = {
+  getElementById: () => ({textContent:'', innerHTML:'', className:'', style:{}}),
+  querySelectorAll: sel => sel === 'details.sec' ? secs : [],
+  addEventListener: () => {},
+};
+global.window = { addEventListener: () => {} };
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){return {};}}),
+  timeScale: () => ({fitContent(){ fitCount++; }}), applyOptions(){}, subscribeClick(){},
+})};
+global.EventSource = function(){ return {}; };
+global.fetch = async () => ({ok:false, json:async()=>({})});
+global.setInterval = () => {}; global.setTimeout = () => 0;
+
+eval(code);
+console.log('RESTORE_OK');    // throwMode에서도 여기까지 죽지 않고 도달해야 한다
+console.log('FLOW_OPEN=' + secFlow.open);
+console.log('TAPE_OPEN=' + secTape.open);
+console.log('NOID_OPEN=' + noId.open);
+
+secFlow.open = true; secFlow.fire();     // 사용자가 수급 섹션을 펼침
+console.log('STORE_AFTER_OPEN=' + store['livesec:sec-flow']);
+console.log('FIT_AFTER_OPEN=' + fitCount);
+"""
+
+
+def _toggle_harness(tmp_path, throw=False):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "toggle.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_TOGGLE_HARNESS, encoding="utf-8")
+    args = ["node", str(js_p), str(html_p)] + (["throw"] if throw else [])
+    r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return r.stdout, out
+
+
+@needs_node
+def test_toggle_listener_restores_and_persists_open_state(tmp_path):
+    out_raw, out = _toggle_harness(tmp_path)
+    assert "RESTORE_OK" in out_raw
+    assert out["FLOW_OPEN"] == "false"      # 저장값 '0'이 markup의 open을 뒤집었다
+    assert out["TAPE_OPEN"] == "false"      # 저장값 없음 — 원래 상태 유지
+    assert out["NOID_OPEN"] == "true"       # id 없는 섹션은 절대 건드리지 않는다
+    assert out["STORE_AFTER_OPEN"] == "1"   # 펼치면 저장됨
+    assert int(out["FIT_AFTER_OPEN"]) >= 1  # 펼칠 때 재핏(기존 동작 보존) — 저장 로직이 얹혀도 안 죽음
+
+
+@needs_node
+def test_toggle_listener_survives_private_mode_localstorage(tmp_path):
+    """사파리 프라이빗 모드 — localStorage.getItem/setItem이 둘 다 던져도 렌더가 안 죽어야 한다.
+
+    "RESTORE_OK만 찍히면 통과"는 가짜 가드다 — 바깥 forEach 전체를 감싸는 try(Task 10
+    이전부터 있던 것)만으로도 스크립트는 안 죽는다. 안쪽 개별 try(getItem용·setItem용)가
+    빠지면 첫 섹션(sec-flow)의 throw가 바깥 catch까지 전파돼 forEach가 통째로 중단되고
+    **이후 모든 섹션이 toggle 리스너를 못 받아 재핏이 전멸**한다(2026-08-13 리뷰 실험:
+    FIT_AFTER_OPEN 2→0). 그래서 "안 죽었다"가 아니라 "sec-flow 이후 섹션도 정상 동작한다"를
+    본다 — per-item 격리가 살아있는지의 유일한 관측 가능한 신호."""
+    out_raw, out = _toggle_harness(tmp_path, throw=True)
+    assert "RESTORE_OK" in out_raw
+    assert int(out["FIT_AFTER_OPEN"]) >= 1, "프라이빗 모드에서 재핏이 전부 죽었다(개별 try 가드 회귀)"

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-"""공유 디자인 시스템 — 4개 PWA 화면(대시보드·라이브·스캐너·인증)의 단일 스타일 출처.
+"""공유 디자인 시스템 — dashboard.py·live_page.py·us_page.py·scanner_page.py·widget_setup.py
+5개 화면의 단일 스타일 출처(2026-08-13 실측, 이 5개가 BASE_CSS/PWA_HEAD를 import).
+인증(/login·/2fa·/2fa/setup)은 여기 안 들어간다 — auth.py:328이 이 파일을 import하지
+않고 자체 토큰을 복제해 쓴다(6차 리디자인 미반영, auth.py 주석 참고).
 
 - 토큰(CSS 커스텀 프로퍼티)으로 라이트/다크 자동 대응(prefers-color-scheme).
 - 공통 컴포넌트(카드·배지·시그널 콜아웃·스탯 타일·세그먼트·테이블 스크롤)를 여기서 정의.
@@ -12,8 +15,8 @@ Python 3.9 호환(마스터 실서버는 시스템 3.9) — 단순 문자열 상
 
 # ── PWA head: 라이트/다크 theme-color + 세이프에어리어 전제(viewport-fit은 각 페이지) ──
 PWA_HEAD = (
-    '<meta name="theme-color" content="#eceef3" media="(prefers-color-scheme: light)">'
-    '<meta name="theme-color" content="#0a0c12" media="(prefers-color-scheme: dark)">'
+    '<meta name="theme-color" content="#f0f4f8" media="(prefers-color-scheme: light)">'
+    '<meta name="theme-color" content="#080b10" media="(prefers-color-scheme: dark)">'
     '<link rel="manifest" href="/manifest.json">'
     '<link rel="apple-touch-icon" href="/icons/icon-180.png">'
     '<meta name="apple-mobile-web-app-capable" content="yes">'
@@ -33,9 +36,11 @@ BASE_CSS = """
    ═══════════════════════════════════════════════════════════════════ */
 :root{
   /* 표면 — 차가운 계기판 무채색 */
-  --bg:#eceef3; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
+  --bg:#f0f4f8; --surface:#ffffff; --surface-2:#f3f5f9; --surface-3:#e7eaf1;
   --text:#12151d; --text-2:#586074; --text-3:#8b93a4;
-  --border:#e0e4ec; --border-2:#ebeef4; --grid:#eef0f6;
+  /* 경계선은 불투명 hex가 아니라 rgba(2026-08-12, 6차 리디자인): 서피스가 3단계라
+     rgba라야 어느 층 위에서도 대비가 일정하다 — 불투명이면 --surface-3 위에서 묻힌다 */
+  --border:rgba(0,0,0,.07); --border-2:rgba(0,0,0,.05); --grid:#eef0f6;
   /* 브랜드 iris — 길찾기·코칭 전용 */
   --primary:#6a4ff0; --primary-ink:#5238d8;
   /* 시장 시맨틱 — 의미를 나르는 유일한 chroma. 상승=적/하락=청(한국식) */
@@ -48,15 +53,15 @@ BASE_CSS = """
   --accent-glow:0 1px 8px rgba(106,79,240,.28);
   --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
   --font-num:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Roboto Mono",monospace;
-  --r:12px; --r-lg:16px; --r-sm:9px; --r-pill:999px;
+  --r:16px; --r-lg:24px; --r-sm:12px; --r-pill:999px;
   --disc-bg:#fbf5e6; --disc-bd:#efe1bb; --disc-tx:#7a6320;
 }
 @media (prefers-color-scheme: dark){
   :root{
     /* 다크 = 터미널: 깊은 잉크-네이비(순흑 회피) */
-    --bg:#0a0c12; --surface:#141824; --surface-2:#1a1f2e; --surface-3:#232a3c;
+    --bg:#080b10; --surface:#141824; --surface-2:#1a1f2e; --surface-3:#232a3c;
     --text:#e9ecf3; --text-2:#8b93a5; --text-3:#5f6879;
-    --border:#252c3c; --border-2:#1c2231; --grid:#1c2231;
+    --border:rgba(255,255,255,.09); --border-2:rgba(255,255,255,.05); --grid:#1c2231;
     --primary:#9a86ff; --primary-ink:#b3a4ff;
     --up:#ff5b52; --down:#4f8bff; --flat:#5f6879;
     --good:#2fcf8a; --warn:#f2a83a; --info:#9a86ff;
@@ -99,15 +104,24 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .back{display:inline-flex;align-items:center;gap:4px;min-height:36px;
   font-size:14px;font-weight:700;color:var(--primary);margin-bottom:6px}
 
-/* 카드/패널 — 계기 베이(플랫·크리스프 1px·타이트 반경) */
+/* 카드/패널 — 계기 베이(플랫·크리스프 1px, 반경은 24px로 넉넉하게 — 2026-08-12 6차) */
 .panel,.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:15px;margin:13px 0;box-shadow:var(--shadow)}
+  padding:18px;margin:16px 0;box-shadow:var(--shadow)}
 .panel>h2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 
 /* 신선도 캡션 — 제목 줄에서 분리(제목 아래 전폭 캡션). 모노 유틸 톤 */
 .fresh{display:block;font-size:11px;font-weight:500;color:var(--text-3);
   margin:3px 0 12px;line-height:1.5;font-variant-numeric:tabular-nums}
 .panel>h2 .fresh{flex-basis:100%;margin:4px 0 0}
+
+/* 상대시간 — "지금 살아 있는가"를 말한다. 절대시각(.fresh)은 "언제 기준값인가"를
+   말하므로 둘은 대체재가 아니다. 우리 basis_kind 규율이 후자다. */
+.ago{font-size:11.5px;color:var(--text-3);font-weight:500;
+  font-variant-numeric:tabular-nums;letter-spacing:0;white-space:nowrap}
+/* 값이 아직 없을 때(첫 데이터 도착 전·데모처럼 소스가 구조적으로 비는 경우) flex gap이
+   빈 요소 앞뒤에도 그대로 붙어 부모 필/뱃지에 여백만 남긴다(2026-08-13, dashboard #mkago
+   실측) — .note:empty·#today-line:empty와 같은 관행. */
+.ago:empty{display:none}
 
 /* 배지(상태) — 모노 대문자 유틸 태그 */
 .badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;
@@ -126,6 +140,43 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
   letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 .price.up{color:var(--up)} .price.down{color:var(--down)} .price.flat{color:var(--text)}
 
+/* 종목 상세 히어로 — /live·/live/{미국티커} 공용.
+   2026-08-12: live_page.py 페이지 로컬에만 있어 us_page 히어로가 민짜로 렌더됐다.
+   화면 두 개가 쓰는 순간 단일 출처(theme.py)로 올라와야 한다. */
+.hero{background:var(--bg);margin:0 -16px 4px;
+  padding:8px 16px 12px;
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+  border-bottom:1px solid var(--border)}
+.hero .htop{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
+.hero .hname{font-size:18px;font-weight:800;letter-spacing:-.02em}
+/* 2026-08-12 6차: 히어로 숫자는 모노가 아니라 sans 볼드 tabular.
+   Pretendard(굽기당 766~791KB)는 자기완결 규칙과 양립 불가라 SF Pro로 같은 효과를 낸다.
+   2026-08-13 정정: class="price" 소비자는 live_page.py:235·us_page.py:59 둘뿐이고
+   둘 다 .hero 안이다 — 베이스 .price(37px 모노)의 타이포 선언은 이 규칙에 항상
+   덮인다. 살아남는 건 font-feature-settings와 .price.up/.down/.flat 색 변형뿐이라
+   규칙 자체는 지우지 않는다(색은 여기서 안 건드린다). */
+.hero .price{font-family:inherit;font-size:48px;margin:10px 0 0;font-weight:800;
+  letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.02}
+.hero .plabel{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
+/* 2026-08-13: .hero .chg 규칙 삭제. us_page의 등락 표시가 class="pill"로 옮겨갔고
+   .pill이 모노·볼드를 자체적으로 나른다 — .hero 안에서는 class="chg" 사용처가 0건이다.
+   히어로 밖 .chg(dashboard 관심종목 카드 등락)는 dashboard.py:73에 따로 산다 —
+   스코프가 .hero 안이라 이 삭제와 무관하다(다음 에이전트가 그 규칙까지 지우지 않게). */
+.hero .hstate{display:flex;align-items:center;gap:6px;margin-top:12px;
+  padding-top:11px;border-top:1px solid var(--border-2)}
+.hero .hstate .ago{margin-left:auto}
+.hero .sig{margin-top:8px}
+
+/* 상태·등락 필 — 모노 유틸. 2026-08-12: live_page 로컬에서 승격(3화면이 쓴다).
+   등락 변형은 기존 틴트 토큰 재사용 — 새 색을 만들지 않는다. */
+.pill{font-family:var(--font-mono);font-size:11px;font-weight:700;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:5px;
+  border-radius:var(--r-pill);padding:3px 9px}
+.pill.fixed{background:var(--warn-bg);color:var(--warn)}
+.pill.up{background:var(--up-bg);color:var(--up)}
+.pill.down{background:var(--down-bg);color:var(--down)}
+.pill.flat{background:var(--surface-2);color:var(--text-2)}
+
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
 .note:empty{display:none}
@@ -139,6 +190,16 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .grid3 .val{font-family:var(--font-num);font-size:16px;font-weight:700;color:var(--text);
   font-variant-numeric:tabular-nums;letter-spacing:-.01em;word-break:keep-all}
 .grid3 .val.up{color:var(--up)} .grid3 .val.down{color:var(--down)} .grid3 .val.flat{color:var(--flat)}
+
+/* 근거 레일 — 히어로 숫자를 만든 재료를 라벨/값 두 열로 편다.
+   라벨은 sans(한글), 값은 모노 계기. 행 구분은 헤어라인만(카드 크롬 없음). */
+.rail{margin:14px 0 0}
+.rail>div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:9px 0;border-top:1px solid var(--border-2);min-height:38px}
+.rail>div:first-child{border-top:0}
+.rail .k{font-size:13px;color:var(--text-2);font-weight:500;flex:0 1 auto;word-break:keep-all}
+.rail .v{font-family:var(--font-num);font-size:14px;font-weight:700;color:var(--text);
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em;text-align:right;white-space:nowrap}
 
 /* 시그널 콜아웃(판정) */
 .sig{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-top:10px;
@@ -193,8 +254,8 @@ details.inline summary::-webkit-details-marker{display:none}
 details.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   margin:11px 0;box-shadow:var(--shadow);overflow:hidden}
 details.sec>summary{cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent;
-  padding:15px 16px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
-  letter-spacing:-.02em;min-height:54px;color:var(--text)}
+  padding:18px;display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;
+  letter-spacing:-.02em;min-height:54px;color:var(--text);word-break:keep-all}
 details.sec>summary::-webkit-details-marker{display:none}
 details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .secic{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
@@ -203,7 +264,7 @@ details.sec>summary:focus-visible{outline:2px solid var(--primary);outline-offse
 .chev{margin-left:auto;color:var(--text-3);font-size:12px;font-weight:700;transition:transform .2s}
 details.sec[open]>summary .chev{transform:rotate(180deg)}
 details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
-.sec-body{padding:2px 15px 15px}
+.sec-body{padding:2px 18px 18px}
 /* 섹션 내부 패널은 카드 크롬 제거 → 하위구획(하이라인 구분)으로 평평하게(.card는 유지) */
 .sec-body>.panel,.sec-body>.panel.dp{background:transparent;border:0;box-shadow:none;
   border-radius:0;padding:16px 0;margin:0;border-top:1px solid var(--border-2)}
@@ -249,6 +310,31 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,
 img,canvas{max-width:100%}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+"""
+
+# ── 상대시간 포맷터 — 페이지들이 공유하는 전역 ago(). ──
+# 브라우저 시점 기준이어야 맞으므로 파이썬 대응물은 만들지 않는다(서버 렌더 시각으로
+# 찍으면 탭을 오래 열어둔 아이폰에서 "1초 전"이 몇 시간째 남는다).
+# 하니스(node)에서도 그대로 eval 되도록 DOM·window를 건드리지 않는다.
+AGO_JS = """
+function ago(t, now){
+  var n = (now == null ? Date.now() : now), d = n - t;
+  if (d >= 0) {
+    if (d < 5000) return '방금';
+    if (d < 60000) return Math.floor(d / 1000) + '초 전';
+    if (d < 3600000) return Math.floor(d / 60000) + '분 전';
+    var dt = new Date(t);
+    return ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+  }
+  var f = -d;
+  if (f < 86400000) return Math.max(1, Math.round(f / 3600000)) + '시간 뒤';
+  // 달력 날짜로 센다. 경과 24시간으로 나누면 지금이 몇 시냐에 따라
+  // 내일이 '2일 뒤'가 되고 모레가 '내일'이 된다(2026-08-12 리뷰에서 node 실행으로 확인).
+  var a = new Date(t), b = new Date(n);
+  var days = Math.round((new Date(a.getFullYear(), a.getMonth(), a.getDate())
+                       - new Date(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
+  return days <= 1 ? '내일' : days + '일 뒤';
 }
 """
 

@@ -458,3 +458,36 @@ def test_every_dashboard_section_starts_collapsed():
     assert tags, "섹션이 하나도 없다"
     opened = [t for t in tags if re.search(r"\bopen\b", t)]
     assert opened == [], "펼친 채로 시작하는 섹션이 있다: %s" % opened
+
+
+@_needs_node
+def test_dashboard_pulse_shows_relative_time_of_last_market_fetch(tmp_path):
+    """헤더 시장상태 펄스(#mkpulse/#mktxt) 옆 #mkago — /api/market이 마지막으로 성공한
+    시점을 ago()로 보여준다(theme.py .ago 규약: 절대시각(.fresh)의 대체재가 아니라
+    "지금도 살아 있는가"를 말하는 병기). 아직 한 번도 안 받았으면 빈 문자열."""
+    html = render_dashboard([_stock()], [], "2026-06-22")
+    assert 'id="mkago"' in html and 'class="ago" id="mkago"' in html
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    main = next((s for s in scripts if "cardHtml" in s), None)
+    assert main, "메인 스크립트 블록을 찾지 못함"
+    assert "function ago(" in main, "__AGO_JS__가 치환되지 않았다"
+    ago_fn = _extract_js_function(main, "ago")
+    paint_fn = _extract_js_function(main, "paintMkAgo")
+    harness = ago_fn + paint_fn + """
+let _lastMarketAt = null;
+const els = {mkago: {textContent: ''}};
+global.document = {getElementById: id => els[id] || null};
+paintMkAgo();
+const before = els.mkago.textContent;
+_lastMarketAt = Date.now() - 5000;
+paintMkAgo();
+const after = els.mkago.textContent;
+console.log(JSON.stringify({before, after}));
+"""
+    js = tmp_path / "mkago_check.js"
+    js.write_text(harness, encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, "paintMkAgo 실행 실패:\n" + r.stderr
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["before"] == "", out
+    assert out["after"] not in ("", "undefined"), out

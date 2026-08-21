@@ -163,3 +163,25 @@ def test_empty_candles_degrade_to_a_message_not_a_crash(tmp_path):
     """일봉을 못 받아도 화면이 죽지 않는다 — 감시선 섹션은 살아야 한다."""
     o = _run(tmp_path, [])
     assert "못 불러왔" in o["basis"]
+
+
+def test_poll_live_relabels_plabel_from_close_to_current():
+    """정규장 중엔 pollLive()가 실시간 가격을 준다 — 그런데 #plabel이 초기값
+    "종가"에 머물면 실시간 값에 "종가" 라벨이 붙는다(2026-08-13 리뷰).
+    #pbasis를 '정규장 · 60초 갱신'으로 세팅하는 바로 그 성공 분기에서
+    #plabel도 '현재가'로 바꾼다 — 세션 판정은 #pbasis가 이미 하니 새로 안 만든다."""
+    from backend.report.us_page import render_us_page
+    html = render_us_page("NVDA", "NVIDIA")
+    body = html.split("async function pollLive(){", 1)[1].split("setTimeout(pollLive,60000);", 1)[0]
+    assert "정규장" in body       # 픽스처 전제: pbasis 세팅 분기가 실제로 있다
+    assert "getElementById('plabel')" in body and "현재가" in body
+
+
+def test_us_hero_matches_live_structure():
+    """미국 상세도 같은 히어로 문법을 쓴다 — 두 화면이 다른 문법을 쓰면
+    theme.py 단일 출처의 의미가 없다."""
+    from backend.report.us_page import render_us_page
+    html = render_us_page("NVDA", "NVIDIA")
+    assert 'class="plabel"' in html
+    assert 'class="pill' in html          # 등락이 텍스트가 아니라 필
+    assert 'class="hstate"' in html

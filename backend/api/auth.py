@@ -318,6 +318,10 @@ def _register_routes(app, google, settings, emails) -> None:
 
 
 # ── 최소 로그인/2FA 페이지 ────────────────────────────────────────────
+# 인증 페이지들(/login·/2fa·/2fa/setup)은 backend/report/theme.py를 import하지 않는다 —
+# 아래 :root 토큰은 자체 복제본이고 6차 리디자인(2026-08-12) 이전 값 그대로다
+# (--bg:#eceef3, --border:#e0e4ec, --r:12px 등 — theme.py의 현재 값과 다르다).
+# 통합은 별도 작업. 여기 값은 바꾸지 않는다(2026-08-13, 전체 브랜치 리뷰).
 _PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title}</title>

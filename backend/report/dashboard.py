@@ -24,6 +24,7 @@ _LIB_PATH = Path(__file__).parent.parent / "api" / "static" / "lightweight-chart
 
 # 공유 디자인 시스템(theme.py)에서 재노출 — live_page/scanner_page가 이 이름들을 import.
 from backend.report.theme import (  # noqa: E402
+    AGO_JS as _AGO_JS,
     BASE_CSS as _BASE_CSS,
     CHART_THEME_JS as _CHART_THEME_JS,
     DISCLAIMER as _DISCLAIMER,
@@ -128,6 +129,10 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
   letter-spacing:-.03em;color:var(--text)}
 .ah-mark{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;color:#fff;
   font-size:15px;font-weight:900;font-family:var(--font-mono);
+  /* #b3a4ff는 토큰화 못 한다(2026-08-13 감사, tests/test_theme.py 허용 목록) — --primary보다
+     밝은 쪽으로 가는 라이트·다크 공통 그라디언트인데, --primary-ink는 라이트에서 --primary보다
+     더 어둡고 다크에서 더 밝아(theme.py :root 참조) 방향이 테마마다 반대다. 토큰으로 바꾸면
+     라이트 모드 그라디언트가 뒤집힌다. */
   background:linear-gradient(135deg,var(--primary),#b3a4ff);box-shadow:var(--accent-glow)}
 .ah-state{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;
   color:var(--text-2);background:var(--surface);border:1px solid var(--border);
@@ -225,7 +230,7 @@ __ICONS__
 <header class="apphead">
   <div class="ah-top">
     <span class="ah-brand"><span class="ah-mark">S</span> Stock Master</span>
-    <span class="ah-state"><span class="pulse" id="mkpulse"></span><span id="mktxt">시장</span></span>
+    <span class="ah-state"><span class="pulse" id="mkpulse"></span><span id="mktxt">시장</span><span class="ago" id="mkago"></span></span>
   </div>
   <div id="market" class="market" style="display:none"></div>
 </header>
@@ -267,6 +272,7 @@ __VOL_HTML__
 <script>__LIB__</script>
 <script>
 __CHART_THEME_JS__
+__AGO_JS__
 const D = __DATA__;
 const won = n => n==null ? '–' : Math.round(n).toLocaleString('ko-KR')+'원';
 const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
@@ -451,7 +457,8 @@ async function loadMarket(){
     }
     const parts=[ix(d.kospi,'코스피',d.stale),ix(d.kosdaq,'코스닥',d.stale),
                  fxchip(f.k200),fxchip(f.nq)].filter(Boolean);
-    if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex'; }
+    if(parts.length){ el.innerHTML=parts.join(''); el.style.display='flex';
+      _lastMarketAt=Date.now(); paintMkAgo(); }   // 헤더 펄스 옆 #mkago(상대시간)의 기준시각
     try{
       const rt=await fetch('/api/kospi-temp');
       if(rt&&rt.ok) TEMP=await rt.json();
@@ -469,7 +476,7 @@ loadMarket(); setInterval(loadMarket,30000);
 // 단위도 서버가 준 unit 문자열을 그대로 쓴다. 프런트가 '$'를 지어내는 순간, 설계
 // 조사에서 걸러낸 프록시 사고(GLD 402를 '금 402'로 읽는)가 화면에서 재발한다.
 // ── '지수' 섹션 — 국내 어댑터. 서버는 이 두 그룹을 모른다(worldidx는 해외 전용). ──
-let MKT={}, FUT={}, WIDX=null, TEMP=null;      // 각 로더의 마지막 응답
+let MKT={}, FUT={}, WIDX=null, TEMP=null, _lastMarketAt=null;   // 각 로더의 마지막 응답(+시각)
 // ⚠️ 설계 문서 C절은 판정 근거로 `pulseState()`를 적었으나 **여기서 벗어난다**:
 // pulseState는 NXT 프리/애프터도 '장중'으로 치는데 그건 개별 종목 얘기지 지수가 아니다.
 // 그대로 쓰면 20시에 코스피 칩이 '실시간'이라 우긴다. 코스피·코스닥 **지수**는
@@ -643,11 +650,19 @@ function pulseState(day,hm,h){
   if(h>=22||h<6){ return ['night','야간·미국장']; }
   return ['closed','장 마감'];
 }
+// #mkago — /api/market이 마지막으로 성공한 시점의 상대시간("지금도 살아 있는가").
+// 절대시각(.fresh)의 대체재가 아니라 병기다(theme.py .ago 규약). 아직 한 번도
+// 못 받았으면(_lastMarketAt==null) 빈 문자열 — "0초 전"으로 꾸미지 않는다.
+function paintMkAgo(){
+  const a=document.getElementById('mkago');
+  if(a) a.textContent=_lastMarketAt?ago(_lastMarketAt):'';
+}
 function marketPulse(){
   const p=document.getElementById('mkpulse'), t=document.getElementById('mktxt'); if(!p)return;
   const n=new Date(), day=n.getDay(), h=n.getHours(), hm=h*60+n.getMinutes();
   const r=pulseState(day,hm,h);
   p.className='pulse '+r[0]; t.textContent=r[1];
+  paintMkAgo();
 }
 marketPulse(); setInterval(marketPulse,60000);
 // ── 관심종목 밸류지표(PER·PBR·52주 위치) — /api/fundamentals(느리게 변해 5분). ──
@@ -931,6 +946,7 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
+            .replace("__AGO_JS__", _AGO_JS)
             .replace("__DATE__", escape(date))
             .replace("__TABBAR__", _TABBAR if pwa else "")
             .replace("__NAV_LOADER__", _NAV_LOADER)
