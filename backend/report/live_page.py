@@ -326,6 +326,14 @@ __ICONS__
       <div class="meta">당일 누적 순매수 금액 추이(억원) — Y축은 당일 전체 범위 고정</div>
     </div>
     <div class="panel">
+      <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
+      <div class="tbl-wrap"><table id="mb-tbl"></table></div>
+      <div class="sig" id="mb-sig"></div>
+      <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
+      외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
+      창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
+    </div>
+    <div class="panel">
       <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh" id="daily-fresh">· 전일까지 확정치</span></h2>
       <div class="tbl-wrap"><table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table></div>
     </div>
@@ -333,14 +341,6 @@ __ICONS__
       <h2><svg class="hic"><use href="#i-bank"/></svg> 기관 세부 수급 (연기금·투신·금융투자 …)</h2>
       <div class="fresh" id="dt-fresh">확정 · 기준일 대기 · 기관계를 주체별로 분해한 확정치</div>
       <div class="tbl-wrap"><table id="detail"></table></div>
-    </div>
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
-      <div class="tbl-wrap"><table id="mb-tbl"></table></div>
-      <div class="sig" id="mb-sig"></div>
-      <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
-      외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
-      창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
     </div>
   </div>
 </details>
