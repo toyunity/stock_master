@@ -975,10 +975,13 @@ def test_adr_panel_only_for_stocks_that_have_a_dr():
             assert anchor not in html, "%s: %s 가 남아있다" % (nm, anchor)
 
 
-def test_adr_absent_page_still_renders_the_rest_of_the_section():
-    """ADR만 빠지고 같은 섹션의 다른 패널(거래소별 거래량 등)은 그대로 남아야 한다."""
+def test_adr_absent_page_drops_the_section_shell_not_the_other_panels():
+    """2026-08-21: 거래소별 거래량·체결 규모 분포가 수급 섹션으로 옮겨가면서
+    이 섹션엔 ADR 패널만 남았다. DR이 없는 종목(삼성전자·ETF)에선 섹션 통째로
+    빠져야 한다 — 안 그러면 제목만 있고 속이 빈 껍데기가 남는다."""
     from backend.report.live_page import render_live_page
     html = render_live_page("005930", "삼성전자", "live")
+    assert 'id="sec-xvol"' not in html                       # 빈 껍데기 없음
     assert "거래소별 거래량" in html and 'id="xv-fresh"' in html
     assert "체결 규모 분포" in html
 
@@ -1103,4 +1106,4 @@ def test_watch_section_below_chart_collapsed_and_flow_panel_order():
     tag = re.search(r'<details[^>]*id="wl-panel"[^>]*>', html).group(0)
     assert " open" not in tag                                       # 최초 진입 시 접힘
     assert (html.index('id="mb-tbl"') < html.index('id="xv-krx"')
-            < html.index('id="daily"'))
+            < html.index('id="sz-bars"') < html.index('id="daily"'))

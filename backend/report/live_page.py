@@ -367,6 +367,19 @@ __ICONS__
       시간외 가격 변동 대비 거래량이 극히 적으면 유동성 부족 왜곡 경고.</div>
     </div>
     <div class="panel">
+      <h2><svg class="hic"><use href="#i-bars"/></svg> 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
+      <div class="tfrow" id="sz-tabs">
+        <button class="tf" data-ses="pre">장전</button>
+        <button class="tf" data-ses="regular">정규장</button>
+        <button class="tf" data-ses="after">장후(NXT)</button>
+      </div>
+      <div id="sz-bars"></div>
+      <div class="sig" id="sz-sig"></div>
+      <div class="meta">체결량 구간별 건수·거래대금 비중 — <b>추정치(정확한 주체 식별 불가)</b>.
+      100주 초과 대금 비중↑ = 기관성, 1-10주 건수 비중↑ = 개인 중심. 시장이 얇은
+      시간외 구간일수록 판별력이 높다. 투자자별 순매수 <b>확정치는 T+1 09:30 이후</b> 제공.</div>
+    </div>
+    <div class="panel">
       <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh" id="daily-fresh">· 전일까지 확정치</span></h2>
       <div class="tbl-wrap"><table id="daily"><tr><th>날짜</th><th>개인</th><th>외국인</th><th>기관</th><th>종가</th><th>대차잔고</th></tr></table></div>
     </div>
@@ -472,26 +485,7 @@ __ICONS__
   </div>
 </details>
 
-<details class="sec" id="sec-xvol" open>
-  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·체결 <span class="chev">▾</span></summary>
-  <div class="sec-body">
 __ADR_PANEL__
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-bars"/></svg> 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
-      <div class="tfrow" id="sz-tabs">
-        <button class="tf" data-ses="pre">장전</button>
-        <button class="tf" data-ses="regular">정규장</button>
-        <button class="tf" data-ses="after">장후(NXT)</button>
-      </div>
-      <div id="sz-bars"></div>
-      <div class="sig" id="sz-sig"></div>
-      <div class="meta">체결량 구간별 건수·거래대금 비중 — <b>추정치(정확한 주체 식별 불가)</b>.
-      100주 초과 대금 비중↑ = 기관성, 1-10주 건수 비중↑ = 개인 중심. 시장이 얇은
-      시간외 구간일수록 판별력이 높다. 투자자별 순매수 <b>확정치는 T+1 09:30 이후</b> 제공.</div>
-    </div>
-  </div>
-</details>
-
 <details class="sec" id="sec-tape">
   <summary><svg class="hic secic"><use href="#i-activity"/></svg> 실시간 체결 <span class="seccap">최근 30건 · 계속 갱신</span><span class="chev">▾</span></summary>
   <div class="sec-body">
@@ -1497,7 +1491,10 @@ try{document.querySelectorAll('details.sec').forEach(function(d){
 _MKT_LABEL = {"UN": "KRX+NXT 통합", "J": "KRX", "NX": "NXT"}
 
 
-_ADR_PANEL = """    <div class="panel">
+_ADR_PANEL = """<details class="sec" id="sec-xvol" open>
+  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외 DR <span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="panel">
       <h2><svg class="hic"><use href="#i-globe"/></svg> ADR 환산가·괴리율 <span class="fresh" id="adr-fresh">· 데이터 대기</span></h2>
       <div class="grid3">
         <div><div class="lbl" id="adr-usd-lbl">DR 가격($)</div><div class="val" id="adr-usd">–</div></div>
@@ -1507,16 +1504,22 @@ _ADR_PANEL = """    <div class="panel">
       <div class="sig" id="adr-sig"></div>
       <div class="meta" id="adr-note">환산가 = DR가격 × 전환비율 × USD/KRW — 미국 시장이 매긴
       원주 값을 원화로 환산. 원주보다 비싸면(+, 적색) 미국 프리미엄.</div>
-    </div>"""
+    </div>
+  </div>
+</details>
+"""
 
 
 def _adr_panel(code: str) -> str:
-    """DR이 있는 종목에만 ADR 패널을 그린다.
+    """DR이 있는 종목에만 ADR 섹션을 그린다(2026-08-21부터 <details> 껍데기째).
 
     없는 종목(삼성전자·ETF 등)에도 그리면 '데이터 없음 — 조회 실패 또는 미지원 종목.
     자동 재시도 중'이 영원히 남는다. 재시도할 게 없는데 대기 중처럼 보이는 건 거짓말이고,
     자리만 차지한다. 어느 종목에 DR이 있는지는 서버가 이미 안다(settings.adr_map).
-    'DR은 있는데 조회 실패'는 여전히 패널 안에서 안내한다 — 그건 재시도가 의미 있다."""
+    'DR은 있는데 조회 실패'는 여전히 패널 안에서 안내한다 — 그건 재시도가 의미 있다.
+
+    2026-08-21: 거래소별 거래량·체결 규모 분포가 수급 섹션으로 옮겨가 이 섹션엔 ADR
+    하나만 남았다. 그래서 패널만 비우면 제목뿐인 빈 껍데기가 남는다 — 섹션째 가른다."""
     from backend.config import settings
     return _ADR_PANEL if code in getattr(settings, "adr_map", {}) else ""
 
