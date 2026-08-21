@@ -301,6 +301,25 @@ __ICONS__
   <div class="mylines" id="mylines"></div>
 </div>
 
+<details class="sec" id="wl-panel">
+  <summary><svg class="hic secic"><use href="#i-target"/></svg> 감시선·알림 <span class="seccap">가격 도달 알림</span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="meta" style="margin:2px 0 10px">차트에 표시할 수평선을 추가·편집합니다. 가격이 닿으면
+    소리+화면 알림. 라벨은 자유(절대선/예약매도선/손절 등) — <b>실제 주문이 아니라 표시·알림용</b>.
+    차트를 탭해도 그 가격에 선이 추가됩니다. 저장하면 다른 기기에도 반영됩니다.</div>
+    <div class="wl-preset">
+      <button class="wl-chip" type="button" onclick="wlAddRow('감시선')">＋ 감시선</button>
+      <button class="wl-chip" type="button" onclick="wlAddRow('절대선')">＋ 절대선</button>
+      <button class="wl-chip" type="button" onclick="wlAddRow('예약매도선')">＋ 예약매도선</button>
+    </div>
+    <div id="wl-rows"></div>
+    <div class="wl-actions">
+      <button class="refresh" type="button" onclick="saveLines()">저장</button>
+      <span class="wl-status" id="wl-status"></span>
+    </div>
+  </div>
+</details>
+
 <details class="sec" id="sec-flow" open>
   <summary><svg class="hic secic"><use href="#i-flows"/></svg> 수급 <span class="seccap">누가 사고파나</span><span class="chev">▾</span></summary>
   <div class="sec-body">
@@ -332,6 +351,20 @@ __ICONS__
       <div class="meta" id="mb-note">상위 5 창구(KRX+NXT 통합) · <span class="fgn">보라색</span> = 외국계 창구.
       외국계 합계는 정규장(KRX) 기준(NXT 외국계 집계 미제공). 창구≠주체 — 외국인이 국내
       창구를 쓸 수 있어 <b>추정치(정확한 주체 식별 불가)</b>. 확정 수급은 T+1 09:30 이후.</div>
+    </div>
+    <div class="panel">
+      <h2><svg class="hic"><use href="#i-split"/></svg> 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
+      <div class="grid3">
+        <div><div class="lbl">KRX(정규)</div><div class="val" id="xv-krx">–</div></div>
+        <div><div class="lbl">NXT 합계</div><div class="val" id="xv-nxt">–</div></div>
+        <div><div class="lbl">NXT 비중</div><div class="val" id="xv-share">–</div></div>
+      </div>
+      <div id="xv-propbar"></div>
+      <div class="tbl-wrap"><table id="xv-ses" style="margin-top:8px"></table></div>
+      <div class="sig" id="xv-sig"></div>
+      <div class="meta" id="xv-note">세션별 NXT 거래량 — 장전(08:00~08:50) / 본장(09:00~15:20) /
+      장후(15:30~20:00). KRX 거래량은 전부 정규장. 진행 중이거나 경계 미통과 세션은 '–'.
+      시간외 가격 변동 대비 거래량이 극히 적으면 유동성 부족 왜곡 경고.</div>
     </div>
     <div class="panel">
       <h2><svg class="hic"><use href="#i-calendar"/></svg> 일별 확정 수급 <span class="fresh" id="daily-fresh">· 전일까지 확정치</span></h2>
@@ -440,23 +473,9 @@ __ICONS__
 </details>
 
 <details class="sec" id="sec-xvol" open>
-  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·거래소·체결 <span class="chev">▾</span></summary>
+  <summary><svg class="hic secic"><use href="#i-globe"/></svg> 해외·체결 <span class="chev">▾</span></summary>
   <div class="sec-body">
 __ADR_PANEL__
-    <div class="panel">
-      <h2><svg class="hic"><use href="#i-split"/></svg> 거래소별 거래량 (KRX vs NXT) <span class="fresh" id="xv-fresh">· 데이터 대기</span></h2>
-      <div class="grid3">
-        <div><div class="lbl">KRX(정규)</div><div class="val" id="xv-krx">–</div></div>
-        <div><div class="lbl">NXT 합계</div><div class="val" id="xv-nxt">–</div></div>
-        <div><div class="lbl">NXT 비중</div><div class="val" id="xv-share">–</div></div>
-      </div>
-      <div id="xv-propbar"></div>
-      <div class="tbl-wrap"><table id="xv-ses" style="margin-top:8px"></table></div>
-      <div class="sig" id="xv-sig"></div>
-      <div class="meta" id="xv-note">세션별 NXT 거래량 — 장전(08:00~08:50) / 본장(09:00~15:20) /
-      장후(15:30~20:00). KRX 거래량은 전부 정규장. 진행 중이거나 경계 미통과 세션은 '–'.
-      시간외 가격 변동 대비 거래량이 극히 적으면 유동성 부족 왜곡 경고.</div>
-    </div>
     <div class="panel">
       <h2><svg class="hic"><use href="#i-bars"/></svg> 체결 규모 분포 — 주체 추정 <span class="fresh" id="sz-fresh">· 실시간 집계 대기</span></h2>
       <div class="tfrow" id="sz-tabs">
@@ -479,25 +498,6 @@ __ADR_PANEL__
     <div class="panel">
       <h2><svg class="hic"><use href="#i-activity"/></svg> 실시간 체결 <span class="fresh">· 최근 30건</span></h2>
       <div class="tbl-wrap"><table id="tape"><tr><th>시각</th><th>체결가</th><th>체결량</th><th>구분</th></tr></table></div>
-    </div>
-  </div>
-</details>
-
-<details class="sec" id="wl-panel" open>
-  <summary><svg class="hic secic"><use href="#i-target"/></svg> 감시선·알림 <span class="seccap">가격 도달 알림</span><span class="chev">▾</span></summary>
-  <div class="sec-body">
-    <div class="meta" style="margin:2px 0 10px">차트에 표시할 수평선을 추가·편집합니다. 가격이 닿으면
-    소리+화면 알림. 라벨은 자유(절대선/예약매도선/손절 등) — <b>실제 주문이 아니라 표시·알림용</b>.
-    차트를 탭해도 그 가격에 선이 추가됩니다. 저장하면 다른 기기에도 반영됩니다.</div>
-    <div class="wl-preset">
-      <button class="wl-chip" type="button" onclick="wlAddRow('감시선')">＋ 감시선</button>
-      <button class="wl-chip" type="button" onclick="wlAddRow('절대선')">＋ 절대선</button>
-      <button class="wl-chip" type="button" onclick="wlAddRow('예약매도선')">＋ 예약매도선</button>
-    </div>
-    <div id="wl-rows"></div>
-    <div class="wl-actions">
-      <button class="refresh" type="button" onclick="saveLines()">저장</button>
-      <span class="wl-status" id="wl-status"></span>
     </div>
   </div>
 </details>
