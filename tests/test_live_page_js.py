@@ -43,11 +43,21 @@ global.document = {
   querySelectorAll: () => [],
 };
 global.__lines = [];  // createPriceLine 기록 — 감시선 렌더 검증(P1-8)
-global.LightweightCharts = { createChart: () => ({
-  addBaselineSeries: () => ({setData(){}}),
-  addCandlestickSeries: () => ({setData(){}, createPriceLine(o){global.__lines.push(o);}}),
-  timeScale: () => ({fitContent(){}}), applyOptions(){},
-})};
+// 차트 스텁은 timeScale 구독을 실제 라이브러리처럼 흉내낸다: setVisibleLogicalRange가
+// 그 차트의 구독자를 되쏜다. 이게 있어야 시간축 동기화의 재진입 가드를 시험할 수 있다.
+global.__charts = [];   // 생성 순서: [0]=프로그램, [1]=pchart, [2]=vchart, [3]=mchart
+global.LightweightCharts = { createChart: () => {
+  const rec = {subs: [], pushed: []};
+  global.__charts.push(rec);
+  const ts = {fitContent(){},
+    subscribeVisibleLogicalRangeChange(cb){rec.subs.push(cb);},
+    setVisibleLogicalRange(r){rec.pushed.push(r); rec.subs.forEach(cb => cb(r));}};
+  return {
+    addBaselineSeries: () => ({setData(){}}),
+    addCandlestickSeries: () => ({setData(){}, createPriceLine(o){global.__lines.push(o);}}),
+    timeScale: () => ts, applyOptions(){},
+  };
+}};
 global.EventSource = function(){ return {}; };
 global.fetch = async () => ({ok:false, json:async()=>({})});
 global.setInterval = () => {};
@@ -74,6 +84,15 @@ console.log('TXT:pstall-class=' + String((els['pstall']||{}).className));
 console.log('TXT:watch-lines=' + global.__lines.map(l=>l.title).join(','));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
 console.log('TXT:sb-hist-html=' + String((els['sb-hist']||{}).innerHTML));
+// 시간축 팬아웃: 메인(pchart)이 범위 변경을 알리면 서브패널이 '전부' 받아야 한다.
+// 재진입 가드가 전역 하나뿐이라, 옛 pairwise 연결(메인→A, A→B)이면 A→B가
+// 가드에 삼켜져 두 번째 서브패널만 0이 된다.
+(global.__charts[1] || {subs:[]}).subs.forEach(cb => cb({from: 0, to: 10}));
+console.log('TXT:fanout=' + global.__charts.slice(2).map(c => c.pushed.length).join(','));
+// 역방향(서브 → 메인)은 없어야 한다. 걸어두면 서브가 setData 직후 뒤늦게 뱉는
+// 자기 범위가 loadCandles의 fitContent()를 덮어써 일봉 전환이 전체로 안 맞춰진다.
+global.__charts.slice(2).forEach(c => c.subs.forEach(cb => cb({from: 5, to: 9})));
+console.log('TXT:backpush=' + (global.__charts[1] || {pushed: []}).pushed.length);
 // 차트 시간축: 라이브러리는 epoch을 UTC로 포맷 → toTs 결과의 UTC 시:분이
 // 원본 문자열과 같아야 라벨이 KST로 보인다(2026-07-13 실사고: 09:32→00:32).
 // toTs는 이제 서버 KST 기준일(KDATE, render가 설정)만 쓴다 — 로컬 시계 불개입.
@@ -189,6 +208,11 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     # 일별 확정 테이블에 대차잔고 컬럼이 날짜 조인으로 들어갔는지(07-09 행)
     assert "대차잔고" in texts["daily-html"]
     assert "14,420,269" in texts["daily-html"] or "14420269" in texts["daily-html"]
+    # 시간축 동기화 팬아웃 — 서브패널(거래량·MACD)이 둘 다 메인 범위를 받았는지.
+    # pan/zoom은 make verify가 안 하므로 이 검사가 유일한 그물이다(2026-08-24).
+    assert texts["fanout"] == "1,1", f"서브패널 동기화 누락: {texts['fanout']}"
+    # 역방향 금지 — 서브가 메인 범위를 되밀면 일봉 전환 fitContent가 덮인다(2026-08-24 실측)
+    assert texts["backpush"] == "0", f"서브 → 메인 역방향 동기화가 살아 있음: {texts['backpush']}"
     # 시간축 라벨이 서버(KST) 시각 그대로 보이는지 — UTC 렌더 사고 재발 방지
     assert texts["tots-utc"] == "9:32"
     # 시장 상태 배지(P1-7) — 라벨 존재(내용은 실행 시각에 따라 다름)

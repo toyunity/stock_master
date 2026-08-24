@@ -96,6 +96,7 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 #chart{height:180px}
 #pchart{height:230px}
 #vchart{height:72px}
+#mchart{height:64px}
 .volwrap{position:relative;margin-top:1px}
 .chartwrap{position:relative}
 .ext-lbl{position:absolute;font-size:11px;font-weight:800;white-space:nowrap;pointer-events:none;z-index:3;
@@ -301,6 +302,7 @@ __ICONS__
     <div class="stall" id="pstall"></div>
     <div class="stall cload on" id="pcload">차트 불러오는 중…</div></div>
   <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
+  <div class="volwrap"><div id="mchart"></div><div class="vol-lb" id="mac-lb"></div></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
 </div>
@@ -673,6 +675,22 @@ if(vchart&&vchart.addHistogramSeries){
   volSeries=vchart.addHistogramSeries({priceFormat:{type:'volume'},
     lastValueVisible:false,priceLineVisible:false});
 }
+// ── MACD 히스토그램(mchart) — 거래량 차트 아래. 막대 = MACD선(12,26) − 시그널선(9) ──
+let mchart=null, oscSeries=null, lastOsc=null;
+try{
+  mchart=LightweightCharts.createChart(document.getElementById('mchart'),{autoSize:true,height:64,
+    layout:_pt2.layout,grid:_pt2.grid,
+    rightPriceScale:{borderColor:_pt2.rightPriceScale.borderColor},
+    leftPriceScale:{visible:false}, timeScale:{visible:false},
+    handleScroll:false, handleScale:false,
+    crosshair:{horzLine:{visible:false}}});
+  registerChart(mchart);
+  try{mchart.priceScale('right').applyOptions({minimumWidth:76,scaleMargins:{top:0.12,bottom:0.12}});}catch(e){}
+}catch(e){}
+if(mchart&&mchart.addHistogramSeries){
+  oscSeries=mchart.addHistogramSeries({base:0,priceFormat:{type:'price',precision:0,minMove:1},
+    lastValueVisible:false,priceLineVisible:false});
+}
 // 공매도 거래량(일봉 전용) — 거래량 차트에 함께.
 let ssSeries=null, ssOn=false, SS_ROWS=[], lastVol=0;
 if(vchart&&vchart.addHistogramSeries){
@@ -692,17 +710,28 @@ function renderSS(){
     else _vlb.textContent='거래량 '+num(lastVol)+'주';
   }
 }
-// 시간축 동기화: 캔들을 pan/zoom하면 거래량도 같이 이동(양방향, 재진입 가드).
+// 시간축 동기화: 캔들을 pan/zoom하면 서브패널(거래량·MACD)이 같이 이동.
+// 반드시 '메인 → 서브 전부'를 한 번에 미는 팬아웃이어야 한다. 재진입 가드(_vsync)가
+// 전역 하나뿐이라 pairwise로 엮으면(구: _bindSync(a,b) 2회) 메인→A 전파 중에 A→B가
+// 가드에 삼켜져 두 번째 서브패널만 조용히 안 따라온다. make verify는 pan/zoom을
+// 하지 않으므로 이 고장은 하네스를 통과한다 — 손으로만 드러난다(2026-08-24).
 let _vsync=false;
-function _bindSync(a,b){ if(!a||!b)return; var ts=a.timeScale&&a.timeScale();
+function _subs(){ return [vchart,mchart].filter(Boolean); }
+function _push(targets,r){ if(_vsync||!r||!targets.length)return; _vsync=true;
+  targets.forEach(function(t){ try{t.timeScale().setVisibleLogicalRange(r);}catch(e){} });
+  _vsync=false; }
+function _sub1(c,targets){ var ts=c&&c.timeScale&&c.timeScale();
   if(!ts||!ts.subscribeVisibleLogicalRangeChange)return;
-  ts.subscribeVisibleLogicalRangeChange(function(r){ if(_vsync||!r)return; _vsync=true;
-    try{b.timeScale().setVisibleLogicalRange(r);}catch(e){} _vsync=false; }); }
-_bindSync(pchart,vchart); _bindSync(vchart,pchart);
-function syncVol(){ if(!vchart)return; var ts=pchart.timeScale();
+  ts.subscribeVisibleLogicalRangeChange(function(r){ _push(targets,r); }); }
+_sub1(pchart,_subs());                                  // 메인 → 서브 전부(한 번의 가드 안에서)
+// 서브 → 메인 역방향은 걸지 않는다. 서브는 handleScroll/handleScale이 false라
+// 사용자 조작으로 범위를 만들 일이 없고, setData 직후 자기 오토스케일로 뒤늦게
+// 뱉는 범위가 loadCandles의 fitContent()를 덮어써 일봉 전환이 전체(0~119) 대신
+// 41~119·79~119로 실행마다 다르게 갇혔다(2026-08-24 CDP 실측, 차트 2개일 땐
+// 잠복해 있다가 3개가 되며 드러남). 범위의 단일 출처는 메인 차트 하나다.
+function syncVol(){ var ts=pchart.timeScale();
   if(!ts.getVisibleLogicalRange)return;
-  try{var r=ts.getVisibleLogicalRange(); if(r){_vsync=true;
-    vchart.timeScale().setVisibleLogicalRange(r); _vsync=false;}}catch(e){} }
+  try{var r=ts.getVisibleLogicalRange(); if(r)_push(_subs(),r);}catch(e){} }
 // 현재가 이동 라인(매 틱 위치·색 갱신). 하니스 createPriceLine은 undefined 반환 → 가드.
 let nowLine=null;
 try{nowLine=pseries.createPriceLine({price:0,color:'#8a94a6',lineWidth:1,lineStyle:1,
@@ -830,6 +859,18 @@ async function loadCandles(fit){
           +(isDay(tf)?'':'(일봉에서 전부 표시)'))
         :'봉 이동평균 · 켜고 끄기';
     });
+    // MACD 히스토그램(12,26,9) — 앞 33봉은 워밍업이라 osc가 null(백엔드 _attach_macd).
+    // 34봉이 안 되는 주기(15분 26봉·60분 7봉)는 전 구간 null → 막대 없이 안내만 남긴다.
+    var _osc=d.candles.filter(function(c){return c.osc!=null;});
+    if(oscSeries){oscSeries.setData(_osc.map(function(c){return {
+      time:isDay(tf)?c.t:toTs(c.t,d.date), value:c.osc,
+      color:(c.osc>=0?'rgba(229,52,47,.5)':'rgba(31,102,224,.5)')};}));}   // 바로 위 거래량 막대와 같은 투명도
+    lastOsc=_osc.length?_osc[_osc.length-1].osc:null;
+    var _mlb=document.getElementById('mac-lb');
+    if(_mlb)_mlb.textContent=(lastOsc==null)
+      ? 'MACD · 이 봉주기는 표본 부족(34봉 이상 필요)'
+      : 'MACD '+num(lastOsc)+' · '+(lastOsc>=0
+          ? '0 위 — 단기 흐름이 장기보다 세다' : '0 아래 — 단기 흐름이 장기보다 약하다');
     // 공매도 오버레이: 일봉에서만(일별 T+1 데이터) — 버튼 활성화 + 재정렬
     var _ssOk=(tf==='1d');
     document.querySelectorAll('.ss-btn').forEach(function(b){b.disabled=!_ssOk;
