@@ -56,6 +56,25 @@ def _attach_ma(bars: list) -> list:
     return bars
 
 
+def _attach_macd(bars: list) -> list:
+    """MACD(12,26,9) 히스토그램(osc = MACD선 − 시그널선)을 각 봉에 부착.
+
+    앞 33봉은 None이다. EMA는 SMA와 달리 1번 봉부터 값이 나오는데, 프런트의
+    표본 부족 가드가 전부 `c[key]!=null`이라 워밍업 구간을 비워두지 않으면
+    선행 구간이 없는 분봉(5분 79봉)에서 왼쪽 끝에 엉뚱한 막대가 그려지고
+    안내는 안 뜬다. ta의 ewm(min_periods)이 그 NaN을 그대로 준다
+    (2026-08-24 실측: idx 32까지 NaN, 33부터 값)."""
+    if not bars:
+        return bars
+    import pandas as pd
+    from ta.trend import MACD
+    osc = MACD(close=pd.Series([b["close"] for b in bars])).macd_diff()
+    for i, b in enumerate(bars):
+        v = osc.iloc[i]
+        b["osc"] = None if pd.isna(v) else round(float(v), 2)
+    return bars
+
+
 def _get_client() -> KisClient:
     global _client
     if _client is None:
@@ -150,7 +169,7 @@ def _long_daily_bars(code: str) -> list:
 def _wm_candles(code: str, tf: str) -> list:
     """주봉/월봉 120개 — 전체 구간에서 이동평균을 계산한 뒤 최근 120봉만 노출."""
     try:
-        return _attach_ma(aggregate_daily(_long_daily_bars(code), tf))[-120:]
+        return _attach_macd(_attach_ma(aggregate_daily(_long_daily_bars(code), tf)))[-120:]
     except Exception:
         log.warning("주·월봉 조회 실패(%s %s)", code, tf, exc_info=True)
         return []
@@ -259,7 +278,7 @@ def _daily_candles(code: str) -> list:
         full = [{"t": c["time"], "open": c["open"], "high": c["high"],
                  "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
                 for c in to_candles(df, 260)]
-        candles = _attach_ma(full)[-120:]
+        candles = _attach_macd(_attach_ma(full))[-120:]
     except Exception:
         log.warning("일봉 조회 실패(%s)", code, exc_info=True)
         candles = []
@@ -297,4 +316,4 @@ async def get_candles(code: str, tf: str) -> dict:
         bars = aggregate(bars, 15)
     elif tf == "60m":
         bars = aggregate(bars, 60)
-    return {"tf": tf, "date": kdate, "candles": _attach_ma(bars)}
+    return {"tf": tf, "date": kdate, "candles": _attach_macd(_attach_ma(bars))}

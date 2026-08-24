@@ -2,8 +2,8 @@
 import asyncio
 import datetime as dt
 
-from backend.flow.candles import (_attach_ma, _session_window, aggregate,
-                                  aggregate_daily, get_candles)
+from backend.flow.candles import (_attach_ma, _attach_macd, _session_window,
+                                  aggregate, aggregate_daily, get_candles)
 from backend.flow.kis import parse_minute_candles
 
 
@@ -199,6 +199,7 @@ def test_live_page_has_chart_and_collapsed_panels():
     from backend.report.live_page import render_live_page
     html = render_live_page("000660", "SK하이닉스", "demo")
     assert "pchart" in html and "일봉" in html and "5분" in html  # 봉 주기 선택
+    assert "mchart" in html and "MACD" in html                  # MACD 히스토그램 패널
     assert 'data-tf="1w"' in html and 'data-tf="1mo"' in html    # 주봉·월봉 탭
     assert html.count("<details") >= 3  # 일별/기관세부/체결 기본 접힘
     assert "<summary" in html
@@ -228,6 +229,31 @@ def test_attach_ma_includes_5_and_10():
     assert out[9]["ma10"] == 5.5
     # 기존 키 유지
     assert "ma20" in out[0] and "ma60" in out[0] and "ma120" in out[0]
+
+
+def test_attach_macd_osc_has_ema_warmup_and_follows_trend():
+    """MACD(12,26,9) 히스토그램. 앞 33봉은 None이어야 한다 — 프런트의 표본 부족
+    가드가 전부 `c[key]!=null`에 걸려 있어, EMA가 1번 봉부터 값을 내면
+    워밍업 안 된 막대가 왼쪽 끝에 그려진다(SMA는 None이 공짜라 이 함정이 없었다)."""
+    up = _attach_macd([{"close": float(i)} for i in range(1, 61)])
+    assert up[32]["osc"] is None
+    assert up[33]["osc"] is not None
+    assert up[-1]["osc"] > 0                      # 상승 추세 → 0 위
+    down = _attach_macd([{"close": float(i)} for i in range(1, 41)]
+                        + [{"close": float(40 - i)} for i in range(1, 21)])
+    assert down[-1]["osc"] < 0                    # 하락 전환 → 0 아래
+
+
+def test_get_candles_payload_carries_osc(monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    loop = asyncio.new_event_loop()
+    try:
+        d = loop.run_until_complete(get_candles("000660", "5m"))
+    finally:
+        loop.close()
+    assert "osc" in d["candles"][0]                # 이평선과 같은 페이로드로 함께 내려간다
+    assert any(c["osc"] is not None for c in d["candles"])
 
 
 # ── 자원 수명주기(감사 A2·A3) ─────────────────────────────────────
