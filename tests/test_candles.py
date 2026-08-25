@@ -389,3 +389,77 @@ def test_krx_only_verdict_is_remembered(monkeypatch):
     c.asked.clear()
     loop.run_until_complete(cd._day_minutes(c, "411060"))
     assert c.asked == ["J"]                    # UN을 다시 묻지 않는다
+
+
+# ── 주봉 MACD 판정(작업 B) ────────────────────────────────────────
+
+def _wk(oscs):
+    """osc 값 배열 → weekly_macd_signal 입력(판정은 osc만 본다)."""
+    return [{"osc": v} for v in oscs]
+
+
+def test_weekly_macd_signal_reads_sign_and_direction():
+    """부호(0 위/아래)만으로는 마스터의 질문에 답이 안 된다 — '0 아래인데 얕아지는 중'과
+    '0 아래로 깊어지는 중'은 정반대다(질문 2026-08-25: 일봉은 반등인데 주봉은 하향추세).
+
+    실측(000660 주봉 osc, 2026-08-25): 8/14 -110,057 → 8/21 -106,590 → 8/25 -104,781
+    = 0 아래지만 2주째 얕아지는 중(8/14가 최저라 그 앞 봉은 더 얕다)."""
+    from backend.flow.candles import weekly_macd_signal
+    s = weekly_macd_signal(_wk([-95000.0, -110057.0, -106590.0, -104781.0]))
+    assert s["tone"] == "info"
+    assert "0 아래지만" in s["text"] and "2주째 얕아지는 중" in s["text"]
+    assert "-104,781" in s["text"]   # 값도 같이 — 부호만으로는 크기를 못 본다
+
+    deep = weekly_macd_signal(_wk([-50000.0, -80000.0, -110057.0]))
+    assert deep["tone"] == "warn"
+    assert "0 아래로" in deep["text"] and "깊어지는 중" in deep["text"]
+
+    up = weekly_macd_signal(_wk([1000.0, 5000.0, 42001.0]))
+    assert up["tone"] == "good"
+    assert "0 위에서" in up["text"] and "두꺼워지는 중" in up["text"]
+
+    fade = weekly_macd_signal(_wk([42001.0, 30000.0]))
+    assert fade["tone"] == "warn"
+    assert "0 위지만" in fade["text"] and "얇아지는 중" in fade["text"]
+
+
+def test_weekly_macd_signal_calls_the_turning_week_this_week():
+    """방향이 막 바뀐 첫 주를 '1주째'라고 하면 말이 안 된다 — '이번 주 들어'로 읽는다."""
+    from backend.flow.candles import weekly_macd_signal
+    s = weekly_macd_signal(_wk([-90000.0, -110057.0, -106590.0]))
+    assert "이번 주 들어 얕아지는 중" in s["text"]
+
+
+def test_weekly_macd_signal_holds_when_sample_is_short():
+    """표본 부족이면 판정 보류(None) — 이 리포의 다른 판정들과 같은 계약이다
+    (short_signal·credit_signal·size_signal). 프런트는 .sig:empty로 배지를 감춘다."""
+    from backend.flow.candles import weekly_macd_signal
+    assert weekly_macd_signal([]) is None
+    assert weekly_macd_signal(_wk([-104781.0])) is None
+    # 워밍업(앞 33봉 osc=None)만 있는 신규 상장도 같다
+    assert weekly_macd_signal([{"osc": None}] * 40) is None
+    assert weekly_macd_signal([{"osc": None}] * 40 + [{"osc": 1.0}]) is None
+
+
+def test_weekly_macd_signal_keeps_dollar_scale_readable():
+    """미국 티커도 같은 FDR 경로라 주봉이 나온다 — osc가 소수점 단위인데 원화식
+    0자리 반올림을 쓰면 전부 '0'이 된다(같은 함정 전례: 감시선 원화 전용 반올림)."""
+    from backend.flow.candles import weekly_macd_signal
+    assert "-0.83" in weekly_macd_signal(_wk([-1.20, -0.83]))["text"]
+
+
+def test_get_candles_1w_carries_weekly_signal(monkeypatch):
+    """판정은 백엔드가 만든다 — 프런트는 주봉을 한 번 fetch해 문구를 그대로 띄운다."""
+    import backend.flow.candles as cd
+    bars = [{"t": "2026-08-%02d" % d, "open": 1, "high": 2, "low": 0,
+             "close": 1.0, "osc": v}
+            for d, v in ((14, -110057.0), (21, -106590.0), (25, -104781.0))]
+    monkeypatch.setattr(cd, "_wm_candles", lambda code, tf: bars)
+    loop = asyncio.new_event_loop()
+    try:
+        d = loop.run_until_complete(cd.get_candles("000660", "1w"))
+        m = loop.run_until_complete(cd.get_candles("000660", "1mo"))
+    finally:
+        loop.close()
+    assert d["signal"]["tone"] == "info" and "얕아지는 중" in d["signal"]["text"]
+    assert m["signal"] is None   # 월봉은 '주봉' 문구를 재활용하지 않는다

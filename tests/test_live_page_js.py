@@ -1152,3 +1152,91 @@ def test_hero_goes_two_column_on_wide_screens():
     # (CSS는 공유라 BASE_CSS의 .hero.hgrid 규칙 자체는 us_page에도 실려 있다.)
     from backend.report.us_page import render_us_page
     assert 'class="hero hgrid"' not in render_us_page("SKHY", "SK하이닉스 DR")
+
+
+# ── 주봉 MACD 배지(작업 B): 일·분봉을 보는 중에도 상위 시간축 한 줄 ────────────
+# 'HTML에 문자열이 있다'는 검사는 생산자가 없어도 통과한다(2026-08 stale 배지 실사고).
+# 실제로 실행해 tf=1w를 따로 fetch하고 배지가 채워지는지, 다시 불러도 재조회하지
+# 않는지(주 단위 값이라 10분 스로틀)를 계측한다.
+_WK_HARNESS = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const code = scripts.find(function(s){return s.indexOf('loadCandles')>=0;}) || scripts[1];
+const validIds = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
+const els = {};
+global.document = { hidden:false,
+  getElementById: id => validIds.has(id)
+    ? (els[id] || (els[id]={__id:id,textContent:'',innerHTML:'',className:'',style:{}}))
+    : null,
+  querySelectorAll: () => [], addEventListener: () => {} };
+global.window = { addEventListener:()=>{} };
+global.location = { href:'' };
+global.setTimeout = ()=>0; global.clearTimeout = ()=>{}; global.setInterval = ()=>{};
+function MockES(){this.readyState=0;} MockES.CONNECTING=0;MockES.OPEN=1;MockES.CLOSED=2;
+MockES.prototype.close=function(){}; global.EventSource = MockES;
+global.LightweightCharts = { createChart: () => ({
+  addBaselineSeries: () => ({setData(){}}),
+  addCandlestickSeries: () => ({setData(){}, createPriceLine(){}}),
+  timeScale: () => ({fitContent(){}}), applyOptions(){},
+})};
+let wkCalls = 0;
+const WKSIG = {text:'주봉 MACD -104,781 · 0 아래지만 2주째 얕아지는 중 — 하락 힘이 빠지는 중',
+               tone:'info'};
+global.fetch = async (u) => {
+  u = String(u);
+  if (u.indexOf('tf=1w') >= 0) { wkCalls++; return {ok:true, json: async () => ({
+    tf:'1w', date:'2026-08-25', signal: WKSIG,
+    candles:[{t:'2026-08-25',open:1,high:2,low:0.5,close:1.5,osc:-104781}]})}; }
+  if (u.indexOf('/api/candles/') >= 0) return {ok:true, json: async () => ({
+    tf:'5m', date:'2026-08-25',
+    candles:[{t:'09:00:00',open:1,high:2,low:0.5,close:1.5,osc:42001}]})};
+  return {ok:false, status:500, json: async () => ({})};
+};
+eval(code);
+const flush = () => new Promise(r => setImmediate(r));
+(async () => {
+  for (let i=0;i<8;i++) await flush();       // 최초 loadCandles(5분봉) + 주봉 배지
+  console.log('WKTEXT=' + String((els['wk-macd']||{}).textContent));
+  console.log('WKCLASS=' + String((els['wk-macd']||{}).className));
+  await loadWeeklyMacd();                    // 60초 갱신 틱 — 스로틀에 걸려야
+  for (let i=0;i<4;i++) await flush();
+  console.log('WKCALLS=' + wkCalls);
+})();
+"""
+
+
+def _wk_harness(tmp_path):
+    from backend.report.live_page import render_live_page
+    html_p, js_p = tmp_path / "live.html", tmp_path / "wk.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"), encoding="utf-8")
+    js_p.write_text(_WK_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, f"하니스 예외:\n{r.stdout}\n{r.stderr}"
+    out = {}
+    for line in r.stdout.strip().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+@needs_node
+def test_weekly_macd_badge_fills_while_viewing_minute_candles(tmp_path):
+    """봉 주기를 주봉으로 바꾸지 않아도 주봉 상태가 보여야 한다 — 그게 이 배지의 이유다
+    (마스터 질문 2026-08-25: 일봉 반등 vs 주봉 하향추세를 동시에 못 봄).
+    기본 TF는 5분봉이고, 배지는 별도 tf=1w 조회로 채워진다."""
+    out = _wk_harness(tmp_path)
+    assert "0 아래지만 2주째 얕아지는 중" in out["WKTEXT"]
+    assert out["WKCLASS"] == "sig sig-info"   # 색은 theme.py의 기존 판정 콜아웃 재사용
+    assert out["WKCALLS"] == "1"              # 주 단위 값 — 갱신 틱마다 재조회 금지
+
+
+def test_weekly_macd_badge_sits_under_the_macd_chart():
+    """배지는 MACD 히스토그램 바로 아래에 둔다 — 지금 보는 봉주기의 MACD와
+    주봉 MACD가 나란히 읽혀야 '일봉은 반등, 주봉은 아직'이 한눈에 들어온다."""
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert 'id="wk-macd"' in html
+    assert html.index('id="mac-lb"') < html.index('id="wk-macd"') < html.index('id="pc-count"')
