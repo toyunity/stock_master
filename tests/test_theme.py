@@ -25,15 +25,22 @@ def test_pill_is_shared_and_has_direction_variants():
     assert "--up-bg" in BASE_CSS and "--down-bg" in BASE_CSS
 
 
-def test_hero_change_pill_is_scoped_and_large():
-    """히어로 등락 알약은 48px 현재가 바로 아래라 공용 11px로는 안 읽힌다(2026-08-25 제보).
+def test_hero_change_pill_is_restyled_not_globally():
+    """히어로 등락 표시(#chg)는 히어로 안에서만 다시 짠다 — .pill은 3화면 공용 유틸이다.
 
-    키우되 반드시 `.hero` 안으로 좁힌다 — `.pill`은 3화면이 쓰는 공용 유틸이라
-    전역으로 올리면 상태 배지들까지 같이 부푼다. 히어로 안의 `.pill`은
-    live_page·us_page 둘 다 등락 표시(#chg) 하나뿐이라 이 스코프가 정확히 그것만 집는다."""
-    assert "font-size:11px" in BASE_CSS.split(".pill{", 1)[1].split("}", 1)[0]  # 공용은 그대로
+    2026-08-25 제보 둘("작다" → "촌스럽다")의 결론: 현재가와 **같은 목소리**로
+    통일하고(.hero .price가 6차에서 모노를 버리고 sans 볼드 tabular로 갔다)
+    틴트 캡슐은 걷어낸다(색=정보, 크롬은 무채색).
+
+    background:transparent가 .pill.up/.down/.flat(특정도 동일)을 이기려면
+    **소스 순서상 뒤**여야 한다 — 규칙을 위로 옮기면 캡슐이 되살아난다."""
+    base = BASE_CSS.split(".pill{", 1)[1].split("}", 1)[0]
+    assert "font-size:11px" in base and "var(--font-mono)" in base   # 공용은 그대로
     hero_pill = BASE_CSS.split(".hero .pill{", 1)[1].split("}", 1)[0]
-    assert "font-size:20px" in hero_pill
+    assert "font-family:inherit" in hero_pill        # 모노가 아니라 현재가와 같은 얼굴
+    assert "background:transparent" in hero_pill     # 캡슐 제거
+    assert "tabular-nums" in hero_pill
+    assert BASE_CSS.index(".pill.flat{") < BASE_CSS.index(".hero .pill{")  # 순서 고정
 
 
 def _selectors(css: str) -> set:
