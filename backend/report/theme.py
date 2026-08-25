@@ -183,11 +183,29 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .pill.up{background:var(--up-bg);color:var(--up)}
 .pill.down{background:var(--down-bg);color:var(--down)}
 .pill.flat{background:var(--surface-2);color:var(--text-2)}
-/* 종목 상세 히어로의 등락 알약(#chg) — 48px 현재가 바로 아래라 공용 11px로는
-   안 읽힌다는 제보(2026-08-25). `.pill` 전역을 올리지 않고 여기서만 키운다 —
-   공용 유틸이라 전역이면 상태 배지(sb/ss/cr-pill 등)까지 같이 부푼다.
-   히어로 안의 .pill은 live_page·us_page 모두 이 등락 표시 하나뿐이다. */
-.hero .pill{font-size:20px;padding:5px 12px;gap:8px}
+/* 종목 상세 히어로의 등락 표시(#chg) — 공용 .pill을 히어로 안에서만 다시 짠다.
+   `.pill` 전역은 건드리지 않는다: 공용 유틸이라 전역이면 상태 배지(sb/ss/cr-pill
+   등)까지 같이 부푼다. 히어로 안의 .pill은 live_page·us_page 모두 이 하나뿐이다.
+
+   2026-08-25 두 번(제보 두 번) 만에 여기까지 왔다:
+   ① 11px는 48px 현재가 밑에서 안 읽힌다 → 20px로 키움.
+   ② 키우니 촌스러워짐 — 원인은 두 가지였다. (a) .pill이 var(--font-mono)를
+      나르는데 위 규칙(.hero .price)은 6차 리디자인에서 '히어로 숫자는 모노가
+      아니라 sans 볼드 tabular'로 이미 갈아탔다. 11px에선 '기계 칩'으로 읽혀
+      괜찮던 대비가, 20px가 되자 28px 차이로 맞닿은 서로 다른 숫자 목소리 둘이
+      됐다. (b) 틴트 캡슐이 커지며 '색=정보, 크롬은 무채색' 원칙을 어기고
+      가격과 경쟁하는 색 덩어리가 됐다.
+   → 현재가와 같은 목소리(font-family:inherit + 볼드 + tabular)로 통일하고
+      캡슐은 걷어낸다. 방향은 색과 화살표만으로 충분하다.
+
+   word-spacing인 이유: 등락폭과 퍼센트가 JS에서 **한 텍스트 노드**로 만들어져
+   (live_page render의 cg.textContent) .pill의 flex `gap`이 먹지 않는다.
+   마크업을 쪼개는 대신 한 선언으로 끝낸다.
+
+   background:transparent는 .pill.up/.down/.flat의 배경을 덮는 것인데 특정도가
+   (0,2,0)로 같다 — **반드시 그 규칙들보다 아래 있어야 이긴다.**
+   test_hero_change_pill_is_restyled_not_globally가 이 순서를 고정한다. */
+.hero .pill{font-family:inherit;font-size:23px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;background:transparent;padding:0;margin-top:7px;word-spacing:10px}
 
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
