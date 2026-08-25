@@ -309,6 +309,7 @@ __ICONS__
     <div class="stall cload on" id="pcload">차트 불러오는 중…</div></div>
   <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
   <div class="volwrap"><div id="mchart"></div><div class="vol-lb" id="mac-lb"></div></div>
+  <div class="sig" id="wk-macd"></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
 </div>
@@ -913,8 +914,26 @@ document.querySelectorAll('.ss-btn').forEach(function(b){b.onclick=function(){
 // 전체 보기 — 확대/이동으로 갇혔을 때 전체 기간 캔들로 복귀
 document.querySelectorAll('.fit-btn').forEach(function(b){b.onclick=function(){
   try{pchart.timeScale().fitContent();}catch(e){} syncVol();};});
+// 주봉 MACD 배지 — 일·분봉을 보는 중에도 상위 시간축을 한 줄로 같이 본다.
+// (마스터 질문 2026-08-25: "일봉 기준엔 MACD가 반등인데 주봉은 아직 하향추세, 어떻게 보나")
+// 판정 문구는 백엔드가 만든다(candles.weekly_macd_signal) — 여기선 그대로 띄운다.
+// 차트를 더 그리지 않는 이유: 주봉은 시간축이 달라 _subs() 팬아웃에 넣을 수 없고
+// (넣으면 메인 차트가 끌려간다), 마스터가 물은 건 그림이 아니라 해석이다.
+// 주 단위로 움직이는 값이라 10분 스로틀 — 서버도 주·월봉 원료를 1시간 캐시한다.
+let wkAt=0;
+async function loadWeeklyMacd(){
+  if(Date.now()-wkAt<600000)return;
+  const el=document.getElementById('wk-macd'); if(!el)return;
+  try{
+    const r=await fetch('/api/candles/'+CODE+'?tf=1w'); if(!r.ok)return;
+    const s=(await r.json()).signal; wkAt=Date.now();
+    el.textContent=s?s.text:'';        // 표본 부족(null)이면 빈 문자열 → .sig:empty가 감춘다
+    el.className='sig'+(s?' sig-'+s.tone:'');
+  }catch(e){}
+}
 loadCandles(true);
-setInterval(()=>{if(!isDay(TF))loadCandles(false);},60000);
+loadWeeklyMacd();
+setInterval(()=>{loadWeeklyMacd();if(!isDay(TF))loadCandles(false);},60000);
 function nextSlot(){
   // 잠정치 발표 슬롯(±10분): 외국인 09:30~, 기관 10:00~ — 다음 예상 시점 안내.
   // 기준 시각은 서버 KST(KTIME) — 클라이언트 로컬 시계 금지(P0-3)

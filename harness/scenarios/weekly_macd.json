@@ -1,0 +1,21 @@
+{
+  "module": "backend.flow.candles",
+  "func": "weekly_macd_signal",
+  "cases": [
+    {"name": "0아래_얕아지는중_2주",
+     "input": {"candles": [{"osc": -95000.0}, {"osc": -110057.0},
+                           {"osc": -106590.0}, {"osc": -104781.0}]}},
+    {"name": "0아래_깊어지는중",
+     "input": {"candles": [{"osc": -50000.0}, {"osc": -80000.0}, {"osc": -110057.0}]}},
+    {"name": "0위_두꺼워지는중",
+     "input": {"candles": [{"osc": 1000.0}, {"osc": 5000.0}, {"osc": 42001.0}]}},
+    {"name": "0위_얇아지는중",
+     "input": {"candles": [{"osc": 42001.0}, {"osc": 30000.0}]}},
+    {"name": "방향전환_첫주",
+     "input": {"candles": [{"osc": -90000.0}, {"osc": -110057.0}, {"osc": -106590.0}]}},
+    {"name": "달러단위_소수점보존",
+     "input": {"candles": [{"osc": -1.2}, {"osc": -0.83}]}},
+    {"name": "표본부족",
+     "input": {"candles": [{"osc": null}, {"osc": -104781.0}]}}
+  ]
+}

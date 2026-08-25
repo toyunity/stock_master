@@ -15,6 +15,7 @@ import datetime as dt
 import logging
 import random
 import time
+from typing import Optional
 
 from backend.config import settings
 from backend.flow import kst
@@ -73,6 +74,47 @@ def _attach_macd(bars: list) -> list:
         v = osc.iloc[i]
         b["osc"] = None if pd.isna(v) else round(float(v), 2)
     return bars
+
+
+# 주봉 MACD 한 줄 판정 — 부호 × 직전 봉 대비 방향.
+# 마스터 질문(2026-08-25): "일봉 기준에선 MACD가 반등인데, 주봉 기준으론 아직
+# 하향추세라서 어떻게 해석해야 할지?" 부호만 보면 답이 안 나온다 — 0 아래여도
+# 직전 주보다 얕아지면 '하락은 계속이나 힘이 빠지는 중'이고, 깊어지면 '하락 가속'이다.
+_WK_WORDS = {
+    # (0 이상?, 직전 봉보다 개선?): (위치, 변화, 뜻, tone)
+    (True, True): ("0 위에서", "두꺼워지는 중", "상승 힘이 붙는 중", "good"),
+    (True, False): ("0 위지만", "얇아지는 중", "상승 힘이 빠지는 중", "warn"),
+    (False, True): ("0 아래지만", "얕아지는 중", "하락 힘이 빠지는 중", "info"),
+    (False, False): ("0 아래로", "깊어지는 중", "하락에 힘이 실리는 중", "warn"),
+}
+
+
+def weekly_macd_signal(candles: list) -> Optional[dict]:
+    """주봉 osc(MACD 히스토그램) → 초보자 말 한 줄 {text, tone}. 순수 함수.
+
+    같은 방향이 몇 주 이어졌는지도 센다 — '얕아지는 중'과 '2주째 얕아지는 중'은
+    믿음의 무게가 다르다. 표본이 2봉 미만이면 판정 보류(None) — 이 리포의 다른
+    판정들(short_signal·credit_signal·size_signal)과 같은 계약이다.
+
+    실측(000660 주봉 osc, 2026-08-25): 7/24 하향 돌파 → 8/14 -110,057 →
+    8/21 -106,590 → 8/25 -104,781 = "0 아래지만 2주째 얕아지는 중"."""
+    osc = [c["osc"] for c in candles if c.get("osc") is not None]
+    if len(osc) < 2:
+        return None
+    cur = osc[-1]
+    better = cur > osc[-2]      # 부호와 무관하게 '직전 주보다 위' = 개선
+    n = 0
+    for i in range(len(osc) - 1, 0, -1):
+        if (osc[i] > osc[i - 1]) != better:
+            break
+        n += 1
+    where, how, mean, tone = _WK_WORDS[(cur >= 0, better)]
+    # 자릿수: 미국 티커도 같은 FDR 경로라 주봉이 나온다 — osc가 소수점 단위인데
+    # 원화식 0자리 반올림을 쓰면 전부 '0'이 된다(감시선 반올림에서 겪은 함정).
+    val = ("{:,.0f}" if abs(cur) >= 100 else "{:,.2f}").format(cur)
+    span = "이번 주 들어" if n == 1 else "%d주째" % n
+    return {"text": "주봉 MACD %s · %s %s %s — %s" % (val, where, span, how, mean),
+            "tone": tone}
 
 
 def _get_client() -> KisClient:
@@ -297,9 +339,12 @@ async def get_candles(code: str, tf: str) -> dict:
                 "candles": await asyncio.wait_for(
                     asyncio.to_thread(_daily_candles, code), _FETCH_TIMEOUT)}
     if tf in ("1w", "1mo"):
-        return {"tf": tf, "date": kdate,
-                "candles": await asyncio.wait_for(
-                    asyncio.to_thread(_wm_candles, code, tf), _FETCH_TIMEOUT)}
+        # signal: 주봉 한 줄 판정 — 프런트는 일·분봉을 보는 중에도 이 한 번의
+        # 조회로 상위 시간축 상태를 배지에 띄운다(차트를 하나 더 그리지 않는다).
+        wm = await asyncio.wait_for(
+            asyncio.to_thread(_wm_candles, code, tf), _FETCH_TIMEOUT)
+        return {"tf": tf, "date": kdate, "candles": wm,
+                "signal": weekly_macd_signal(wm) if tf == "1w" else None}
     live = (settings.kis_app_key and settings.kis_app_secret
             and settings.flow_mode != "demo")
     if live:
