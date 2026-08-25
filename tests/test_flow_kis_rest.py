@@ -267,6 +267,66 @@ def test_token_expired_cache_ignored(tmp_path, monkeypatch):
     assert saved["token"] == "FRESH"  # 새 토큰이 디스크에 저장됨
 
 
+def _counting_client(tmp_path, issued):
+    """발급 횟수를 세는 KisClient. token()이 성공 후 디스크에 캐시를 쓰므로,
+    뒤이어 락을 잡은 쪽은 이중검사에서 그 파일을 읽고 발급을 건너뛴다."""
+    c = KisClient("KEY", "SECRET", str(tmp_path))
+
+    async def fake_issue():
+        await asyncio.sleep(0)          # 락이 없으면 여기서 서로 끼어든다
+        issued.append(1)
+        return {"access_token": "TOK%d" % len(issued), "expires_in": 86400}
+
+    c._issue_token = fake_issue
+    return c
+
+
+def test_token_lock_survives_a_throwaway_event_loop(tmp_path):
+    """cli._live_prices()는 new_event_loop()로 KIS를 부르고 그 루프를 닫는다.
+
+    Lock을 인스턴스에 영구 기억하면 그 죽은 루프에 묶여, 다음 토큰 만료 때
+    서버 루프에서 'attached to a different loop'로 터진다 — 분봉이 통째로 빈
+    결과가 됐다(2026-08-25 실사고). 캐시가 살아 있는 동안엔 락 앞에서 return
+    하므로 24시간에 한 번, 만료되는 그 순간에만 발현된다."""
+    issued = []
+    c = _counting_client(tmp_path, issued)
+    loop1 = asyncio.new_event_loop()        # ① 일회용 루프에서 최초 발급(락 생성)
+    try:
+        loop1.run_until_complete(c.token())
+    finally:
+        loop1.close()
+    (tmp_path / "kis_token.json").unlink()  # ② 만료된 척 — 락까지 도달하게
+    # ③ 서버 루프(다른 루프)에서 **동시에** 두 번. 경합이 있어야 터진다 —
+    #    3.9의 Lock.acquire()는 비경합이면 future를 안 만들어 죽은 루프여도
+    #    그냥 통과한다(실사고 트레이스백도 `await fut` 줄이었다).
+    async def twice():   # gather는 반드시 러닝 루프 안에서 — 밖에서 만들면
+        await asyncio.gather(c.token(), c.token())   # 스레드 기본 루프에 묶인다
+
+    loop2 = asyncio.new_event_loop()
+    try:
+        loop2.run_until_complete(twice())
+    finally:
+        loop2.close()
+    assert len(issued) == 2                 # 죽은 루프의 락이면 여기 오기 전에 터진다
+
+
+def test_token_issue_is_serialized_across_client_instances(tmp_path):
+    """KisClient는 candles·engine(종목마다)·scanner·semi로 인스턴스가 여럿이다.
+
+    락이 인스턴스별이면 만료 순간 각자 발급 → KIS 1분 1회 제한 → 403 →
+    엔진이 데모로 강등된다(2026-08-25 실사고: 하루치 시세가 시뮬레이션으로).
+    발급은 인스턴스가 아니라 프로세스 단위로 줄 세운다."""
+    issued = []
+    a = _counting_client(tmp_path, issued)
+    b = _counting_client(tmp_path, issued)
+
+    async def both():
+        await asyncio.gather(a.token(), b.token())
+
+    asyncio.new_event_loop().run_until_complete(both())
+    assert len(issued) == 1                 # 뒤에 온 쪽은 이중검사에서 캐시를 본다
+
+
 def test_no_key_refuses_even_with_valid_cached_token(tmp_path):
     """키가 비면 디스크에 **유효한** 토큰이 남아 있어도 호출을 막는다.
 

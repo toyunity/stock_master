@@ -416,6 +416,43 @@ def drop_empty_daily(rows: list) -> list:
     return [r for r in rows if r["prsn"] or r["frgn"] or r["orgn"]]
 
 
+# 발급 직렬화 락 — 인스턴스가 아니라 프로세스 단위다. 아래 주석이 그 사유.
+_issue_lock = None
+_issue_lock_loop = None
+
+
+def _issue_lock_for_running_loop():
+    """지금 돌고 있는 루프에 묶인, 프로세스 단위 발급 락.
+
+    두 가지를 한꺼번에 고친다(2026-08-25 실사고 — 하루치 시세가 시뮬레이션으로 나갔다).
+
+    ① **전역인 이유.** KisClient는 candles(모듈 전역)·engine(종목마다 1개)·
+       scanner·semi로 인스턴스가 여럿이다. 락이 인스턴스별이면 토큰이 만료되는
+       순간 각자 발급을 때리고, KIS의 1분 1회 제한에 걸린 쪽이 403을 받는다.
+       그 403을 받은 엔진이 데모로 강등돼 장 시작(08:56)부터 종일 가짜 숫자가
+       나갔다. 락을 잡은 뒤 디스크를 다시 읽는 이중검사(token() 참조)가 실제로
+       효과를 내려면 락이 발급 경로 전체를 덮어야 한다.
+
+    ② **루프를 확인하는 이유.** Lock은 만들어진 루프에 묶인다. cli._live_prices()는
+       new_event_loop()로 KIS를 부르고 그 루프를 닫으므로, 락을 영구 기억하면
+       죽은 루프에 묶인 채 남는다. 다음 만료 때 서버 루프에서 **경합이 생기면**
+       'attached to a different loop'로 터져 분봉이 통째로 빈 결과가 됐다.
+       비경합이면 3.9의 Lock.acquire()가 future를 안 만들어 그냥 통과하므로,
+       24시간에 한 번 만료되는 그 찰나에만 발현된다 — 그래서 오래 숨어 있었다.
+       루프가 바뀌었으면 새로 만든다. 어차피 락은 루프를 가로지를 수 없고,
+       그 경우의 안전망은 이중검사가 읽는 디스크 캐시다.
+
+    token()과 approval_key()가 같은 락을 나눠 쓴다 — approval_key의 임계구역은
+    token()을 부르지 않으므로 재진입/교착이 없고, 둘 다 드물어(각각 10초 타임아웃)
+    서로 기다려도 손해가 없다.
+    """
+    global _issue_lock, _issue_lock_loop
+    loop = asyncio.get_running_loop()   # 코루틴 안에서만 부른다 — 잘못 쓰면 즉시 예외
+    if _issue_lock is None or _issue_lock_loop is not loop:
+        _issue_lock, _issue_lock_loop = asyncio.Lock(), loop
+    return _issue_lock
+
+
 class KisClient:
     """토큰(디스크 캐시) + 수급 REST 3종. httpx 비동기, 실패는 예외로 위임."""
 
@@ -425,17 +462,11 @@ class KisClient:
         self.div = market_div  # UN=KRX+NXT 통합(기본), J=KRX 전용, NX=NXT 전용
         self._token_path = Path(cache_dir) / "kis_token.json"
         self._approval: Optional[str] = None
-        self._issue_lock = None      # asyncio.Lock — 첫 사용 때 만든다(아래 _lock 참조)
 
     def _lock(self):
-        """발급 직렬화용 Lock. **생성자가 아니라 여기서 만든다.**
-
-        Python 3.9의 `asyncio.Lock()`은 생성 시점의 이벤트 루프에 묶인다. KisClient는
-        루프 밖(모듈 임포트·CLI)에서도 만들어지므로 생성자에서 만들면 나중에
-        'attached to a different loop'로 터진다."""
-        if self._issue_lock is None:
-            self._issue_lock = asyncio.Lock()
-        return self._issue_lock
+        """발급 직렬화 락 — 인스턴스가 아니라 **모듈 전역**이다.
+        사유는 _issue_lock_for_running_loop() 주석 참조."""
+        return _issue_lock_for_running_loop()
 
     def _cached_token(self) -> Optional[str]:
         try:
