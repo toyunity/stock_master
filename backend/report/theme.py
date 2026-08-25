@@ -132,6 +132,13 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .b-off{background:var(--flat)} .b-warn{background:var(--warn)} .b-info{background:var(--info)}
 .b-buy{background:var(--primary)} .b-sell{background:var(--up)} .b-hold{background:var(--flat)}
 
+/* 화면엔 안 보이고 스크린리더만 읽는 라벨. display:none·visibility:hidden은
+   보조기기에서도 사라지므로 쓸 수 없다 — 1px로 눌러 클립한다.
+   2026-08-25: /live 히어로의 보이는 '현재가' 줄을 지우면서 도입(숫자만 남으면
+   음성에 맥락이 없다). */
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
 /* 등락 색 — 한국식 상승=적/하락=청 */
 .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
 
