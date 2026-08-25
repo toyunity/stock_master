@@ -122,6 +122,32 @@ def test_us_page_keeps_chart_and_watch_lines(cli):
     assert "감시선" in html and "pchart" in html
 
 
+def test_live_price_keeps_a_screen_reader_label(cli):
+    """보이는 '현재가' 줄은 지웠지만 숫자만 남으면 음성엔 맥락이 없다 —
+    화면에 안 보이고 스크린리더만 읽는 라벨로 대체한다(2026-08-25).
+
+    #price **안**에 넣으면 render()의 `p.textContent=` 한 방에 지워진다 —
+    반드시 바로 앞 형제여야 하므로 순서까지 함께 고정한다."""
+    html = cli.get("/live/000660").text
+    assert '<span class="vh">현재가</span><div class="price" id="price"' in html
+    assert ".vh{" in html      # 유틸 CSS가 실제로 실려 있는지(안 실리면 화면에 글자가 보인다)
+
+
+def test_price_label_only_survives_where_it_says_something(cli):
+    """히어로 '현재가' 라벨은 미국 상세에만 남는다(2026-08-25).
+
+    국내(/live)에선 늘 '현재가' 고정이라 48px 숫자 밑에서 아무것도 말하지 않았고,
+    render()가 건드리지 않는 정적 텍스트다 — 패널 제거 금지 규칙의 사유가
+    render 의존인데 여기엔 없으므로 지워도 라이브 피드는 멀쩡하다
+    (tests/test_live_page_js.py의 실행 스모크가 그걸 계속 지킨다).
+    미국은 반대다: '종가'로 시작해 정규장이면 '현재가'로 바뀐다(us_page.py:229) —
+    같은 자리 같은 숫자가 어제 종가인지 지금 값인지를 그 한 줄이 가른다."""
+    assert 'id="plabel"' not in cli.get("/live/000660").text
+    us = cli.get("/live/SKHY").text
+    assert 'id="plabel"' in us and "종가" in us
+    assert "getElementById('plabel').textContent='현재가'" in us   # 정규장 전환이 살아 있는지
+
+
 def test_us_page_says_why_things_are_missing(cli):
     """빈 섹션을 지우기만 하면 '왜 없지?'가 남는다 — 한 줄로 답해준다."""
     assert "국내 종목에만" in cli.get("/live/SKHY").text

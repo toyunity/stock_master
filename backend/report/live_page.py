@@ -236,8 +236,14 @@ __ICONS__
   <!-- .hmain — 560px↑에서 히어로가 2열이 될 때 왼쪽 열로 통째로 들어가는 묶음.
        래퍼가 없으면 CSS가 자식 개수를 세야 하고, 히어로에 줄이 하나 늘 때마다 깨진다. -->
   <div class="hmain">
-    <div class="price" id="price">–</div>
-    <div class="plabel" id="plabel">현재가</div>
+    <!-- 2026-08-25: 보이는 '현재가' 줄 제거. 48px 숫자 밑에 늘 같은 글자라 아무것도
+         말하지 않았고, 마감 후 종가일 때도 '현재가'라고 우기는 고정 텍스트였다
+         (render()가 건드린 적 없다). 기준 시각·실시간 여부는 아래 #pmeta와
+         시장 상태 배지가 이미 말한다. 음성용 맥락만 .vh로 남긴다 — #price
+         **안**에 넣으면 render()의 textContent= 한 방에 지워지므로 앞 형제로 둔다.
+         미국 상세(us_page)는 보이는 라벨을 그대로 둔다 — 거긴 '종가'로 시작해
+         정규장이면 '현재가'로 바뀌므로 그 한 줄이 어제 값과 지금 값을 가른다. -->
+    <span class="vh">현재가</span><div class="price" id="price">–</div>
     <span class="pill flat" id="chg"></span>
     <div class="note" id="walert"></div>
     <div id="today-line"></div>
