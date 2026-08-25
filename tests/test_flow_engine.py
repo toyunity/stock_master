@@ -280,3 +280,98 @@ def test_registry_returns_same_engine():
     b = FlowEngine.get("000660")
     assert a is b
     assert FlowEngine.get("005930") is not a
+
+
+async def _until(pred, timeout=3.0):
+    """pred()가 참이 될 때까지 짧게 폴링 — 재시도 타이밍에 sleep을 못박지 않는다."""
+    loop = asyncio.get_event_loop()
+    end = loop.time() + timeout
+    while loop.time() < end:
+        if pred():
+            return True
+        await asyncio.sleep(0.01)
+    return False
+
+
+def test_auth_failure_retries_then_recovers_live(monkeypatch):
+    """인증 실패는 '영구 데모 강등'이 아니라 주기적 재시도여야 한다.
+
+    2026-08-25 08:56 실사고: 토큰 24h 만료 순간의 403 한 번으로 FlowEngine이
+    데모로 내려앉았고, 구독자가 붙어 있어 _delayed_stop도 안 걸려 마스터가
+    장 시작부터 오후까지 시뮬레이션 난수를 실시간 시세로 봤다."""
+    from backend.config import settings
+    from backend.flow import engine as engmod
+    monkeypatch.setattr(settings, "kis_app_key", "k")
+    monkeypatch.setattr(settings, "kis_app_secret", "s")
+    monkeypatch.setattr(engmod, "_AUTH_RETRY_SEC", 0.05)
+
+    calls = {"n": 0}
+
+    class FakeClient:
+        async def token(self):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("403 EGW00133 1분당 1회")
+            return "T"
+
+    eng = FlowEngine("000660", interval=0.05)
+    eng._client = FakeClient()
+
+    async def idle(client, stop):
+        await stop.wait()
+
+    for name in ("_poll_rest", "_ws_link", "_ws_fallback"):
+        monkeypatch.setattr(eng, name, idle)
+
+    async def go():
+        stop = asyncio.Event()
+        before = set(asyncio.all_tasks())
+        task = asyncio.get_event_loop().create_task(eng._run_live(stop))
+        note = lambda: eng.state.snapshot()["status"]["note"]           # noqa: E731
+        assert await _until(lambda: "재시도" in note()), \
+            "재시도 중임이 노트에 안 보인다: %r" % note()
+        assert eng.state.mode == "demo", "실패 직후 데모가 아니다"
+        assert eng.state.snapshot()["tape"], "재시도 대기 중 화면이 죽었다(데모 미공급)"
+        assert await _until(lambda: eng.state.mode == "live"), "재인증 후 라이브 복귀 실패"
+        assert note() == "", "복구 후 노트가 안 비었다: %r" % note()
+        snap = eng.state.snapshot()
+        assert not snap["tape"] and not snap["daily"], \
+            "복구 후에도 데모 시드가 라이브 배지 아래 남았다"
+        stop.set()
+        await asyncio.wait_for(task, 1.0)
+        leftover = [t for t in asyncio.all_tasks()
+                    if t not in before and not t.done()]
+        assert not leftover, "정지 후 데모 태스크가 남았다: %r" % leftover
+
+    _run(go())
+
+
+def test_no_retry_without_keys(monkeypatch):
+    """키가 아예 없으면 재시도하지 않는다 — 하네스(harness/core/server.py)가
+    키를 비워 'KIS 미접촉'을 보장하는 경로다. 여기서 재시도하면 그 보장이 깨진다."""
+    from backend.config import settings
+    from backend.flow import engine as engmod
+    monkeypatch.setattr(settings, "kis_app_key", "")
+    monkeypatch.setattr(settings, "kis_app_secret", "")
+    monkeypatch.setattr(engmod, "_AUTH_RETRY_SEC", 0.02)
+
+    calls = {"n": 0}
+
+    class FakeClient:
+        async def token(self):
+            calls["n"] += 1
+            raise RuntimeError("KIS 키 없음 — 호출 차단")
+
+    eng = FlowEngine("000660", interval=0.05)
+    eng._client = FakeClient()
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.get_event_loop().create_task(eng._run_live(stop))
+        await asyncio.sleep(0.3)            # 재시도 간격의 10배 이상
+        assert calls["n"] == 1, "키가 없는데 발급을 다시 시도했다(%d회)" % calls["n"]
+        assert eng.state.mode == "demo"
+        stop.set()
+        await asyncio.wait_for(task, 1.0)
+
+    _run(go())

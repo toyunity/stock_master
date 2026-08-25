@@ -32,6 +32,9 @@ _DAILY_SEC = 1800    # 일별 확정 재조회 간격(장 종료 후 당일분 �
 _LINGER_SEC = 300    # 구독자 0명 후 소스 유지 시간 — 웹소켓 재연결 churn이
                      # KIS 서버측 절단(EOF)을 유발하므로(실측) 즉시 해체 금지
 _FALLBACK_SEC = 10   # 웹소켓 공백 시 REST 시세 폴백 주기(화면이 비지 않게)
+_AUTH_RETRY_SEC = 60 # 인증 실패 후 재시도 간격 — 실패 한 번으로 종일 데모에
+                     # 갇히지 않게(2026-08-25 08:56 실사고). KIS 토큰 발급은
+                     # 1분 1회 제한이라 이보다 짧게 두면 제한에 다시 걸린다.
 _STATUS_SEC = 1      # 공유 세션(wsbus)의 연결 상태를 화면 상태로 옮겨 적는 주기
 
 
@@ -143,23 +146,72 @@ class FlowEngine:
                                          settings.cache_dir,
                                          market_div=settings.market_div)
         client = self._client
-        try:
-            await client.token()  # 인증 검증 — 실패 시 데모 강등
-        except Exception as e:  # noqa: BLE001 — 원인 불문 화면은 살린다
-            log.warning("KIS 인증 실패 — 데모로 전환", exc_info=True)
-            self.state.mode = "demo"
-            self.state.set_status(note=f"KIS 인증 실패({e}) — 데모 데이터로 표시 중")
-            await DemoSource(self.state).run(stop)
+        demoted = False   # 데모 스틴트를 거쳐 왔는가(복구 시 시뮬레이션 잔재 청소용)
+        while not stop.is_set():
+            try:
+                await client.token()  # 인증 검증
+            except Exception as e:  # noqa: BLE001 — 원인 불문 화면은 살린다
+                log.warning("KIS 인증 실패 — 데모로 전환", exc_info=True)
+                if not (settings.kis_app_key and settings.kis_app_secret):
+                    # 키가 아예 없으면 재시도해도 못 뚫는다. 하네스(harness/core/server.py)가
+                    # 키를 비워 'KIS 미접촉'을 보장하는 경로라, 여기서 두드리면 그 보장이 깨진다.
+                    self.state.mode = "demo"
+                    await DemoSource(self.state).run(stop)
+                    return
+                # 키가 있는데 실패한 건 대개 일시적이다(토큰 1분 1회 제한·KIS 점검·네트워크).
+                # 2026-08-25 08:56 실사고: 토큰 24h 만료 찰나의 403 한 번으로 데모로 내려앉은 뒤
+                # 재시도가 없어, 구독자가 붙어 있는 한 _delayed_stop도 안 걸려서 마스터가
+                # 장 시작부터 오후까지 시뮬레이션 난수를 실시간 시세로 봤다. 그래서 주기 재시도.
+                demoted = True
+                await self._demo_until_retry(stop, e)
+                continue
+            if demoted:
+                # 데모가 남긴 시뮬레이션 값을 '라이브' 배지 아래 두지 않는다(2026-08-25).
+                # 데모는 체결·프로그램뿐 아니라 일별·기관세부·신용·공매도·대차·거래원·ADR까지
+                # 전부 시드하는데, 이 패널들은 'if rows' 가드 + 모듈 내부 최대 1h 캐시라
+                # 복귀 직후 폴에서 안 덮일 수 있다. 빈 패널이 가짜 숫자보다 낫다.
+                # (외부에 self.state 장기 참조 없음 — app.py는 요청마다 eng.state를 다시 읽는다)
+                self.state = FlowState(self.code, self.state.name, "live")
+                demoted = False
+            self.state.mode = "live"
+            self.state.set_status(note="")  # 재시도 안내 걷기(이후 노트는 _sync_status 소관)
+            try:
+                await asyncio.gather(self._poll_rest(client, stop),
+                                     self._ws_link(client, stop),
+                                     self._ws_fallback(client, stop))
+            finally:
+                # gather는 형제를 죽이지 않는다 — 한 갈래가 예외로 죽으면 나머지 둘도 세운다.
+                # 안 세우면 다음 _ensure_running이 self._stop을 새 Event로 갈아치워, 이전
+                # Event만 보는 고아 폴러가 재기동 전까지 KIS를 계속 두드린다(재접속마다 배가).
+                stop.set()
             return
+
+    async def _demo_until_retry(self, stop: asyncio.Event, err: Exception) -> None:
+        """재인증까지 데모로 화면을 살려둔다 — stop이나 재시도 시각 중 먼저 오는 쪽에서 반환.
+
+        데모를 태스크로 띄우는 이유는 대기 시간과 동시에 굴려야 하기 때문이고, 그래서
+        나갈 때 반드시 회수한다(누수 금지 — 남으면 다음 사이클과 겹쳐 두 배로 쓴다).
+        노트는 DemoSource.run에 넘긴다 — 저쪽이 시작할 때 set_status로 덮어쓴다."""
+        self.state.mode = "demo"
+        note = "KIS 인증 실패(%s) — 데모 데이터, %d초마다 재시도 중" % (err, _AUTH_RETRY_SEC)
+        demo_stop = asyncio.Event()
+        demo = asyncio.get_event_loop().create_task(
+            DemoSource(self.state).run(demo_stop, note=note))
         try:
-            await asyncio.gather(self._poll_rest(client, stop),
-                                 self._ws_link(client, stop),
-                                 self._ws_fallback(client, stop))
+            await asyncio.wait_for(stop.wait(), timeout=_AUTH_RETRY_SEC)
+        except asyncio.TimeoutError:
+            pass
         finally:
-            # gather는 형제를 죽이지 않는다 — 한 갈래가 예외로 죽으면 나머지 둘도 세운다.
-            # 안 세우면 다음 _ensure_running이 self._stop을 새 Event로 갈아치워, 이전
-            # Event만 보는 고아 폴러가 재기동 전까지 KIS를 계속 두드린다(재접속마다 배가).
-            stop.set()
+            demo_stop.set()
+            demo.cancel()   # sleep 중이면 즉시 깨운다
+            try:
+                await demo
+            except asyncio.CancelledError:
+                pass                      # 우리가 건 cancel — 정상 경로다
+            except Exception:             # noqa: BLE001 — 정리 실패가 재시도를 막으면 안 된다
+                # 삼키되 흔적은 남긴다. 오늘 사고(08:56)가 오래 숨어 있던 이유가
+                # 조용한 실패였다 — 데모 태스크가 죽는 원인을 다음 사람이 못 보면 안 된다.
+                log.warning("데모 스틴트 정리 중 예외", exc_info=True)
 
     async def _poll_rest(self, client: "kis.KisClient", stop: asyncio.Event) -> None:
         last_daily = None  # None=아직 안 가져옴(모노토닉 시계는 0 근처에서 시작할 수 있음)

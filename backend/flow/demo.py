@@ -43,6 +43,10 @@ def lookup_stock(code: str) -> tuple:
     return name or code, close
 
 
+DEMO_NOTE = ("데모 데이터(시뮬레이션) — 실데이터가 아닙니다. "
+             "KIS 키 입력 시 라이브 전환.")
+
+
 class DemoSource:
     """FlowState에 가짜 체결·프로그램·잠정·일별 이벤트를 흘려 넣는다."""
 
@@ -163,11 +167,12 @@ class DemoSource:
                                         "seln_rlim": 0.0, "shnu_rlim": 0.0},
                                "asof": now_t})
 
-    async def run(self, stop: asyncio.Event) -> None:
+    async def run(self, stop: asyncio.Event, note: str = DEMO_NOTE) -> None:
+        """note: 호출자가 상단 안내를 갈아끼울 수 있게 — 여기서 set_status를 하므로
+        호출자가 미리 써둔 노트는 무조건 덮인다(인증 재시도 중 문구가 이 길로 들어온다)."""
         rng = self.rng
         self._seed_panels()
-        self.state.set_status(connected=True,
-                              note="데모 데이터(시뮬레이션) — 실데이터가 아닙니다. KIS 키 입력 시 라이브 전환.")
+        self.state.set_status(connected=True, note=note)
         price, acml_vol, acml_value, n, last_est = float(self.base), 0, 0, 0, 0.0
         pgm_qty, pgm_val = 0, 0
         loop = asyncio.get_event_loop()
