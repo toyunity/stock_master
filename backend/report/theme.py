@@ -176,6 +176,11 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .pill.up{background:var(--up-bg);color:var(--up)}
 .pill.down{background:var(--down-bg);color:var(--down)}
 .pill.flat{background:var(--surface-2);color:var(--text-2)}
+/* 종목 상세 히어로의 등락 알약(#chg) — 48px 현재가 바로 아래라 공용 11px로는
+   안 읽힌다는 제보(2026-08-25). `.pill` 전역을 올리지 않고 여기서만 키운다 —
+   공용 유틸이라 전역이면 상태 배지(sb/ss/cr-pill 등)까지 같이 부푼다.
+   히어로 안의 .pill은 live_page·us_page 모두 이 등락 표시 하나뿐이다. */
+.hero .pill{font-size:20px;padding:5px 12px;gap:8px}
 
 /* 안내/경고 텍스트 */
 .note{font-size:12.5px;color:var(--warn);margin-top:4px;min-height:0;font-weight:500}
