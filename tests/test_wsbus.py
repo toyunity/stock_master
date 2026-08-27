@@ -231,6 +231,62 @@ def test_engine_mirrors_bus_connection_status(monkeypatch):
     assert st2["connected"] is True and st2["note"] == ""
 
 
+def _looping(monkeypatch, idle):
+    """수신 루프가 도는 척하는 세션(네트워크 미접촉) + 짧은 유예."""
+    monkeypatch.setattr(wsbus, "_IDLE_CLOSE_SEC", idle)
+    s, ws = _connected()
+    s._stop = asyncio.Event()
+
+    async def _forever():
+        await asyncio.sleep(3600)
+
+    s._task = asyncio.ensure_future(_forever())
+    return s, ws
+
+
+def test_idle_session_closes_when_last_subscription_leaves(monkeypatch):
+    """구독이 0이 되면 세션을 닫는다 — 안 닫으면 영원히 재접속을 반복한다.
+
+    _run은 self._stop만 보고 도는데 unregister는 그걸 건드리지 않았다. 구독이
+    없으면 KIS가 아무것도 안 보내므로 _RECV_TIMEOUT(60초)에 걸려 '죽은 연결'로
+    판정되고, 접속에 성공할 때마다 backoff가 _INITIAL_BACKOFF(5초)로 리셋되어
+    65초 주기로 무한히 재접속한다. 2026-08-27 실측: 마스터가 종목 화면을 모두
+    닫은 뒤 64회·69분 연속으로 돌았다(요청 로그가 그 구간에 비어 있어 확인).
+    이 모듈 첫 주석대로 재접속 churn은 KIS 서버측 절단을 유발한다."""
+    async def go():
+        s, _ = _looping(monkeypatch, 0.01)
+        await asyncio.sleep(0)
+        h = lambda rec: None                                  # noqa: E731
+        await s.register("H0STCNT0", "000660", h)
+        await s.unregister("H0STCNT0", "000660", h)
+        await asyncio.sleep(0.08)
+        assert s._task is None, "구독이 0인데 수신 루프가 살아 있다(무한 재접속)"
+        assert s.status["connected"] is False
+
+    asyncio.run(go())
+
+
+def test_idle_close_is_cancelled_when_a_new_subscription_arrives(monkeypatch):
+    """유예 안에 다시 등록되면 닫지 않는다.
+
+    엔진 재시작은 _ws_detach(전건 해지) → _ws_attach(재등록) 순서라 그 사이에
+    구독이 잠깐 0이 된다. 그때마다 세션을 닫고 다시 열면 그게 바로 이 모듈이
+    피하려던 churn이고, 1키 1세션이라 재접속이 EOF로 거부될 수도 있다."""
+    async def go():
+        s, _ = _looping(monkeypatch, 0.05)
+        await asyncio.sleep(0)
+        h = lambda rec: None                                  # noqa: E731
+        await s.register("H0STCNT0", "000660", h)
+        await s.unregister("H0STCNT0", "000660", h)
+        await s.register("H0STCNT0", "000660", h)             # 유예 안에 복귀
+        await asyncio.sleep(0.12)
+        assert s._task is not None and not s._task.done(), \
+            "재등록했는데 세션이 닫혔다 — 엔진 재시작마다 churn이 난다"
+        await s.close()
+
+    asyncio.run(go())
+
+
 def test_close_swallows_the_cancellation_it_caused():
     """close()가 자기가 취소한 태스크의 CancelledError를 삼켜야 한다.
 
