@@ -23,6 +23,7 @@ _INITIAL_BACKOFF = 5      # 재시작 직후 KIS가 이전 세션 정리 전까�
 _MAX_BACKOFF = 60
 _REJECT_BACKOFF = 30      # 구독 거부는 길게 물러난다(짧게 두드리면 보호가 연장됨)
 _RECV_TIMEOUT = 60        # 이 시간 무수신이면 죽은 연결로 보고 재접속
+_IDLE_CLOSE_SEC = 30      # 구독 0이 이만큼 이어지면 세션을 닫는다(아래 _arm_idle_close)
 
 
 class WsSession:
@@ -37,6 +38,7 @@ class WsSession:
         self._ws = None
         self._task = None
         self._stop = None
+        self._idle_task = None   # 구독 0 유예 타이머
         self.status = {"connected": False, "note": ""}
 
     @classmethod
@@ -57,6 +59,9 @@ class WsSession:
 
     async def close(self) -> None:
         """클로즈 프레임과 함께 연결을 정리한다 — 좀비 세션을 남기지 않는다."""
+        idle, self._idle_task = self._idle_task, None
+        if idle is not None:
+            idle.cancel()          # 유예 타이머가 남아 닫힌 세션을 또 닫지 않게
         if self._stop is not None:
             self._stop.set()
         task, self._task = self._task, None
@@ -110,6 +115,44 @@ class WsSession:
                 await self._send_sub(key, False)
             except Exception:  # noqa: BLE001 — 해지 실패는 재접속이 정리한다
                 log.warning("구독 해지 실패 — 재접속 시 정리됨", exc_info=True)
+        self._arm_idle_close()
+
+    def _arm_idle_close(self) -> None:
+        """구독이 0이면 유예 뒤 세션을 닫도록 예약하고, 구독이 있으면 예약을 걷는다.
+
+        **왜 닫아야 하나(2026-08-27 실측).** _run은 self._stop만 보고 도는데
+        unregister는 그걸 건드리지 않았다. 구독이 없으면 KIS가 아무것도 안 보내
+        _RECV_TIMEOUT(60초)에 걸려 '죽은 연결'로 판정되고, 접속에 성공할 때마다
+        backoff가 _INITIAL_BACKOFF(5초)로 리셋돼 65초 주기로 영원히 재접속했다
+        — 마스터가 종목 화면을 모두 닫은 뒤 64회·69분 연속으로 돌았다.
+        이 모듈 첫 주석대로 재접속 churn은 KIS 서버측 절단을 유발한다.
+
+        **왜 즉시 닫지 않나.** 엔진 재시작은 _ws_detach(전건 해지) → _ws_attach
+        (재등록) 순서라 그 사이 구독이 잠깐 0이 된다. 즉시 닫으면 재시작마다
+        세션을 닫고 여는 churn이 되고, 1키 1세션이라 새 접속이 EOF로 거부될 수도
+        있다(_INITIAL_BACKOFF 주석 참조). 그래서 유예를 둔다.
+
+        엔진 쪽 _LINGER_SEC(300초)와는 별개다 — 저건 '구독자 0 → 엔진 정지'까지,
+        이건 '구독 0 → 세션 종료'까지다. 사용자가 화면을 닫으면 둘이 차례로 흐른다."""
+        idle, self._idle_task = self._idle_task, None
+        if idle is not None:
+            idle.cancel()
+        if self._subs or self._task is None or self._task.done():
+            return
+        self._idle_task = asyncio.ensure_future(self._close_when_idle())
+
+    async def _close_when_idle(self) -> None:
+        try:
+            await asyncio.sleep(_IDLE_CLOSE_SEC)
+        except asyncio.CancelledError:
+            return
+        self._idle_task = None   # close()가 자기 자신을 취소하지 않게 먼저 뗀다
+        if self._subs:
+            # 유예 중에 다시 등록됐다 — 엔진 재시작(_ws_detach→_ws_attach)의 정상
+            # 경로다. register에 취소 훅을 따로 두지 않는 이유가 이 재확인이다(두 겹 불필요).
+            return
+        log.info("구독 0 — 웹소켓 세션 종료(무한 재접속 방지). 다음 등록에서 다시 연다")
+        await self.close()
 
     async def _ensure_subscribed(self, key) -> None:
         """이 연결에서 아직 안 보낸 키만 구독 프레임을 보낸다.
