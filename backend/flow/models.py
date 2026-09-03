@@ -174,6 +174,9 @@ class FlowState:
         # 거래소별 거래량·거래원 창구(각 60s 갱신, 실패 시 이전 값 유지)
         self._exvol: Optional[dict] = None
         self._member: Optional[dict] = None
+        # 매수 유의사항(토스): [{type,label,tone,exchange,start,end}]. 빈 목록이
+        # '지정 없음'이라 다른 패널과 달리 **빈 값도 그대로 반영한다**(아래 set_warnings).
+        self._warnings: list = []
         self._status = {"connected": False, "note": ""}
 
     def apply_tick(self, d: dict) -> None:
@@ -285,6 +288,14 @@ class FlowState:
     def set_shortsale(self, d: dict) -> None:
         self._shortsale = {"rows": list(d.get("rows") or []), "asof": d.get("asof")}
 
+    def set_warnings(self, rows: list) -> None:
+        """매수 유의사항 — **빈 목록도 그대로 덮는다.**
+
+        다른 패널의 '실패 시 이전 값 유지' 관행을 여기 적용하면 안 된다: VI는 2~10분이면
+        풀리는데 마지막 값을 붙들면 이미 끝난 VI 배지가 종일 남는다. 조회 실패는
+        호출부(engine)가 set 자체를 건너뛰어 처리하고, 여기 도달한 []는 '지정 없음'이다."""
+        self._warnings = [dict(r) for r in rows or []]
+
     def set_status(self, **kw) -> None:
         self._status.update(kw)
 
@@ -358,6 +369,7 @@ class FlowState:
                        "signal": credit_signal(self._credit["rows"])},
             "shortsale": {"rows": list(self._shortsale["rows"]),
                           "asof": self._shortsale["asof"]},
+            "warnings": list(self._warnings),
             "status": dict(self._status),
         }
 

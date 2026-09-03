@@ -434,3 +434,29 @@ def test_daily_close_today_falls_back_to_krx_regular_close(monkeypatch):
     # 정규장 종료 전 현재가는 '종가'가 아니다 — 쓰지 않는다
     _fix_now(monkeypatch, 13, 0)
     assert s.snapshot()["daily"][0]["close"] is None
+
+
+# ── 매수 유의사항(토스) ───────────────────────────────────────────────────
+
+def test_warnings_ride_the_snapshot_and_default_empty():
+    """유의사항은 있으면 싣고 없으면 빈 배열 — 키가 사라지면 프런트가 터진다."""
+    from backend.flow.models import FlowState
+    s = FlowState("000660", "SK하이닉스", "live")
+    assert s.snapshot()["warnings"] == []
+    s.set_warnings([{"type": "OVERHEATED", "label": "단기과열", "tone": "warn",
+                     "exchange": "KRX", "start": "2026-09-01", "end": None}])
+    assert [w["label"] for w in s.snapshot()["warnings"]] == ["단기과열"]
+
+
+def test_warnings_can_be_cleared_when_the_flag_lifts():
+    """지정이 풀리면 빈 목록이 와야 배지가 사라진다 — 마지막 값 유지는 오답이다.
+
+    VI는 2~10분이면 풀린다. 다른 패널처럼 '실패 시 이전 값 유지'를 적용하면
+    이미 끝난 VI가 화면에 종일 남는다."""
+    from backend.flow.models import FlowState
+    s = FlowState("000660", "SK하이닉스", "live")
+    s.set_warnings([{"type": "VI_STATIC", "label": "VI 발동(정적)",
+                     "tone": "info", "exchange": "KRX",
+                     "start": None, "end": None}])
+    s.set_warnings([])
+    assert s.snapshot()["warnings"] == []

@@ -268,3 +268,86 @@ def test_parse_kofia_missing_flow_fields_default_zero():
     js = {"ds1": [{"TMPV2": "000660", "TMPV5": "100", "TMPV6": "200"}]}
     got = parse_kofia(js, "000660")
     assert got["contract"] == 0 and got["repay"] == 0
+
+
+# ── 토스 Open API 1차 원천 ────────────────────────────────────────────────
+
+class _FakeTossLending:
+    def __init__(self, rows=None, boom=False):
+        self.rows, self.boom, self.asked = rows, boom, []
+
+    async def lending(self, code, count=20):
+        self.asked.append((code, count))
+        if self.boom:
+            raise RuntimeError("토스 실패 스텁")
+        return self.rows or []
+
+
+def _lending_rows(n, base_date=None):
+    """parse_lending이 내는 모양(오름차순, chg 포함)."""
+    base = base_date or shortbal.expected_latest(kst.today())
+    days, d = [], base
+    while len(days) < n:
+        if d.weekday() < 5:
+            days.append(d)
+        d -= dt.timedelta(days=1)
+    days.reverse()
+    out = []
+    for i, day in enumerate(days):
+        qty = 15_000_000 + i * 1000
+        out.append({"date": day.isoformat(), "qty": qty, "exec": 210500,
+                    "rdmp": 185300, "value": qty * 80_000,
+                    "updated": None,
+                    "chg": (1000 if i else None)})
+    return out
+
+
+def test_toss_is_preferred_and_needs_one_call(tmp_path, monkeypatch):
+    """키가 있으면 토스가 1차 원천 — 20일 백필이 KOFIA 20콜에서 1콜이 된다.
+
+    콜 수보다 큰 이득은 무인증 스크래핑 두 개를 우회하는 것이다: KOFIA는 tmpV74를
+    '시장,0,,1' 4필드로 안 보내면 HTTP 200에 빈 ds1(무증상 실패), SEIBro는 isin에
+    6자리 단축코드를 안 넣으면 무증상 0행이다. 둘 다 조용히 틀린다."""
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    fake = _FakeTossLending(_lending_rows(20))
+    monkeypatch.setattr(shortbal.toss, "get_client", lambda: fake)
+
+    async def kofia_must_not_run(cli, date, market):
+        raise AssertionError("토스가 성공했는데 KOFIA를 불렀다")
+    monkeypatch.setattr(shortbal, "_kofia_day", kofia_must_not_run)
+
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
+    assert d["source"] == "toss" and len(d["rows"]) == 20
+    assert len(fake.asked) == 1
+    # 단일 원천이라 전일 대비가 계산된다(KOFIA/SEIBro 혼재로는 못 하던 것).
+    assert d["rows"][-1]["chg"] == 1000
+
+
+def test_toss_carries_execution_and_repayment(tmp_path, monkeypatch):
+    """체결·상환 수량은 토스에만 있다 — 잔고만 있던 기존 원천의 확장."""
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    monkeypatch.setattr(shortbal.toss, "get_client",
+                        lambda: _FakeTossLending(_lending_rows(3)))
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=3))
+    assert d["rows"][-1]["exec"] == 210500 and d["rows"][-1]["rdmp"] == 185300
+
+
+def test_toss_failure_falls_back_to_kofia(tmp_path, monkeypatch):
+    """토스가 죽어도 기존 경로가 그대로 산다 — 원천을 갈아치우지 않고 앞에 세운다."""
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    monkeypatch.setattr(shortbal.toss, "get_client",
+                        lambda: _FakeTossLending(boom=True))
+    monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
+    monkeypatch.setattr(shortbal, "_kofia_day", _kofia_fake_factory([]))
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
+    assert d["source"] == "kofia" and len(d["rows"]) == 20
+
+
+def test_no_toss_key_keeps_the_old_path_exactly(tmp_path, monkeypatch):
+    """키가 없으면 토스 경로가 아예 없다(기존 동작 보존)."""
+    monkeypatch.setattr(shortbal, "_last_try", {})
+    monkeypatch.setattr(shortbal.toss, "get_client", lambda: None)
+    monkeypatch.setattr(shortbal, "_SPACING_SEC", 0)
+    monkeypatch.setattr(shortbal, "_kofia_day", _kofia_fake_factory([]))
+    d = _run(shortbal.get_history("000660", str(tmp_path), days=20))
+    assert d["source"] == "kofia"

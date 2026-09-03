@@ -22,6 +22,7 @@ from backend.flow import member
 from backend.flow import scanner
 from backend.flow import shortbal
 from backend.flow import shortsale
+from backend.flow import toss
 from backend.flow.demo import DemoSource, lookup_stock
 from backend.flow.models import FlowState
 
@@ -289,6 +290,16 @@ class FlowEngine:
                     self.state.set_shortsale(ss)
             except Exception:
                 log.warning("공매도 일별 조회 실패 — 다음 주기 재시도", exc_info=True)
+            try:
+                # 매수 유의사항(토스) — KIS엔 없다. 매분 부르는 이유: VI는 2~10분이면
+                # 풀려서 이보다 느리면 이미 끝난 경고를 보여주게 된다.
+                # 실패해도 이전 값을 유지하지 않는다(models.set_warnings 주석) —
+                # 여기서 set 자체를 건너뛰는 게 '조회 실패'의 표현이다.
+                tc = toss.get_client()
+                if tc is not None:
+                    self.state.set_warnings(await tc.warnings(self.code))
+            except Exception:
+                log.warning("매수 유의사항 조회 실패 — 다음 주기 재시도", exc_info=True)
             try:
                 xv = await exvol.get_split(client, self.code)
                 if xv.get("krx") or xv.get("nxt"):

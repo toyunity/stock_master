@@ -261,6 +261,7 @@ __ICONS__
     <span id="mode" class="badge b-__MODE_CLS__">__MODE__</span>
     <span id="conn" class="badge b-off">연결 중…</span>
     <span id="mstate" class="badge b-off">상태 확인 중</span>
+    <span id="wpill"></span>
     <span class="ago" id="hago"></span>
   </div>
 </div>
@@ -1096,6 +1097,17 @@ function render(S){
   const mb=document.getElementById('mstate');
   mb.textContent=ms.label||'–';
   mb.className='badge b-'+({live:'live',warn:'warn',info:'info',off:'off'}[ms.tone]||'off');
+  // 매수 유의사항(토스 Open API) — 정리매매·단기과열·투자경고/위험·VI·신주인수권.
+  // 바로 왼쪽 mstate의 'VI/CB 의심'은 체결 공백으로 **추정**한 것이고, 이 배지는
+  // 거래소가 실제로 건 지정이다(추정 옆에 확정을 나란히 둔다).
+  // 색(tone)은 서버가 정한다 — 프런트는 칠하기만 한다(이 리포의 관행).
+  // 빈 배열이면 반드시 지운다: VI는 2~10분이면 풀리는데 마지막 값을 붙들면
+  // 이미 끝난 경고가 종일 남는다. className도 같이 비워 빈 알약이 안 그려지게.
+  const wl=S.warnings||[], wp=document.getElementById('wpill');
+  // esc()를 안 쓴다 — textContent는 대입 자체가 이스케이프다. 여기에 esc를 걸면
+  // 라벨에 '&'가 들어가는 날 화면에 '&amp;'가 글자 그대로 찍힌다.
+  wp.textContent=wl.length?('⚠ '+wl.map(w=>w.label||'').join(' · ')):'';
+  wp.className=wl.length?('badge b-'+(wl.some(w=>w.tone==='warn')?'warn':'info')):'';
   const halted=ms.state==='halt';
   const stxt=halted?'⏸ 수신 정지 ('+(S.stall&&S.stall.since?S.stall.since:'--:--:--')
     +' 이후) — VI·서킷브레이커·장중단 가능성. 마지막 값이 이어져 보이는 것에 주의':'';

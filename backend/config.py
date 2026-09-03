@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # S5 실시간 수급 (KIS 오픈API — 키 없으면 데모 모드로 화면 검증 가능)
     kis_app_key: Optional[str] = None      # SM_KIS_APP_KEY
     kis_app_secret: Optional[str] = None   # SM_KIS_APP_SECRET
+    # 토스증권 Open API (한국 국채 금리·대차거래·매수 유의사항 — KIS에 없는 것만).
+    # ⚠️ 토큰은 client당 1개다 — 재발급하면 이전 토큰이 즉시 무효화된다(스펙). 검증
+    # 서버가 같은 client_id로 한 번 발급하면 실서버가 그 자리에서 401이 된다.
+    # ⚠️ 허용 IP 미등록이면 토큰 발급부터 403(WTS 설정 > Open API > 허용 IP 관리).
+    # 비면 토스 경로 전체가 꺼진다(flow.toss.get_client()가 None).
+    toss_client_id: Optional[str] = None      # SM_TOSS_CLIENT_ID
+    toss_client_secret: Optional[str] = None  # SM_TOSS_CLIENT_SECRET
     flow_mode: str = ""                    # ''=자동(키 있으면 live) | 'demo'=강제 데모
     # 시장 구분: UN=KRX+NXT 통합(기본 — NXT가 대형주 거래량의 30%+, 실측), J=KRX, NX=NXT
     market_div: str = "UN"
