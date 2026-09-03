@@ -9,6 +9,16 @@ import pytest
 # os.environ은 .env 파일보다 우선하므로 여기서 강제로 끈다(backend import 전에 실행됨).
 os.environ["SM_AUTH_ENABLED"] = "false"
 
+# 같은 이유로 토스 키도 비운다 — 이쪽은 더 급하다.
+# 2026-09-03 실사고: 마스터가 .env에 실 키를 넣자 shortbal._fetch_toss·worldidx._active()가
+# 곧바로 실 API로 나가 아래 오프라인 가드에 걸렸다(테스트 3건 ERROR). 가드가 잡아준 건
+# 운이 좋았던 것이다 — **토스는 재발급이 이전 토큰을 즉시 무효화**하므로, 테스트가 토큰을
+# 한 번 받아내면 그 순간 8000 실서버가 401이 된다. 하네스(harness/core/server.py)는 spawn한
+# 데모서버의 env를 비우지만, pytest는 이 프로세스에서 바로 settings를 읽으므로 여기가 필요하다.
+# 회귀 방지: test_offline_guard.py::test_toss_is_off_in_tests_even_with_real_keys_in_env
+os.environ["SM_TOSS_CLIENT_ID"] = ""
+os.environ["SM_TOSS_CLIENT_SECRET"] = ""
+
 
 # ── 외부 네트워크 차단 가드 ───────────────────────────────────────────────
 #

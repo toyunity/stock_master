@@ -26,6 +26,20 @@ from __future__ import annotations
 **⚠️ 허용 IP 미등록이면 토큰 발급부터 403이다** (WTS 설정 > Open API > 허용 IP 관리).
 REST와 웹소켓이 같은 목록을 쓴다. 집 ISP 공인 IP가 바뀌면 전부 죽는다.
 
+**2026-09-03 라이브 실측**(마스터 키·허용 IP 등록 후 첫 호출):
+- 허용 IP 등록돼 있으면 403 없이 통과. 토큰 `expires_in=86399`(24h).
+- 응답 헤더 `X-RateLimit-Limit` 실측치가 문서 표와 **일치**했다:
+  AUTH 5 · STOCK 5 · STOCK_TRADING_TREND 10 · MARKET_DATA 15 ·
+  MARKET_INDICATOR 10 · MARKET_INDICATOR_CHART 5 · MARKET_INFO 3.
+- 호가는 **10단**(asks/bids 각 10) — KIS와 같다. 스펙엔 배열 길이 제한이 없어 미상이었다.
+- **미국 시세는 실시간이다.** AAPL 최근 체결 3회 샘플(KST 15:23, 미국 데이마켓):
+  조회 시각 대비 102초 / **4.2초** / 29초. 4.2초가 나온 이상 15분 지연 피드가 아니고,
+  들쭉날쭉한 값은 데이마켓의 체결 공백이다. 정규장(KST 22:30~05:00)은 미측정.
+  → KIS는 해외 실시간에 거래소 신청 권한이 필요해 막혔던 자리다(worldidx 주석 참조).
+- 국채는 **전일 확정치만** 온다. 09-03 15:23 조회에 캔들 최신 봉이 09-02였고,
+  `/market-indicators/prices`의 `timestamp`는 null에 값이 09-02 종가와 같았다
+  (장 마감 후 당일이 채워지는지는 미측정).
+
 Rate limit은 그룹별 **초당** 제한이고 문서값은 "사전 공지 없이 조정될 수 있으며 현재
 허용 한도는 응답 헤더 `X-RateLimit-Limit`"이다 — 표를 코드에 박지 않는다. 여기서 쓰는
 그룹: MARKET_INDICATOR_CHART(5/s) · STOCK_TRADING_TREND(10/s) · STOCK(5/s) · AUTH(5/s).

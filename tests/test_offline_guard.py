@@ -41,3 +41,20 @@ def test_requests_cannot_reach_the_internet(offline_guard_probe):
     with pytest.raises(Exception):
         requests.get("https://quote.cnbc.com/x", timeout=1)
     assert any(h == "quote.cnbc.com" for h, _ in offline_guard_probe)
+
+
+def test_toss_is_off_in_tests_even_with_real_keys_in_env():
+    """테스트에서 토스 경로는 **항상 꺼져 있어야** 한다(conftest가 키를 비운다).
+
+    2026-09-03 실사고: 마스터가 .env에 실 키를 넣자 shortbal._fetch_toss와
+    worldidx._active()가 곧바로 실 API로 나가 오프라인 가드에 걸렸다(테스트 3건 ERROR).
+    토스는 **재발급이 이전 토큰을 즉시 무효화**하므로, 테스트가 토큰을 한 번 받으면
+    8000 실서버가 그 순간 401이 된다 — 가드에 걸리기 전에 이미 늦는 종류의 사고다.
+    SM_AUTH_ENABLED를 conftest에서 끄는 것과 같은 이유·같은 자리에서 막는다."""
+    import os
+    assert os.environ.get("SM_TOSS_CLIENT_ID") == ""
+    assert os.environ.get("SM_TOSS_CLIENT_SECRET") == ""
+    from backend.config import settings
+    assert not settings.toss_client_id and not settings.toss_client_secret
+    from backend.flow import toss
+    assert toss.get_client() is None, "테스트에서 토스 클라이언트가 살아 있다"
