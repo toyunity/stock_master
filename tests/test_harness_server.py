@@ -32,8 +32,14 @@ def test_forces_demo_env(monkeypatch):
     monkeypatch.setenv("SM_AUTH_ENABLED", "true")
     monkeypatch.setenv("SM_KIS_APP_KEY", "REALKEY")
     monkeypatch.setenv("SM_KIS_APP_SECRET", "REALSECRET")
+    monkeypatch.setenv("SM_TOSS_CLIENT_ID", "REALID")
+    monkeypatch.setenv("SM_TOSS_CLIENT_SECRET", "REALSECRET")
     env = server._child_env()
     assert env["SM_FLOW_MODE"] == "demo"
     assert env["SM_AUTH_ENABLED"] == "false"
     assert env["SM_KIS_APP_KEY"] == ""
     assert env["SM_KIS_APP_SECRET"] == ""
+    # 토스는 재발급이 이전 토큰을 즉시 죽인다 — 검증 서버가 한 번 발급하면
+    # 8000 실서버가 그 자리에서 401이다. KIS보다 더 급하게 비워야 한다.
+    assert env["SM_TOSS_CLIENT_ID"] == ""
+    assert env["SM_TOSS_CLIENT_SECRET"] == ""

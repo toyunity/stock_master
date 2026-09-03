@@ -111,6 +111,10 @@ def _offline(monkeypatch):
     monkeypatch.setattr(wi, "_fetch_treasury_xml", _boom_treasury)
     monkeypatch.setattr(wi, "_fetch_fdr", _boom_fdr)
     monkeypatch.setattr(candles, "_get_client", _boom_client)
+    # 토스는 '꺼짐'(None)이 기본이다 — 다른 셋과 달리 boom 스텁을 안 쓴다. 키가 없으면
+    # 네트워크 경로 자체가 없고(_active가 목록에서 뺀다), 기존 테스트의 그룹 수가
+    # 그대로 유지된다. 한국 금리를 쓰는 테스트는 _toss()로 명시 주입한다.
+    monkeypatch.setattr(wi.toss, "get_client", lambda: None)
     monkeypatch.setattr(wi, "_GAP", 0.0)   # 실호출 간격 슬립은 테스트 시간만 늘린다
 
 
@@ -837,3 +841,97 @@ def test_treasury_rows_are_cached_separately_from_the_group(monkeypatch):
     assert asyncio.run(wi._treasury_group()) is not None
     assert len(tcalls) == 1, "rows 캐시를 안 타고 재무부를 다시 불렀다"
     assert wi._TTL["treasury_rows"] == 3600.0
+
+
+# ── 한국 금리(토스 국채) ──────────────────────────────────────────────────
+
+class _FakeToss:
+    """TossClient 대역 — bond_candles만 쓴다(worldidx가 그것만 부른다)."""
+
+    def __init__(self, js=None, boom=()):
+        self.js, self.boom, self.asked = js or {}, set(boom), []
+
+    async def bond_candles(self, symbol, count=2):
+        self.asked.append((symbol, count))
+        if symbol in self.boom:
+            raise RuntimeError("토스 실패 스텁")
+        return self.js.get(symbol, [])
+
+
+def _bond(prev, last, last_date="2026-09-02"):
+    return [{"date": "2026-09-01", "close": prev},
+            {"date": last_date, "close": last}]
+
+
+def _toss(monkeypatch, client):
+    monkeypatch.setattr(wi.toss, "get_client", lambda: client)
+    return client
+
+
+def test_krbond_group_reports_yield_and_bp_change(monkeypatch):
+    """국채 칩 — 값은 %(수익률), 등락은 bp. 미국 금리 그룹과 같은 규칙이다.
+
+    금리 그룹에서 등락을 %로 내리면 '2.73% ▲1.49%'가 되어 1.49%p 뛴 것으로 읽힌다
+    (실제로는 4bp). _bp_sign을 공유하는 이유가 그것이다."""
+    c = _toss(monkeypatch, _FakeToss({"KR_BOND_3Y": _bond(2.69, 2.73),
+                                      "KR_BOND_10Y": _bond(3.10, 3.05)}))
+    g = asyncio.run(wi._krbond_group())
+    assert g["label"] == "한국 금리"
+    by = {i["key"]: i for i in g["items"]}
+    assert by["krb3y"]["value"] == 2.73 and by["krb3y"]["unit"] == "%"
+    assert by["krb3y"]["rate"] == 4.0 and by["krb3y"]["rate_unit"] == "bp"
+    assert by["krb3y"]["sign"] == "up"
+    assert by["krb10y"]["rate"] == -5.0 and by["krb10y"]["sign"] == "down"
+    assert by["krb3y"]["src"] == "toss"
+    assert [s for s, _ in c.asked] == ["KR_BOND_3Y", "KR_BOND_10Y"]
+
+
+def test_krbond_marks_today_bar_as_live_not_confirmed(monkeypatch):
+    """마지막 봉이 오늘이면 진행 중일 수 있다 — 'live'로 싣는다.
+
+    문서에 국채 일봉의 마지막 봉이 확정치인지 장중 진행값인지 명시가 없다(2026-09-03
+    스펙 실사). FDR 일봉에서 값은 실시간인데 라벨만 어제였던 전례가 있어, 추측 대신
+    날짜로만 판정한다 — 오늘이면 live, 아니면 date."""
+    today = wi.kst.today().isoformat()
+    _toss(monkeypatch, _FakeToss({"KR_BOND_3Y": _bond(2.69, 2.73, today),
+                                  "KR_BOND_10Y": _bond(3.10, 3.05, today)}))
+    g = asyncio.run(wi._krbond_group())
+    assert all(i["basis_kind"] == "live" for i in g["items"])
+    _toss(monkeypatch, _FakeToss({"KR_BOND_3Y": _bond(2.69, 2.73, "2026-09-02"),
+                                  "KR_BOND_10Y": _bond(3.10, 3.05, "2026-09-02")}))
+    for slot in wi._cache.values():
+        slot["ts"], slot["data"], slot["fail_ts"] = 0.0, None, 0.0
+    g = asyncio.run(wi._krbond_group())
+    assert all(i["basis_kind"] == "date" for i in g["items"])
+
+
+def test_krbond_group_survives_one_tenor_failure(monkeypatch):
+    """만기 하나가 죽어도 나머지 칩은 뜬다(칩 단위 격리)."""
+    _toss(monkeypatch, _FakeToss({"KR_BOND_10Y": _bond(3.10, 3.05)},
+                                 boom=["KR_BOND_3Y"]))
+    g = asyncio.run(wi._krbond_group())
+    assert [i["key"] for i in g["items"]] == ["krb10y"]
+
+
+def test_krbond_group_is_none_without_a_toss_key(monkeypatch):
+    """키가 없으면 그룹을 통째로 생략한다 — 빈 껍데기 금지."""
+    _toss(monkeypatch, None)
+    assert asyncio.run(wi._krbond_group()) is None
+
+
+def test_worldidx_skips_krbond_entirely_without_a_key(monkeypatch):
+    """키가 없으면 _active()에서 아예 빠진다.
+
+    _ORDER에 무조건 넣으면 그 슬롯이 영원히 None이라 '전부 신선하면 락을 안 잡는다'
+    최적화가 죽는다 — 아이폰+맥이 5분마다 폴링하는 화면에서 락 경합이 상시화된다."""
+    _toss(monkeypatch, None)
+    assert [n for n, _ in wi._active()] == ["treasury", "commodity", "index"]
+    _toss(monkeypatch, _FakeToss())
+    assert "krbond" in [n for n, _ in wi._active()]
+
+
+def test_krbond_group_fits_the_group_wall():
+    """그룹 벽 > 만기 수 x 토스 호출 상한. 만기를 늘리면 여기가 먼저 빨개진다."""
+    worst = len(wi._KR_TENORS) * wi.toss._TIMEOUT
+    assert wi._GROUP_TIMEOUT > worst, (
+        "한국 금리 그룹 최악값 %.1f초가 벽 %.1f초를 넘는다" % (worst, wi._GROUP_TIMEOUT))

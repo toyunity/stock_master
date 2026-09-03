@@ -375,3 +375,72 @@ def test_no_retry_without_keys(monkeypatch):
         await asyncio.wait_for(task, 1.0)
 
     _run(go())
+
+
+# ── 매수 유의사항(토스) 폴링 ──────────────────────────────────────────────
+
+class _MinimalClient:
+    """_poll_rest가 부르는 KIS 메서드만 가진 최소 클라이언트(전부 빈 결과)."""
+
+    async def program_trend(self, code):
+        return []
+
+    async def estimate(self, code):
+        return []
+
+    async def daily_investor(self, code):
+        return []
+
+    async def investor_detail(self, code):
+        return {}
+
+    async def _get(self, *a, **k):      # 부가 패널(거래원·거래소별 등)이 직접 쓴다
+        return {}
+
+
+async def _drive_poll(eng, client, seconds=0.3):
+    stop = asyncio.Event()
+    task = asyncio.get_event_loop().create_task(eng._poll_rest(client, stop))
+    await asyncio.sleep(seconds)
+    stop.set()
+    await asyncio.wait_for(task, 5)
+
+
+def test_poll_rest_fills_buy_warnings_from_toss(monkeypatch):
+    _no_shortbal(monkeypatch)
+    from backend.flow import toss
+
+    class FakeToss:
+        async def warnings(self, code):
+            return [{"type": "VI_STATIC", "label": "VI 발동(정적)",
+                     "tone": "info", "exchange": "KRX",
+                     "start": None, "end": None}]
+    monkeypatch.setattr(toss, "get_client", lambda: FakeToss())
+    eng = FlowEngine("000660", interval=0.1)
+    _run(_drive_poll(eng, _MinimalClient()))
+    assert [w["label"] for w in eng.state.snapshot()["warnings"]] \
+        == ["VI 발동(정적)"]
+
+
+def test_poll_rest_without_a_toss_key_leaves_warnings_empty(monkeypatch):
+    """키가 없으면 조용히 빈 채로 둔다 — 나머지 패널은 그대로 돈다."""
+    _no_shortbal(monkeypatch)
+    from backend.flow import toss
+    monkeypatch.setattr(toss, "get_client", lambda: None)
+    eng = FlowEngine("000660", interval=0.1)
+    _run(_drive_poll(eng, _MinimalClient()))
+    assert eng.state.snapshot()["warnings"] == []
+
+
+def test_poll_rest_survives_a_toss_failure(monkeypatch):
+    """토스가 죽어도 폴링 루프는 계속 돈다(다른 부가 패널과 같은 격리)."""
+    _no_shortbal(monkeypatch)
+    from backend.flow import toss
+
+    class BoomToss:
+        async def warnings(self, code):
+            raise RuntimeError("토스 403 — 허용 IP 미등록")
+    monkeypatch.setattr(toss, "get_client", lambda: BoomToss())
+    eng = FlowEngine("000660", interval=0.1)
+    _run(_drive_poll(eng, _MinimalClient()))     # 예외가 새면 여기서 터진다
+    assert eng.state.snapshot()["warnings"] == []

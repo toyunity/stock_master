@@ -73,7 +73,7 @@ for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh'
                   'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
                   'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago',
-                  'hr-prev','hr-amt','hr-str'])
+                  'wpill','hr-prev','hr-amt','hr-str'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
@@ -81,6 +81,7 @@ console.log('TXT:today-line=' + String((els['today-line']||{}).textContent));
 console.log('TXT:daily-fresh=' + String((els['daily-fresh']||{}).textContent));
 console.log('TXT:est-fresh2=' + String((els['est-fresh']||{}).textContent));
 console.log('TXT:pstall-class=' + String((els['pstall']||{}).className));
+console.log('TXT:wpill-class=' + String((els['wpill']||{}).className));
 console.log('TXT:watch-lines=' + global.__lines.map(l=>l.title).join(','));
 console.log('TXT:daily-html=' + String((els['daily']||{}).innerHTML));
 console.log('TXT:sb-hist-html=' + String((els['sb-hist']||{}).innerHTML));
@@ -102,6 +103,8 @@ if (process.argv[4]) {  // 두 번째 스냅샷 — 연속 렌더 동작(감시�
   render(JSON.parse(fs.readFileSync(process.argv[4], 'utf8')));
   console.log('TXT:walert2=' + String((els['walert']||{}).textContent));
   console.log('TXT:pgm-fresh2=' + String((els['pgm-fresh']||{}).textContent));
+  console.log('TXT:wpill2=' + String((els['wpill']||{}).textContent));
+  console.log('TXT:wpill-class2=' + String((els['wpill']||{}).className));
 }
 """
 
@@ -1240,3 +1243,60 @@ def test_weekly_macd_badge_sits_under_the_macd_chart():
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'id="wk-macd"' in html
     assert html.index('id="mac-lb"') < html.index('id="wk-macd"') < html.index('id="pc-count"')
+
+
+@needs_node
+def test_render_js_shows_buy_warnings_and_clears_them(tmp_path):
+    """매수 유의사항 배지 — 있으면 뜨고, 지정이 풀리면 사라진다.
+
+    사라지는 쪽이 더 중요하다: VI는 2~10분이면 풀리는데 배지가 남으면 거짓 경고다.
+    색은 서버가 정한 tone을 그대로 쓴다(warn 하나라도 있으면 경고색)."""
+    from backend.report.live_page import render_live_page
+    html_p, snap_p, snap2_p = (tmp_path / "live.html", tmp_path / "s1.json",
+                               tmp_path / "s2.json")
+    js_p = tmp_path / "smoke.js"
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap = _full_snapshot()
+    snap["warnings"] = [
+        {"type": "VI_STATIC", "label": "VI 발동(정적)", "tone": "info",
+         "exchange": "KRX", "start": "2026-09-03", "end": None},
+        {"type": "OVERHEATED", "label": "단기과열", "tone": "warn",
+         "exchange": "KRX", "start": "2026-09-01", "end": "2026-09-08"},
+    ]
+    snap_p.write_text(json.dumps(snap), encoding="utf-8")
+    snap2 = _full_snapshot()
+    snap2["warnings"] = []
+    snap2_p.write_text(json.dumps(snap2), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
+    _, texts = _parse_harness(r.stdout)
+    assert "VI 발동(정적)" in texts["wpill"] and "단기과열" in texts["wpill"]
+    assert texts["wpill-class"] == "badge b-warn"   # warn 하나라도 있으면 경고색
+
+    # 두 번째 렌더에서 지정이 풀린다 — 배지가 남으면 안 된다.
+    r2 = subprocess.run(["node", str(js_p), str(html_p), str(snap_p), str(snap2_p)],
+                        capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r2.stdout, f"렌더 JS 예외: {r2.stdout}\n{r2.stderr}"
+    _, t2 = _parse_harness(r2.stdout)
+    # 두 번째 렌더의 값은 별도 키로 찍힌다 — TXT: 줄은 1차 렌더 직후에 나간다.
+    assert t2["wpill2"] == "" and t2["wpill-class2"] == ""
+
+
+@needs_node
+def test_render_js_survives_a_snapshot_without_warnings(tmp_path):
+    """유의사항 키가 아예 없는 스냅샷(구 서버·데모)에서도 렌더가 죽지 않는다."""
+    from backend.report.live_page import render_live_page
+    html_p, snap_p, js_p = (tmp_path / "live.html", tmp_path / "s.json",
+                            tmp_path / "smoke.js")
+    html_p.write_text(render_live_page("000660", "SK하이닉스", "live"),
+                      encoding="utf-8")
+    snap = _full_snapshot()
+    snap.pop("warnings", None)
+    snap_p.write_text(json.dumps(snap), encoding="utf-8")
+    js_p.write_text(_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+                       capture_output=True, text=True, timeout=30)
+    assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"

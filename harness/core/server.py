@@ -35,6 +35,12 @@ def _child_env() -> dict:
     # 회귀 방지: tests/test_flow_kis_rest.py::test_no_key_refuses_even_with_valid_cached_token
     env["SM_KIS_APP_KEY"] = ""
     env["SM_KIS_APP_SECRET"] = ""
+    # 토스 미접촉 보장. KIS보다 더 급하다 — 토스는 **client당 토큰 1개**라 재발급이
+    # 이전 토큰을 즉시 무효화한다(스펙). 검증 서버가 한 번 발급하면 8000 실서버가
+    # 그 자리에서 401이 된다(KIS는 옛 토큰이 만료까지 살아 있었다).
+    # 회귀 방지: tests/test_toss.py::test_no_key_refuses_even_with_valid_cached_token
+    env["SM_TOSS_CLIENT_ID"] = ""
+    env["SM_TOSS_CLIENT_SECRET"] = ""
     return env
 
 

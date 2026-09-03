@@ -49,7 +49,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from backend.flow import adr, candles, kst
+from backend.flow import adr, candles, kst, toss
 from backend.flow.kis import _SIGN
 # kis._f는 일부러 안 쓴다 — None·빈문자·비숫자를 전부 0.0으로 뭉개, 위 '모르는 값은
 # None' 계약을 조용히 깬다. 이 모듈은 _num(모르면 None)만 쓴다.
@@ -77,10 +77,21 @@ _COMMODITIES = (("wti", "WTI", "CL=F", "$/bbl"), ("gold", "금", "GC=F", "$/oz")
 _INDICES = (("spx", "S&P500", "SPX"), ("comp", "나스닥 종합", "COMP"),
             ("vix", "VIX", "VIX"))
 
-_ORDER = ("treasury", "commodity", "index")   # 화면 그룹 — treasury_rows는 내부 슬롯이다
+# (key, label, 토스 심볼) — 한국 국채. 토스 Open API에만 있다(KIS엔 없다).
+# 6종(2·3·5·10·20·30Y)이 전부 오지만 둘만 올린다: 3년은 뉴스가 인용하는 국내 지표금리,
+# 10년은 미국채 10년과 나란히 놓아 한·미 금리차를 눈으로 읽는 자리다. 칩 스트립이
+# 길어지면 화면에서 안 읽힌다. 늘리려면 여기만 늘리면 되고, 그룹 벽 테스트가 먼저 잡는다.
+_KR_TENORS = (("krb3y", "3년", "KR_BOND_3Y"),
+              ("krb10y", "10년", "KR_BOND_10Y"))
+
 _TTL = {"treasury": 600.0,      # CNBC 사이클 — 10분에 한 번(마스터 지시: 사설 API 배려)
         "treasury_rows": 3600.0,  # 재무부 원본(폴백 바닥) — 하루 한 번 갱신되는 값
         "commodity": 600.0,     # FDR(비공식 경유)은 아껴 쓴다
+        # 국채는 **전일 확정치만** 온다(2026-09-03 15:23 실측: 최신 봉이 09-02,
+        # 현재가 API도 timestamp=null에 값이 09-02 종가와 동일). 장 마감 후 당일이
+        # 채워지는지는 미측정이라 basis_kind 판정은 날짜 기준 그대로 둔다.
+        # 10분이면 어느 쪽이든 안전하고 MARKET_INDICATOR_CHART(초당 5회)에 부담이 없다.
+        "krbond": 600.0,
         "index": 60.0}          # KIS 지수는 지연 실시간
 # fail_ts: 실패한 원천을 매 폴링마다 다시 두드리지 않기 위한 쿨다운 시각.
 # 없으면 재무부가 죽었을 때 폴링마다 두 달치 타임아웃을 물고 락을 잡은 채 서 있어,
@@ -613,11 +624,70 @@ async def _index_group() -> Optional[dict]:
                   else None)
 
 
+# ── 한국 국채(토스 Open API) ──────────────────────────────────────────────
+
+async def _krbond_group() -> Optional[dict]:
+    """한국 국채 수익률 — 토스 Open API. KIS에도 없고 우리에게도 없던 자리다.
+
+    미국 금리 칩 **바로 옆**에 놓는다(한·미 금리차를 눈으로 읽는 게 이 칩의 용도다).
+    값은 %(수익률), 등락은 **bp** — 미국 금리 그룹과 완전히 같은 규칙(_bp_sign)을
+    쓴다. 여기서만 %로 내리면 "2.73% ▲1.49%"가 되어 1.49%p 뛴 것으로 읽힌다.
+
+    호출은 만기당 캔들 1콜(`interval=1d&count=2`)이다. 현재가 API
+    (`/market-indicators/prices`)를 안 쓰는 이유: 그 응답은 symbol·timestamp·
+    lastPrice뿐이라 **전일 대비가 없다** — 등락을 만들려면 어차피 캔들이 필요하고,
+    그러면 콜 수가 두 배가 된다(2026-09-03 스펙 실사).
+
+    키가 없으면 None을 돌려주되 **쿨다운에 태우지 않는다** — 기능이 꺼진 것이지
+    원천이 실패한 게 아니다."""
+    hit = _cached("krbond")
+    if hit is not None or _cooling("krbond"):
+        return hit
+    client = toss.get_client()
+    if client is None:
+        return None
+    items = []
+    for key, label, symbol in _KR_TENORS:
+        try:
+            rows = await client.bond_candles(symbol, count=2)
+        except Exception:
+            # 만기 하나가 죽어도 나머지 칩은 뜬다(칩 단위 격리 — 이 파일의 원칙).
+            log.warning("한국 금리 %s 실패 — 나머지만 반환", symbol, exc_info=True)
+            continue
+        if not rows:
+            continue
+        last = rows[-1]
+        rate, sign = _bp_sign(last["close"],
+                              rows[-2]["close"] if len(rows) >= 2 else None)
+        basis = _to_date(last["date"])
+        # 마지막 봉이 오늘이면 **진행 중일 수 있다**. 확정인지 장중값인지는 문서에
+        # 없으므로(위 _TTL 주석) 추측하지 않고 날짜로만 판정한다 — FDR 일봉에서
+        # 값은 실시간인데 라벨만 어제였던 전례가 있다(fdr 일봉 함정, parse_fdr_last).
+        items.append(_item(key, label, last["close"], "%", rate, sign,
+                           _mmdd(basis), "toss", rate_unit="bp",
+                           basis_kind=("live" if basis == kst.today() else "date")))
+    return _store("krbond",
+                  {"label": "한국 금리", "items": items} if items else None)
+
+
 # ── 집계 ──────────────────────────────────────────────────────────────────
 
 def _payload(groups) -> dict:
     return {"asof": kst.now().replace(microsecond=0).isoformat(),
             "groups": [g for g in groups if g]}
+
+
+def _active() -> tuple:
+    """이번 폴링에서 돌릴 (이름, 그룹함수) — 화면 순서 그대로. 금리끼리 붙여 놓는다.
+
+    토스 키가 없으면 한국 금리를 **목록에서 아예 뺀다**. 무조건 넣으면 그 슬롯이 영원히
+    None이라 아래 '전부 신선하면 락을 안 잡는다' 최적화가 죽고, 아이폰+맥이 5분마다
+    폴링하는 화면에서 락 경합이 상시화된다."""
+    src = [("treasury", _treasury_group)]
+    if toss.get_client() is not None:
+        src.append(("krbond", _krbond_group))
+    src += [("commodity", _commodity_group), ("index", _index_group)]
+    return tuple(src)
 
 
 async def get_worldidx() -> dict:
@@ -636,11 +706,10 @@ async def get_worldidx() -> dict:
     (세 그룹은 동시에 도니 합이 아니다) 걸리고, 그동안 락을 잡고 있다. 상한을 안 걸면
     '한 원천이 죽어도 나머지는 뜬다'가 예외에만 성립하고 행(hang)에는 성립하지 않는다 —
     매달린 스레드가 락을 붙잡아 멀쩡한 원천까지 영영 갱신되지 않는다."""
-    warm = [_cached(name) for name in _ORDER]
+    sources = _active()
+    warm = [_cached(name) for name, _ in sources]
     if all(g is not None for g in warm):
         return _payload(warm)
-    sources = (("treasury", _treasury_group), ("commodity", _commodity_group),
-               ("index", _index_group))
     async with _get_lock():
         # 그룹 벽은 호출 단위 상한(_CALL_TIMEOUT)이 못 잡는 지연의 백스톱이다.
         # TimeoutError도 예외라 아래 실패 처리(쿨다운)를 그대로 탄다.

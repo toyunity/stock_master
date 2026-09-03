@@ -4,6 +4,14 @@ from __future__ import annotations
 
 소스(실측 2026-07-13; KRX 정보데이터시스템은 2025-12-27 로그인 월로 익명 400 'LOGOUT',
 OTP 다운로드 경로도 차단 확인 → 제외):
+- **0차 토스증권 Open API**(2026-09-03 추가, SM_TOSS_* 키가 있을 때만):
+  `/api/v1/stocks/{code}/securities-lending`. 인증 API라 아래 둘의 무증상 실패 함정이
+  없고, 기간을 **1콜**로 준다(count 최대 100). 단일 원천이라 전일 대비도 계산된다 —
+  아래 두 원천은 집계 범위가 달라(실측 14.1M vs 11.1M주) 그걸 못 했다.
+  체결·상환 수량도 여기만 있다. 확정 반영은 **해당 일자 저녁**(스펙).
+  한계: expected_latest()가 T+1(직전 평일)을 기대해서, 저녁에 들어오는 당일 확정치는
+  다음 날 아침에야 집는다. 그 하루를 당기려면 기대 최신일을 원천별로 갈라야 하는데
+  폴백 경로와 캐시 판정까지 갈라져 값어치보다 diff가 크다.
 - 1차 KOFIA 종합통계(freesis.kofia.or.kr): 뉴스가 인용하는 '금투협 대차잔고'.
   getMetaDataList.do JSON POST, 무인증. 단면 조회라 하루당 1콜(시장 전체 ~1,000행).
   tmpV74는 반드시 "시장,0,,1" 4필드 패킹 — "1"만 보내면 HTTP 200에 빈 ds1(무증상 실패).
@@ -23,6 +31,8 @@ import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
+
+from backend.flow import toss
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +85,25 @@ def parse_seibro(text: str) -> list:
                      "value": qty_i * close_i, "close": close_i})
     rows.sort(key=lambda r: r["date"])
     return rows
+
+
+async def _fetch_toss(code: str, count: int) -> Optional[list]:
+    """토스 대차거래 — 있으면 **1콜로 전 구간**. 키가 없거나 실패면 None(기존 경로로).
+
+    None과 []를 구분한다: None은 '토스 경로 없음'이라 KOFIA/SEIBro로 내려가고,
+    []는 '토스가 정상 응답했는데 데이터가 없음'이라 그대로 받아들인다."""
+    client = toss.get_client()
+    if client is None:
+        return None
+    try:
+        rows = await client.lending(code, count=max(1, min(100, count)))
+    except Exception:
+        log.warning("토스 대차거래 조회 실패 — KOFIA/SEIBro 폴백", exc_info=True)
+        return None
+    # value(balanceAmount)는 응답이 주는 원 단위 정수다 — SEIBro처럼 주수x종가로
+    # 산출한 값이 아니라 '≈' 라벨이 필요 없다.
+    return [{"date": r["date"], "qty": r["qty"], "value": r["value"],
+             "exec": r["exec"], "rdmp": r["rdmp"], "src": "toss"} for r in rows]
 
 
 def with_changes(rows: list) -> list:
@@ -246,16 +275,21 @@ async def get_history(code: str, cache_dir: str, days: int = 20) -> dict:
     import httpx
     market = cache.get("market")
     try:
-        async with httpx.AsyncClient(timeout=15) as cli:
-            try:
-                got, market = await _fetch_kofia(cli, code, need, market)
-            except Exception:
-                log.warning("KOFIA 대차잔고 조회 실패 — SEIBro 폴백", exc_info=True)
-                got = [r for r in parse_seibro(
-                    await _seibro_range(cli, code, need[0], need[-1]))
-                    if r["date"] not in rows]
-                got = [{"date": r["date"], "qty": r["qty"],
-                        "value": r["value"], "src": "seibro"} for r in got]
+        # 토스(인증 API)를 앞에 세우고 기존 스크래핑 둘은 폴백으로 남긴다 —
+        # 갈아치우지 않는 이유는 키가 없거나 허용 IP가 어긋난 순간(둘 다 403)
+        # 대차잔고가 통째로 사라지기 때문이다.
+        got = await _fetch_toss(code, scan)
+        if got is None:
+            async with httpx.AsyncClient(timeout=15) as cli:
+                try:
+                    got, market = await _fetch_kofia(cli, code, need, market)
+                except Exception:
+                    log.warning("KOFIA 대차잔고 조회 실패 — SEIBro 폴백", exc_info=True)
+                    got = [r for r in parse_seibro(
+                        await _seibro_range(cli, code, need[0], need[-1]))
+                        if r["date"] not in rows]
+                    got = [{"date": r["date"], "qty": r["qty"],
+                            "value": r["value"], "src": "seibro"} for r in got]
         for r in got:
             rows[r["date"]] = r
         cache["fetched"] = dt.datetime.now().isoformat(timespec="seconds")
