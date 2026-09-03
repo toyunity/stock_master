@@ -19,9 +19,13 @@ from __future__ import annotations
 "client 당 유효한 access token 은 1 개입니다. 재발급 시 이전에 발급된 token 은 즉시
 무효화됩니다"). KIS는 새로 받아도 옛 토큰이 만료까지 살아 있었지만, 토스는 그 순간
 401이다 — 검증 서버가 한 번 발급하면 8000 실서버가 즉사한다. 두 겹으로 막는다:
-  (1) 키가 비면 **캐시 토큰조차 쓰지 않는다** — 하네스가 SM_TOSS_*를 비워 미접촉을 보장.
+  (1) 키가 비면 **캐시 토큰조차 쓰지 않는다** — 하네스(harness/core/server.py)와
+      pytest(tests/conftest.py)가 둘 다 SM_TOSS_*를 비워 미접촉을 보장한다.
   (2) 발급은 프로세스 전역 락 + 이중검사로 한 번만 — kis.token()과 같은 사유·같은 락
       (둘 다 드물어 서로 기다려도 손해가 없고, 임계구역이 겹치지 않아 교착이 없다).
+**검증용 별도 client_id는 발급되지 않는다**(2026-09-03 마스터가 WTS 설정 화면에서 확인:
+계정당 1개뿐). 그래서 위 (1)의 '검증 환경에선 토스를 전면 차단'이 완화 가능한 임시방편이
+아니라 **유일한 안전 경로**다. 키를 나눠 쓰는 설계는 만들지 마라.
 
 **⚠️ 허용 IP 미등록이면 토큰 발급부터 403이다** (WTS 설정 > Open API > 허용 IP 관리).
 REST와 웹소켓이 같은 목록을 쓴다. 집 ISP 공인 IP가 바뀌면 전부 죽는다.
@@ -290,6 +294,21 @@ class TossClient:
         js = await self._get("/api/v1/market-indicators/%s/candles" % symbol,
                              {"interval": "1d", "count": count})
         unwrap(js)                       # 실패 envelope이면 여기서 터진다
+        return parse_indicator_candles(js)
+
+    async def stock_candles(self, symbol: str, interval: str = "1d",
+                            count: int = 2) -> list:
+        """개별 종목 캔들(국내·미국). 시장 지표 캔들과 응답 모양이 같아 파서를 공유한다
+        (2026-09-03 실측: AAPL 일봉도 timestamp/openPrice/…/closePrice/volume 동일 키).
+
+        미국 일봉의 timestamp는 **KST 13:00**으로 찍히지만 날짜는 그 미국 거래일이다.
+        진행 중인 세션이 있으면 최신 봉의 종가가 **곧 실시간 현재가**다(같은 실측:
+        09-03 봉 close 324.56 = `/prices` lastPrice 324.56, 같은 초) — 그래서
+        count=2면 현재가와 전일 종가를 한 콜로 얻는다."""
+        js = await self._get("/api/v1/candles",
+                             {"symbol": symbol, "interval": interval,
+                              "count": count})
+        unwrap(js)
         return parse_indicator_candles(js)
 
     async def lending(self, code: str, count: int = 20) -> list:

@@ -208,7 +208,8 @@ function setPrice(price, base, basis){
   checkWatch(price);
 }
 
-// 미국 정규장 중에만 서버가 실시간 시세를 준다(장외엔 204) — 60초 폴링.
+// 서버가 줄 게 있을 때만 200을 준다(없으면 204) — 60초 폴링.
+// 토스 키가 있으면 데이마켓·프리·애프터까지 실시간이고, KIS 경로뿐이면 정규장 한정이다.
 // 웹소켓은 쓰지 않는다: 1키1세션을 국내 수급·야간선물과 나눠 쓰지 않기로 했다(설계 §4).
 // startPoll 가드: loadCandles가 성공할 때마다(이평 토글·탭 전환 포함) 호출되므로
 // 그대로 pollLive를 부르면 setTimeout 사슬이 겹겹이 쌓인다.
@@ -223,7 +224,10 @@ async function pollLive(){
         document.getElementById('price').textContent=usd(q.price);
         if(q.change!=null){el.textContent=(q.change>=0?'+':'')+Number(q.change).toFixed(2)+'%';
           el.className='pill '+(q.change>0?'up':(q.change<0?'down':'flat'));}
-        document.getElementById('pbasis').textContent='정규장 · 60초 갱신';
+        // 신선도 문구는 **원천이 정한다**. 토스는 정규장 밖(데이마켓·프리·애프터)에도
+        // 실시간이라 '정규장'이라고 쓰면 거짓말이 된다(2026-09-03 실측).
+        document.getElementById('pbasis').textContent=
+          (q.src==='toss'?'실시간 · 60초 갱신':'정규장 · 60초 갱신');
         // 정규장 중엔 실시간 값인데 히어로 라벨이 초기값 "종가"에 머물던 결함
         // (2026-08-13 리뷰) — #pbasis가 이미 세션을 말하니 같은 분기에서 얹는다.
         document.getElementById('plabel').textContent='현재가';

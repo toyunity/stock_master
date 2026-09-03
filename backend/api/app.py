@@ -167,13 +167,16 @@ def create_app(settings=None) -> FastAPI:
         장외에도 부르면 화면이 열릴 때마다 KIS 해외 TR이 나간다. 장이 닫혀 있으면
         일봉 종가가 최신이고 그게 차트와도 일치하므로, 조회할 이유 자체가 없다."""
         from backend.api import marketdata
-        from backend.flow import adr, userstore, usquote
+        from backend.flow import adr, toss, userstore, usquote
         if userstore.market_of(sym) != "US":
             return Response(status_code=404)
-        if not adr.us_market_open():
-            return Response(status_code=204)
+        # 토스가 있으면 **세션 게이트를 걸지 않는다** — 미국 시세가 데이마켓·프리·
+        # 애프터에도 실시간으로 온다(2026-09-03 실측: 조회 대비 최소 4.2초). 한국 낮이
+        # 미국 데이마켓이라, 정규장 게이트를 그대로 두면 마스터가 앱을 실제로 보는
+        # 시간대에 값이 안 나온다. KIS 클라이언트가 None이어도 토스 단독으로 성립한다.
+        # 토스가 없을 땐 기존 게이트 그대로 — KIS 해외 시세는 정규장 밖에서 스테일하다.
         client = marketdata._client()
-        if client is None:
+        if toss.get_client() is None and not (adr.us_market_open() and client):
             return Response(status_code=204)
         try:
             q = await usquote.price_us(client, sym.upper())

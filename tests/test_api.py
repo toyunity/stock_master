@@ -86,3 +86,32 @@ def test_options_route_returns_empty_when_no_board_has_been_collected(tmp_path, 
         r = c.get("/api/options")
     md._opt_mem.update({"mtime": 0.0, "data": None})
     assert r.status_code == 200 and r.json() == {}
+
+
+def test_usprice_serves_outside_regular_hours_when_toss_is_on(tmp_path, monkeypatch):
+    """토스가 있으면 정규장 밖에서도 미국 시세를 준다(데이마켓·프리·애프터).
+
+    2026-09-03 실측: 토스 미국 시세는 실시간이고(조회 대비 최소 4.2초) 한국 낮
+    시간대의 데이마켓에도 체결이 흐른다. KIS 경로만 있던 시절의 '정규장 밖은 204'
+    게이트를 그대로 두면 마스터가 앱을 실제로 보는 시간대에 값이 안 나온다.
+    KIS 클라이언트가 None이어도 나와야 한다 — 토스 단독으로 성립하는 경로다."""
+    from backend.config import settings
+    from backend.flow import adr, usquote
+    monkeypatch.setattr(settings, "kis_app_key", "")
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(adr, "us_market_open", lambda *a, **k: False)
+
+    async def fake_price(client, sym):
+        assert client is None, "KIS 키가 없으니 client는 None이어야 한다"
+        return {"price": 324.56, "change": -0.12, "currency": "USD",
+                "exch": None, "src": "toss"}
+    monkeypatch.setattr(usquote, "price_us", fake_price)
+
+    from backend.flow import toss
+    monkeypatch.setattr(toss, "get_client", lambda: object())
+    r = client.get("/api/usprice/AAPL")
+    assert r.status_code == 200 and r.json()["src"] == "toss"
+
+    # 토스가 없으면 기존 게이트 그대로 — 정규장 밖은 204.
+    monkeypatch.setattr(toss, "get_client", lambda: None)
+    assert client.get("/api/usprice/AAPL").status_code == 204
