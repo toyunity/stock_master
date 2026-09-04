@@ -77,9 +77,13 @@ PWA 하단 탭바 3개(`홈` / `종목` / `스캐너`) + 위젯 설치·인증 �
 급등 상위를 각 30행(+ 인기 조회 상위는 별도 엔드포인트), 그리고 **수급 ∩ 모멘텀 교차**로 뽑은
 픽에 사유 칩을 붙인다. 60초 자동 갱신.
 
-### `/widget-setup` — 아이폰 홈 위젯 설치
+### `/widget-setup` — 홈 위젯 설치(아이폰 Scriptable · 갤럭시 앱)
 Scriptable 위젯 스크립트와 계정별 읽기 토큰을 사파리에서 바로 복사. 스크립트 본문에는 토큰을
 **넣지 않는다**(Scriptable이 iCloud Drive에 평문 동기화하므로 첫 실행 때 Keychain에 저장).
+갤럭시는 **위젯 전용 앱**(`android/`, Kotlin + Jetpack Glance)을 이 페이지에서 APK로 내려받아 설치하고,
+[앱에 자동 입력] 링크(`stockmaster://setup`)로 주소·토큰을 넣는다. 앱은 `/api/widget`만 읽는 소비자다 —
+서버 힌트를 따르는 WorkManager 1회성 체인으로 장중 15분마다 1건 요청, 탭하면 즉시 갱신(iOS엔 없는 기능).
+설계: `docs/superpowers/specs/2026-09-04-android-widget-design.md`.
 
 ### `/login` · `/2fa` — 인증 게이트
 공개 배포 시에만 활성. Google OAuth2 → TOTP 2차 → 세션 쿠키.
@@ -89,7 +93,7 @@ Scriptable 위젯 스크립트와 계정별 읽기 토큰을 사파리에서 바
 ## 아키텍처
 
 ```
-아이폰 사파리 / 홈화면 PWA
+아이폰 사파리 / 홈화면 PWA  ·  위젯(아이폰 Scriptable · 갤럭시 앱 android/)
       │ HTTPS (Tailscale Funnel)
       ▼
 ┌─ 인증 게이트 ─────────────────────────────── backend/api/auth.py
@@ -196,6 +200,7 @@ make test     # pytest 전체 + node 렌더 스모크
 make eval     # 판정 문구 {text,tone} 골든 회귀 (의미 드리프트 감지)
 make verify   # 6화면을 아이폰 폭(390/DSF3) 라이트·다크로 캡처 + 가로 오버플로 검출
 make ops      # 로컬 8000·공개 URL·인증 게이트 읽기전용 점검
+make android  # 갤럭시 위젯 APK 빌드 → data/android/StockMasterWidget.apk (8000 재기동 불필요)
 ```
 `make verify`가 띄우는 데모 서버는 항상 `SM_FLOW_MODE=demo`·`SM_AUTH_ENABLED=false`라
 **KIS를 한 번도 건드리지 않는다.** spawn한 프로세스는 PID로만 정리한다.
