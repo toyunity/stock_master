@@ -67,17 +67,19 @@ class StockWidget : GlanceAppWidget() {
     }
 }
 
-private val PAD_V = 9      // dp — 위·아래 패딩(아이폰 setPadding(9,12,9,12)와 동일)
-// 줄 높이 모델: 한 줄의 높이 = 그 줄에서 가장 큰 글자(sp) × LINE. 2026-09-04 16:37 커버 스크린샷 실측: 22.8sp 행이 29.5dp(구분선 제외),
-// 헤더·합계도 같은 비율 = 1.29dp/sp. 여유를 둬 1.35. 이전 상수(행 20·헤더 22·합계 20·+N 14, k배)는 k=1.75에서 행마다 5dp씩
-// 과대평가해 자리가 남는데도 4번째 행을 접었다(마스터: "1종목 더 보일 것 같은데 왜 안 나오나"). 과소평가하면 마지막 행이 잘린다.
-private val LINE = 1.35f
+private val PAD_V = 6      // dp — 위·아래 패딩. 9(아이폰 값) → 6: 커버 5×2·'더 크게'에서 4행이 3dp 모자라 접히던 것을 확보(2026-09-04 3차)
+// 줄 높이 모델: 한 줄의 높이 = 그 줄에서 가장 큰 글자(sp) × LINE.
+// 2026-09-04 16:37 커버 스크린샷 픽셀 측정: 좌측 패딩 12dp = 17px → 1.417px/dp(런처 축소 포함), 위젯 1057×350px = 746×247dp,
+// 행 피치 50px = 35.3dp = 행 30.3 + 구분선 5 at 22.8sp('크게') → 1.33dp/sp(헤더·합계도 같은 비율). 여유 3.8% → 1.38.
+// 이전 상수(행 20·헤더 22·합계 20·+N 14, k배)는 k=1.75에서 행마다 5dp씩 과대평가해 자리가 남는데도 4번째 행을 접었다
+// (마스터: "1종목 더 보일 것 같은데 왜 안 나오나"). 과소평가하면 마지막 행이 잘린다 — 다른 시스템 서체(줄 높이 1.4+)면 그럴 수 있다.
+private val LINE = 1.38f
 private val HEADER_SP = 12   // '관심종목'
 private val TOTAL_SP = 12    // '합계 …'
 private val ROW_SP = 13      // 종목명·현재가
 private val MORE_SP = 9      // '+N종목'
 private val HEADER_GAP = 3   // 헤더 아래 Spacer(dp)
-private val DIVIDER_DP = 5   // Divider() = 패딩 2 + 선 1 + 패딩 2
+private val DIVIDER_DP = 3   // Divider() = 패딩 1 + 선 1 + 패딩 1 (5 → 3, 2026-09-04 3차: 구분선 4개 × 2dp = 4행 확보분)
 private val DESIGN_W = 330f  // 아이폰 4×2 위젯 폭(pt) — 이 폭에서 13sp 가 적정(마스터 2026-09-04: 메인 화면 600dp 에선 너무 작다)
 
 /** 글자 크기 — 폭 비례 k(≤1.35) × 설정 배율(Prefs.textScale). 폭 상한 근거: 4×2(≈160dp)에서 1.5면 행 예산이 1행+'+N'으로
@@ -125,7 +127,7 @@ private fun Message(title: String, sub: String, action: Action, k: Float) {
 
 @Composable
 private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: Float) {
-    val kh = 1f + (k - 1f) / 2f   // 헤더·'+N'은 절반만 커진다 — 메타 정보라 종목 행에 높이를 양보(마스터 2026-09-04 '글씨 너무 작다' 2차)
+    val kh = 1f + (k - 1f) / 3f   // 헤더·'+N'은 1/3만 커진다 — 메타 정보라 종목 행에 높이를 양보(2차 1/2 → 3차 1/3: '더 크게'에서 4행 확보)
     // 헤더: 관심종목 · HH:MM 갱신 · 장중/마감 (· 오프라인) ………… ↻ 갱신
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("관심종목", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(12, kh), fontWeight = FontWeight.Bold))
@@ -204,10 +206,10 @@ private fun ItemRow(it: WidgetItem, cols: Int, k: Float) {
     }
 }
 
-/** 2+1+2 = DIVIDER_DP. 부모 자식 수를 1개만 쓰도록 Spacer 대신 padding(위 10개 제한). */
+/** 1+1+1 = DIVIDER_DP. 부모 자식 수를 1개만 쓰도록 Spacer 대신 padding(위 10개 제한). */
 @Composable
 private fun Divider() {
-    Box(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 2.dp)) {
+    Box(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 1.dp)) {
         Box(modifier = GlanceModifier.fillMaxWidth().height(1.dp)
                 .background(Colors.DIVIDER)) {}   // 반투명 실선(아이폰 DIVIDER)
     }
