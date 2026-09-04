@@ -298,8 +298,10 @@ def create_app(settings=None) -> FastAPI:
         token = userstore.ensure_token(email)
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("host", request.url.netloc)
+        import os
         # no-store — 스크립트가 바뀌면 사파리가 옛 페이지를 서빙해 옛 스크립트를 복사하는 것 방지.
-        return HTMLResponse(render_widget_setup(token, "%s://%s" % (scheme, host)),
+        return HTMLResponse(render_widget_setup(token, "%s://%s" % (scheme, host),
+                                                apk_available=os.path.isfile(settings.android_apk_path)),
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/widget-setup/rotate")
@@ -311,6 +313,19 @@ def create_app(settings=None) -> FastAPI:
         if not email:
             return JSONResponse({"error": "계정을 확인할 수 없어요"}, status_code=503)
         return JSONResponse({"token": userstore.rotate_token(email)})
+
+    @app.get("/widget-setup/android.apk")
+    def widget_setup_apk():
+        """갤럭시 위젯 APK — 게이트 뒤(test_auth PROTECTED). 파일은 `make android`가 data/android/에 둔다.
+        APK에 비밀은 없지만(주소·토큰은 런타임 입력) '모든 경로 잠금' 불변식 때문에 공개 예외로 두지
+        않는다(설계 2026-09-04). 교체는 8000 재기동 없이 파일만 바꾸면 된다."""
+        import os
+        from fastapi.responses import FileResponse
+        p = settings.android_apk_path
+        if not (p and os.path.isfile(p)):
+            return JSONResponse({"error": "APK가 없어요 — 맥에서 `make android`로 빌드하세요"}, status_code=404)
+        return FileResponse(p, media_type="application/vnd.android.package-archive",
+                            filename="StockMasterWidget.apk", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/scanner")
     async def scanner_api():
