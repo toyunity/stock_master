@@ -7,6 +7,7 @@ from __future__ import annotations
 iCloud Drive에 평문 동기화하므로, 토큰은 최초 실행 시 1회 입력받아 Keychain에 저장."""
 
 from html import escape
+from urllib.parse import quote
 
 from backend.report.dashboard import _BASE_CSS, _PWA_HEAD
 
@@ -370,8 +371,9 @@ __BASE_CSS__
 pre#script{font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5;
   background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);
   padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
-button.copy{min-height:44px;padding:10px 18px;border:0;border-radius:var(--r-sm);
+button.copy,a.copy{min-height:44px;padding:10px 18px;border:0;border-radius:var(--r-sm);
   background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+a.copy{display:inline-block;line-height:24px;text-decoration:none}
 button.copy.rotate{background:var(--surface-2);color:var(--text-2);
   border:1px solid var(--border);margin-left:8px}
 .warn{background:var(--warn-bg);border:1px solid var(--border);border-radius:var(--r);
@@ -402,6 +404,21 @@ KIS 시세 제3자 제공은 약관 위반입니다. 자세한 사용법: docs/w
 <p>작게/크게 말고 중간(4×2)을 선택하세요.</p></div>
 <div class="step"><h3>5. 위젯 길게 누르기 → 위젯 편집 → Script: <b>StockMaster</b> 지정</h3>
 <p>⚠ 이 단계를 빼먹으면 “Tap to configure” 상태로 남습니다 — 가장 흔한 실수.</p></div>
+<h2 style="margin:24px 0 4px;font-size:17px">🤖 갤럭시(안드로이드) 위젯</h2>
+<p style="margin:0 0 6px;font-size:13px;color:var(--text-2)">아이폰의 Scriptable 대신 위젯 전용 앱 하나를 설치합니다.
+자세한 사용법: docs/widget-guide.md</p>
+<div class="step"><h3>A. APK 설치</h3>
+<p>__APK_BLOCK__</p>
+<p>다운로드 후 열기 → “출처를 알 수 없는 앱” 허용(브라우저에 1회) → 설치.
+업데이트도 같은 방법입니다(같은 서명이라 덮어써짐).</p></div>
+<div class="step"><h3>B. 앱에 서버 주소·토큰 자동 입력</h3>
+<p><a class="copy" href="__ANDROID_LINK__">앱에 자동 입력</a></p>
+<p>탭하면 위젯 앱이 열려 주소·토큰이 저장되고 연결을 확인합니다.
+안 열리면 앱을 직접 열고 위 [토큰 복사] 값을 붙여넣으세요.</p></div>
+<div class="step"><h3>C. 홈 위젯 추가 → 절전 예외 등록</h3>
+<p>앱의 <b>[홈 위젯 추가]</b>로 커버·메인 화면에 각각 추가합니다. 그다음 <b>[배터리 제한 해제]</b>를 누르고,
+설정 → 배터리 → 백그라운드 사용 제한 → <b>절전 예외 앱</b>에 “Stock Master 위젯”을 추가하세요 —
+One UI는 안 여는 앱을 며칠 뒤 잠들게 해 갱신이 멈춥니다.</p></div>
 <script>
 function _copy(id, mark){
   const t = document.getElementById(id).textContent;
@@ -427,12 +444,23 @@ async function rotateToken(){
 </script>
 </div></div></body></html>"""
 
+_APK_LINK = '<a class="copy" href="/widget-setup/android.apk">APK 다운로드</a>'
+_APK_MISSING = ('<span style="color:var(--text-2)">APK가 아직 없어요 — 맥에서 <code>make android</code>를 '
+                '실행하면 여기에 다운로드 버튼이 생깁니다.</span>')
 
-def render_widget_setup(token: str, base_url: str) -> str:
-    """설치 페이지 HTML — 토큰은 이 페이지(게이트 뒤)에만, 스크립트엔 절대 없음."""
-    script = _SCRIPT.replace("__BASE_URL__", base_url.rstrip("/"))
+
+def render_widget_setup(token: str, base_url: str, apk_available: bool = False) -> str:
+    """설치 페이지 HTML — 토큰은 이 페이지(게이트 뒤)에만, 스크립트엔 절대 없음.
+    apk_available: data/android/에 APK가 있을 때만 다운로드 버튼(없으면 `make android` 안내)."""
+    base = base_url.rstrip("/")
+    script = _SCRIPT.replace("__BASE_URL__", base)
+    # 갤럭시 앱 딥링크 — 페이지가 이미 토큰을 평문으로 보여주므로 노출이 늘지 않는다(설계 2026-09-04).
+    link = "stockmaster://setup?base=%s&token=%s" % (quote(base, safe=""), quote(token, safe=""))
     return (_TEMPLATE
             .replace("__PWA_HEAD__", _PWA_HEAD)
             .replace("__BASE_CSS__", _BASE_CSS)
             .replace("__SCRIPT__", escape(script))
+            # ── 여기부터 데이터. 자산 치환 뒤여야 한다(치환 순서 규칙, CLAUDE.md) ──
+            .replace("__APK_BLOCK__", _APK_LINK if apk_available else _APK_MISSING)
+            .replace("__ANDROID_LINK__", escape(link))
             .replace("__TOKEN__", escape(token)))

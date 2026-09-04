@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="?android:attr/colorBackground">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="관심종목  10:30 갱신 · 장중" android:textSize="12sp" android:textStyle="bold"
+        android:textColor="?android:attr/textColorPrimary" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="삼성전자                 71,200  +1.25%" android:textSize="13sp"
+        android:textColor="?android:attr/textColorPrimary" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="SK하이닉스              412,000  −0.48%" android:textSize="13sp"
+        android:textColor="?android:attr/textColorPrimary" />
+</LinearLayout>

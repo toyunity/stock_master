@@ -116,7 +116,7 @@ PROTECTED = ["/", "/live/000660", "/api/live/000660/stream",
              "/api/candles/000660", "/scanner", "/api/scanner", "/api/semi",
              "/api/worldidx",
              "/api/watch/000660", "/api/widget", "/widget-setup",
-             "/widget-setup/rotate", "/api/watchlist"]
+             "/widget-setup/rotate", "/widget-setup/android.apk", "/api/watchlist"]
 
 
 @pytest.mark.parametrize("path", PROTECTED)

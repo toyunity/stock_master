@@ -14,3 +14,10 @@ harness/artifacts/*
 .worktrees/
 .superpowers/
 scratchpad/
+
+# android/ (갤럭시 위젯 앱) 빌드 산출물·로컬 설정
+android/.gradle/
+android/**/build/
+android/.kotlin/
+android/local.properties
+android/keystore.properties

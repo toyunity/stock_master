@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 사이드로드 개인 앱 — Play 정책 무관. 설정 화면의 [배터리 제한 해제]가 시스템 대화상자를 띄운다. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- allowBackup=false: 자동 백업이 토큰(SharedPreferences)을 구글 드라이브로 올리는 것을 막는다(스펙 §보안).
+         Android 12+ 는 dataExtractionRules 가 정본(lint DataExtractionRules, 2026-09-04) — 클라우드 백업·기기 이전 모두에서
+         토큰 파일(sm_widget.xml)을 제외한다. 둘 다 둔다. -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
+        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+
+        <activity
+            android:name=".SetupActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- /widget-setup 페이지의 [앱에 자동 입력] = stockmaster://setup?base=…&token=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="stockmaster" android:host="setup" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".StockWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/stock_widget_info" />
+        </receiver>
+    </application>
+</manifest>

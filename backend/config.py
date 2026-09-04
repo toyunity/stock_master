@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # 생성: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
     widget_token: Optional[str] = None         # SM_WIDGET_TOKEN
 
+    # 갤럭시 위젯 APK 배포 경로 — GET /widget-setup/android.apk 가 이 파일을 내려준다(게이트 뒤).
+    # `make android`가 여기로 복사한다. data/는 gitignore. 없으면 404 + 설치 페이지에 안내(설계 2026-09-04).
+    android_apk_path: str = str(_PROJECT_ROOT / "data" / "android" / "StockMasterWidget.apk")   # SM_ANDROID_APK_PATH
+
     # 계정별 데이터 기준 계정(로그인 이메일). 미설정 시 allowlist 첫 이메일(경고).
     default_account: Optional[str] = None       # SM_DEFAULT_ACCOUNT
 
