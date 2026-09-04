@@ -36,6 +36,9 @@ make ops      # 로컬 8000·공개 URL·인증 게이트 읽기전용 점검 (�
 
 - 하네스가 spawn한 데모서버·크롬은 PID로 자동 정리한다. **8000은 건드리지 않는다.**
 - 데모 서버는 항상 `SM_FLOW_MODE=demo`·`SM_AUTH_ENABLED=false`라 KIS 경로가 전부 막힌다.
+- **`android/`(갤럭시 위젯 앱)는 `make test`가 돌리지 않는다.** Kotlin을 고쳤으면
+  `cd android && ./gradlew --console=plain assembleDebug lint test`, 배포는 `make android`(서명 키 `data/android/release.jks`).
+  위젯 색은 `Colors.kt`에 복사본이고 `tests/test_android_widget.py`가 `theme.py`와 대조한다.
 - **화면(HTML/JS)을 고쳤으면 `make verify`까지 돌려라.** 문자열 검사로는 안 잡히고
   실렌더에서만 잡히는 버그의 전례가 있다: 미치환 `__LIB__` 자리표시자,
   원화 전용 반올림이 달러 가격에 적용됨.
