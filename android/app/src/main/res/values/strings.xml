@@ -9,5 +9,11 @@
     <string name="btn_save">저장하고 연결 확인</string>
     <string name="btn_pin">홈 위젯 추가</string>
     <string name="btn_battery">배터리 제한 해제</string>
+    <string name="scale_title">글자 크기</string>
+    <string name="scale_1">보통</string>
+    <string name="scale_2">크게</string>
+    <string name="scale_3">더 크게</string>
+    <string name="scale_4">최대</string>
+    <string name="scale_help">바꾸면 위젯이 곧바로 다시 그려집니다. 글자가 클수록 한 위젯에 들어가는 종목 수가 줄어듭니다(위젯을 세로로 늘리면 회복). 폭이 모자라면 수익률·수량 열부터 접힙니다.\n아래 크기 정보는 실측 보고용입니다.</string>
     <string name="setup_help">위젯을 커버·메인 화면에 각각 추가하세요.\n\n⚠ One UI는 안 여는 앱을 며칠 뒤 잠들게 해 갱신이 멈춥니다. [배터리 제한 해제]를 누른 뒤, 설정 → 배터리 → 백그라운드 사용 제한 → 절전 예외 앱에 “Stock Master 위젯”을 추가하세요. 펌웨어 업데이트 뒤엔 목록을 다시 확인하세요.\n\n토큰·APK를 타인과 공유하지 마세요(KIS 시세 제3자 제공은 약관 위반, 보유·손익 노출).</string>
 </resources>

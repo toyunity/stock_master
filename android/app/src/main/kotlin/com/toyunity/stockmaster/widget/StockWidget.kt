@@ -61,7 +61,8 @@ class StockWidget : GlanceAppWidget() {
         val prefs = Prefs(context)
         val state = WidgetState.load(prefs)
         val baseUrl = prefs.baseUrl
-        provideContent { GlanceTheme { Content(state, baseUrl) } }
+        val textScale = prefs.textScale
+        provideContent { GlanceTheme { Content(state, baseUrl, textScale) } }
     }
 }
 
@@ -74,16 +75,19 @@ private val MORE_DP = 14
 private val DIVIDER_DP = 5   // Divider() = 패딩 2 + 선 1 + 패딩 2
 private val DESIGN_W = 330f  // 아이폰 4×2 위젯 폭(pt) — 이 폭에서 13sp 가 적정(마스터 2026-09-04: 메인 화면 600dp 에선 너무 작다)
 
-/** 글자 크기 — 폭 비례 k 배(커버 ≈300dp → 1.0, 메인 ≈600dp → 1.35 상한). 상한 근거: 메인 4×2(≈160dp)에서 1.5면 행 예산이
- *  1행+'+N'으로 줄어 다시 '삼성만 보임'처럼 보인다(계산: 142−33−30−5−21=53 < 30+5+30). 1.35면 2행+'+N'. */
+/** 글자 크기 — 폭 비례 k(≤1.35) × 설정 배율(Prefs.textScale). 폭 상한 근거: 4×2(≈160dp)에서 1.5면 행 예산이 1행+'+N'으로
+ *  줄어 다시 '삼성만 보임'처럼 보인다(계산: 142−33−30−5−21=53 < 30+5+30). 더 키우는 건 마스터가 설정에서 고른 값이라 행 수와 맞바꾼다. */
 private fun fs(base: Int, k: Float) = (base * k).sp
 
 @Composable
-private fun Content(state: WidgetState, baseUrl: String?) {
+private fun Content(state: WidgetState, baseUrl: String?, textScale: Float) {
     val ctx = LocalContext.current
     val size = LocalSize.current
-    val wide = size.width >= 400.dp                       // 실제 폭 400dp 이상(메인 화면) → 수익률 열 추가
-    val k = (size.width.value / DESIGN_W).coerceIn(1f, 1.35f)
+    val k = (size.width.value / DESIGN_W).coerceIn(1f, 1.35f) * textScale
+    // 열은 '글자 크기로 나눈 유효 폭'으로 정한다 — 글자를 키우면 같은 폭에 덜 들어가므로 오른쪽 열부터 접는다.
+    // 2 = 수량·손익·수익률 전부, 1 = 수량·손익, 0 = 손익만. 넘치면 weight 를 가진 이름이 먼저 줄어든다.
+    val e = size.width.value / k
+    val cols = if (e >= 400f) 2 else if (e >= 300f) 1 else 0
     val setup: Action = actionStartActivity(Intent(ctx, SetupActivity::class.java))
     // 몸통 탭: PWA(base URL). 미설정이면 설정 화면.
     val body: Action = if (!baseUrl.isNullOrBlank())
@@ -99,7 +103,7 @@ private fun Content(state: WidgetState, baseUrl: String?) {
             state.status == Prefs.UNCONFIGURED -> Message("설정이 필요해요", "탭해서 서버 주소와 토큰을 입력하세요", setup, k)
             state.status == Prefs.UNAUTHORIZED -> Message("토큰이 맞지 않아요", "탭해서 다시 설정하세요 — /widget-setup 에서 토큰 복사", setup, k)
             state.data == null -> Message("서버에 연결할 수 없어요", "↻ 갱신을 탭해 다시 시도하세요", actionRunCallback<RefreshAction>(), k)
-            else -> Board(state.data, offline = state.status == Prefs.OFFLINE, wide = wide,
+            else -> Board(state.data, offline = state.status == Prefs.OFFLINE, cols = cols,
                           heightDp = size.height.value.toInt(), k = k)
         }
     }
@@ -115,15 +119,16 @@ private fun Message(title: String, sub: String, action: Action, k: Float) {
 }
 
 @Composable
-private fun Board(d: WidgetData, offline: Boolean, wide: Boolean, heightDp: Int, k: Float) {
+private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: Float) {
+    val kh = 1f + (k - 1f) / 2f   // 헤더·'+N'은 절반만 커진다 — 메타 정보라 종목 행에 높이를 양보(마스터 2026-09-04 '글씨 너무 작다' 2차)
     // 헤더: 관심종목 · HH:MM 갱신 · 장중/마감 (· 오프라인) ………… ↻ 갱신
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("관심종목", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(12, k), fontWeight = FontWeight.Bold))
+        Text("관심종목", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(12, kh), fontWeight = FontWeight.Bold))
         Text("  " + (if (offline) "오프라인·" else "") + Format.status(d),
-             style = TextStyle(color = if (offline) Colors.WARN else Colors.FLAT, fontSize = fs(9, k)), maxLines = 1,
+             style = TextStyle(color = if (offline) Colors.WARN else Colors.FLAT, fontSize = fs(9, kh)), maxLines = 1,
              modifier = GlanceModifier.defaultWeight())
         // ↻ 즉시 갱신 — iOS에선 불가능했던 부분. 자식 clickable이 몸통 탭보다 우선한다.
-        Text("↻ 갱신", style = TextStyle(color = Colors.FLAT, fontSize = fs(10, k), fontWeight = FontWeight.Bold),
+        Text("↻ 갱신", style = TextStyle(color = Colors.FLAT, fontSize = fs(10, kh), fontWeight = FontWeight.Bold),
              modifier = GlanceModifier.clickable(actionRunCallback<RefreshAction>()))
     }
     Spacer(GlanceModifier.height(3.dp))
@@ -146,9 +151,9 @@ private fun Board(d: WidgetData, offline: Boolean, wide: Boolean, heightDp: Int,
     // 텍스트는 sp, 예산은 dp — 시스템 글꼴 배율만큼 예산을 줄여야 마지막 행·+N 줄이 안 잘린다(리뷰 2026-09-04).
     val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
     val rowDp = (ROW_DP * k).toInt()
-    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - (HEADER_DP * k).toInt() - (TOTAL_DP * k).toInt() * totals.size -
+    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - (HEADER_DP * kh).toInt() - (TOTAL_DP * k).toInt() * totals.size -
         (if (totals.isNotEmpty()) DIVIDER_DP else 0)
-    var plan = Format.planCapacity(n, budget - (MORE_DP * k).toInt(), rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
+    var plan = Format.planCapacity(n, budget - (MORE_DP * kh).toInt(), rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
     if (plan.more == 0) plan = Format.planCapacity(n, budget, rowDp = rowDp, dividerDp = DIVIDER_DP)
     // Glance 컨테이너는 자식 10개까지만 그리고 초과분은 오류 없이 버린다(glance-appwidget 1.2.0 LayoutSelection
     // "Truncated … container from N to 10 elements"; 생성 레이아웃도 *_10children 까지). 2026-09-04 커버 실측:
@@ -158,24 +163,25 @@ private fun Board(d: WidgetData, offline: Boolean, wide: Boolean, heightDp: Int,
         Column(modifier = GlanceModifier.fillMaxWidth()) {
             for (i in group) {
                 if (i > 0) Divider()
-                ItemRow(d.items[i], wide, k)
+                ItemRow(d.items[i], cols, k)
             }
         }
     }
     if (plan.more > 0) {
-        Text("+${plan.more}종목", style = TextStyle(color = Colors.FLAT, fontSize = fs(9, k)))   // 실제 그린 개수 기준
+        Text("+${plan.more}종목", style = TextStyle(color = Colors.FLAT, fontSize = fs(9, kh)))   // 실제 그린 개수 기준
     }
 }
 
 @Composable
-private fun ItemRow(it: WidgetItem, wide: Boolean, k: Float) {
+private fun ItemRow(it: WidgetItem, cols: Int, k: Float) {
+    val wide = cols >= 2
     val label = if (it.market == "US" && it.name.isNotEmpty() && it.name != it.code) "${it.code} ${it.name}" else it.name
     // 자식 최대 7개(Glance 컨테이너 10개 제한 안쪽). 이름이 weight 를 가져 길면 이름부터 줄임표.
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(13, k), fontWeight = FontWeight.Bold),
              maxLines = 1, modifier = GlanceModifier.defaultWeight())
         // 보유 수량 — 가격 앞 열(마스터 요청 2026-09-04). 미보유면 빈 문자열이라 열이 사라진다.
-        if (it.held) Text(Format.shares(it.shares) + "  ", style = TextStyle(color = Colors.FLAT, fontSize = fs(10, k)), maxLines = 1)
+        if (it.held && cols >= 1) Text(Format.shares(it.shares) + "  ", style = TextStyle(color = Colors.FLAT, fontSize = fs(10, k)), maxLines = 1)
         Text(Format.money(it.price, it.currency),
              style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(13, k), fontWeight = FontWeight.Bold))
         Text(" " + Format.change(it.change),

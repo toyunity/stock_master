@@ -24,6 +24,24 @@
             android:layout_marginTop="20dp" android:text="@string/btn_pin" />
         <Button android:id="@+id/battery" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="8dp" android:text="@string/btn_battery" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="20dp" android:text="@string/scale_title" android:textSize="14sp" android:textStyle="bold" />
+        <RadioGroup android:id="@+id/scale_group" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <RadioButton android:id="@+id/scale_1" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="@string/scale_1" />
+            <RadioButton android:id="@+id/scale_2" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="@string/scale_2" />
+            <RadioButton android:id="@+id/scale_3" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="@string/scale_3" />
+            <RadioButton android:id="@+id/scale_4" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="@string/scale_4" />
+        </RadioGroup>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/scale_help" android:textSize="12sp" />
+        <TextView android:id="@+id/widget_info" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textSize="11sp" android:fontFamily="monospace" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:text="@string/setup_help" android:textSize="12sp" />
     </LinearLayout>
