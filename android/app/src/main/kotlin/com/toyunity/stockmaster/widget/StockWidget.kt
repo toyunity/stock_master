@@ -35,6 +35,7 @@ import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import kotlin.math.ceil
 
 /** Prefs → 위젯이 그릴 상태. 마지막 JSON은 여기서 파싱(실패 시 data=null → 연결 실패 얼굴). */
 data class WidgetState(val status: String, val data: WidgetData?) {
@@ -67,11 +68,15 @@ class StockWidget : GlanceAppWidget() {
 }
 
 private val PAD_V = 9      // dp — 위·아래 패딩(아이폰 setPadding(9,12,9,12)와 동일)
-// 아래 높이는 k=1(폭 330dp, 아이폰 위젯 폭) 기준 — 글자(sp)와 같이 k 배로 키운다. 구분선만 진짜 dp 라 고정.
-private val HEADER_DP = 22
-private val TOTAL_DP = 20
-private val ROW_DP = 20
-private val MORE_DP = 14
+// 줄 높이 모델: 한 줄의 높이 = 그 줄에서 가장 큰 글자(sp) × LINE. 2026-09-04 16:37 커버 스크린샷 실측: 22.8sp 행이 29.5dp(구분선 제외),
+// 헤더·합계도 같은 비율 = 1.29dp/sp. 여유를 둬 1.35. 이전 상수(행 20·헤더 22·합계 20·+N 14, k배)는 k=1.75에서 행마다 5dp씩
+// 과대평가해 자리가 남는데도 4번째 행을 접었다(마스터: "1종목 더 보일 것 같은데 왜 안 나오나"). 과소평가하면 마지막 행이 잘린다.
+private val LINE = 1.35f
+private val HEADER_SP = 12   // '관심종목'
+private val TOTAL_SP = 12    // '합계 …'
+private val ROW_SP = 13      // 종목명·현재가
+private val MORE_SP = 9      // '+N종목'
+private val HEADER_GAP = 3   // 헤더 아래 Spacer(dp)
 private val DIVIDER_DP = 5   // Divider() = 패딩 2 + 선 1 + 패딩 2
 private val DESIGN_W = 330f  // 아이폰 4×2 위젯 폭(pt) — 이 폭에서 13sp 가 적정(마스터 2026-09-04: 메인 화면 600dp 에선 너무 작다)
 
@@ -131,7 +136,7 @@ private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: 
         Text("↻ 갱신", style = TextStyle(color = Colors.FLAT, fontSize = fs(10, kh), fontWeight = FontWeight.Bold),
              modifier = GlanceModifier.clickable(actionRunCallback<RefreshAction>()))
     }
-    Spacer(GlanceModifier.height(3.dp))
+    Spacer(GlanceModifier.height(HEADER_GAP.dp))
 
     // 통화별 합계(보유가 있을 때만)
     val totals = Format.totals(d.items)
@@ -150,10 +155,13 @@ private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: 
     val n = d.items.size
     // 텍스트는 sp, 예산은 dp — 시스템 글꼴 배율만큼 예산을 줄여야 마지막 행·+N 줄이 안 잘린다(리뷰 2026-09-04).
     val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
-    val rowDp = (ROW_DP * k).toInt()
-    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - (HEADER_DP * kh).toInt() - (TOTAL_DP * k).toInt() * totals.size -
+    val rowDp = ceil(ROW_SP * LINE * k).toInt()                       // 올림 — 모자라는 쪽(잘림)이 남는 쪽보다 나쁘다
+    val headerDp = ceil(HEADER_SP * LINE * kh).toInt() + HEADER_GAP
+    val totalDp = ceil(TOTAL_SP * LINE * k).toInt()
+    val moreDp = ceil(MORE_SP * LINE * kh).toInt()
+    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - headerDp - totalDp * totals.size -
         (if (totals.isNotEmpty()) DIVIDER_DP else 0)
-    var plan = Format.planCapacity(n, budget - (MORE_DP * kh).toInt(), rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
+    var plan = Format.planCapacity(n, budget - moreDp, rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
     if (plan.more == 0) plan = Format.planCapacity(n, budget, rowDp = rowDp, dividerDp = DIVIDER_DP)
     // Glance 컨테이너는 자식 10개까지만 그리고 초과분은 오류 없이 버린다(glance-appwidget 1.2.0 LayoutSelection
     // "Truncated … container from N to 10 elements"; 생성 레이아웃도 *_10children 까지). 2026-09-04 커버 실측:
