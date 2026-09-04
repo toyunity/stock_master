@@ -63,6 +63,8 @@ def test_apk_route_404_without_file_then_200_with_file(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/vnd.android.package-archive")
     assert r.content == b"PK\x03\x04fake-apk"
+    assert "StockMasterWidget.apk" in r.headers["content-disposition"]   # 스펙 §서버 변경 2
+    assert r.headers["cache-control"] == "no-store"
     assert 'href="/widget-setup/android.apk"' in c.get("/widget-setup").text
 
 
@@ -82,5 +84,7 @@ def test_kotlin_colors_match_theme_tokens():
     tokens = _theme_tokens()
     for name in ("up", "down", "flat", "warn"):
         assert len(tokens[name]) >= 2, name                      # 라이트 + 다크
-        for hexv in tokens[name][:2]:
-            assert "0xff" + hexv[1:] in kt, "%s %s 가 Colors.kt에 없음" % (name, hexv)
+        light, dark = tokens[name][0][1:], tokens[name][1][1:]
+        # 슬롯 단위 대조 — UP/DOWN 을 서로 바꿔도 통과하던 '어딘가에 있음' 검사 보강(리뷰 2026-09-04)
+        pat = r"val %s = colorprovider\(color\(0xff%s\), color\(0xff%s\)\)" % (name.lower(), light, dark)   # kt는 소문자화됨
+        assert re.search(pat, kt), "%s (라이트 #%s, 다크 #%s) 슬롯이 Colors.kt에 없음" % (name, light, dark)

@@ -12,8 +12,9 @@ sealed class ApiResult {
 /** GET {base}/api/widget — 표준 라이브러리만(요청 1종). 블로킹이므로 IO 스레드에서 부른다. */
 object WidgetApi {
     fun fetch(baseUrl: String, token: String): ApiResult {
-        val conn = URL("$baseUrl/api/widget").openConnection() as HttpURLConnection
+        var conn: HttpURLConnection? = null
         try {
+            conn = URL("$baseUrl/api/widget").openConnection() as HttpURLConnection   // MalformedURL 도 Failure 로(리뷰 2026-09-04)
             // 10초 — 맥 잠자기는 Funnel이 TLS만 받고 매달리는 실패라 타임아웃이 곧 '오프라인' 판정(아이폰과 동일).
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
@@ -26,7 +27,7 @@ object WidgetApi {
         } catch (e: Exception) {
             return ApiResult.Failure(e.javaClass.simpleName)   // 메시지에 URL/토큰이 섞일 수 있어 클래스명만
         } finally {
-            conn.disconnect()
+            conn?.disconnect()
         }
     }
 }

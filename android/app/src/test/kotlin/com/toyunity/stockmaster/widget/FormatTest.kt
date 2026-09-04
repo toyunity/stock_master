@@ -57,5 +57,7 @@ class FormatTest {
         assertTrue(big.drawn > mid.drawn)
         assertEquals(Format.Plan(3, 0), Format.planCapacity(3, 120))      // 20+23+23=66 ≤ 120 → 전부
         assertEquals(Format.Plan(0, 2), Format.planCapacity(2, 10))       // 예산 부족 → 0줄 + "+2종목"
+        // 안드로이드 Divider() 는 5dp — 그리는 값과 같은 상수로 계산해야 한다(리뷰 2026-09-04): 20+25+25=70 ≤ 70
+        assertEquals(Format.Plan(3, 1), Format.planCapacity(4, 70, dividerDp = 5))
     }
 }

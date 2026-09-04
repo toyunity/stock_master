@@ -13,4 +13,5 @@ object Colors {
     val DOWN = ColorProvider(Color(0xFF1F66E0), Color(0xFF4F8BFF))   // --down 하락·손실
     val FLAT = ColorProvider(Color(0xFF8B93A4), Color(0xFF5F6879))   // --flat 보합·보조
     val WARN = ColorProvider(Color(0xFFDC8400), Color(0xFFF2A83A))   // --warn 오프라인 배지
+    val DIVIDER = ColorProvider(Color(0x1F000000), Color(0x29FFFFFF))   // 반투명 구분선(아이폰 DIVIDER 0.12/0.16 — theme 토큰 아님)
 }

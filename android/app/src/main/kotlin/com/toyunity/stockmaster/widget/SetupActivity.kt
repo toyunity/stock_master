@@ -33,11 +33,14 @@ class SetupActivity : Activity() {
         findViewById<Button>(R.id.save).setOnClickListener { saveAndTest() }
         findViewById<Button>(R.id.pin).setOnClickListener { requestPin() }
         findViewById<Button>(R.id.battery).setOnClickListener { openBatteryDialog() }
-        handleDeepLink(intent)
+        // 재생성(폴드 접기/펼치기 = 구성 변경) 때 getIntent()가 원래 딥링크를 돌려줘 입력을 덮어쓰고
+        // refreshNow 를 반복하던 결함(리뷰 2026-09-04) — 최초 생성에만 처리한다.
+        if (savedInstanceState == null) handleDeepLink(intent)
     }
 
     override fun onNewIntent(intent: Intent) {   // singleTop — 열려 있는 동안 딥링크가 오면 여기로
         super.onNewIntent(intent)
+        setIntent(intent)   // 재생성 시 최신 인텐트가 남도록
         handleDeepLink(intent)
     }
 

@@ -71,6 +71,7 @@ private val PAD_V = 9      // dp — 위·아래 패딩(아이폰 setPadding(9,1
 private val HEADER_DP = 22
 private val TOTAL_DP = 20
 private val MORE_DP = 14
+private val DIVIDER_DP = 5   // Divider() = Spacer 2 + 선 1 + Spacer 2
 
 @Composable
 private fun Content(state: WidgetState, baseUrl: String?) {
@@ -136,9 +137,11 @@ private fun Board(d: WidgetData, offline: Boolean, wide: Boolean, heightDp: Int)
 
     // 세로 예산 → 행 수(고정 개수 금지). +N 줄은 필요할 때만 예산에서 뺀다.
     val n = d.items.size
-    val budget = heightDp - PAD_V * 2 - HEADER_DP - TOTAL_DP * totals.size - (if (totals.isNotEmpty()) 5 else 0)
-    var plan = Format.planCapacity(n, budget - MORE_DP)
-    if (plan.more == 0) plan = Format.planCapacity(n, budget)
+    // 텍스트는 sp, 예산은 dp — 시스템 글꼴 배율만큼 예산을 줄여야 마지막 행·+N 줄이 안 잘린다(리뷰 2026-09-04).
+    val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
+    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - HEADER_DP - TOTAL_DP * totals.size - (if (totals.isNotEmpty()) DIVIDER_DP else 0)
+    var plan = Format.planCapacity(n, budget - MORE_DP, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
+    if (plan.more == 0) plan = Format.planCapacity(n, budget, dividerDp = DIVIDER_DP)
     for (i in 0 until plan.drawn) {
         if (i > 0) Divider()
         ItemRow(d.items[i], wide)
@@ -172,7 +175,7 @@ private fun ItemRow(it: WidgetItem, wide: Boolean) {
 private fun Divider() {
     Spacer(GlanceModifier.height(2.dp))
     Box(modifier = GlanceModifier.fillMaxWidth().height(1.dp)
-            .background(ColorProvider(Color(0x1F000000), Color(0x29FFFFFF)))) {}   // 반투명 실선(아이폰 DIVIDER)
+            .background(Colors.DIVIDER)) {}   // 반투명 실선(아이폰 DIVIDER)
     Spacer(GlanceModifier.height(2.dp))
 }
 
