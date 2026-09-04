@@ -63,7 +63,7 @@ Gradle 단일 모듈 `app`. 패키지 `com.toyunity.stockmaster.widget`(launchd 
 
 | 파일 | 책임 | 의존 | JVM 테스트 |
 |---|---|---|---|
-| `StockWidget.kt` | `GlanceAppWidget`. `provideGlance`에서 Prefs를 읽고 `SizeMode.Responsive` 버킷별 화면을 그린다. 색·폰트·탭 액션 | Prefs, Format, Colors | — (실기기) |
+| `StockWidget.kt` | `GlanceAppWidget`. `provideGlance`에서 Prefs를 읽고 `SizeMode.Exact`(2026-09-04 실기기 1차 수정 — 원래 Responsive 버킷)로 실제 크기에 맞춰 그린다. 색·폰트·탭 액션 | Prefs, Format, Colors | — (실기기) |
 | `StockWidgetReceiver.kt` | `GlanceAppWidgetReceiver`. `onEnabled/onUpdate` → 갱신 작업 예약(KEEP), `onDisabled` → 작업 취소 | RefreshWorker | — |
 | `RefreshWorker.kt` | `CoroutineWorker`. 요청 1회 → Prefs 저장 → `updateAll` → **다음 1회성 작업 예약**. 예약 규칙은 순수 함수 `nextDelaySec` | WidgetApi, Prefs | `nextDelaySec` |
 | `RefreshAction.kt` | Glance `ActionCallback`. ↻ 탭 → 10초 디바운스 후 즉시 작업(REPLACE, 지연 0) | RefreshWorker, Prefs | — |
@@ -123,7 +123,13 @@ WorkManager **이름 있는 1회성 작업 체인** 하나(`sm-refresh`). 주기
 3. **종목당 1줄**: 이름(US는 `NVDA 엔비디아`) · 현재가 · 등락%(색) · 보유 시 `수익 ▲12,000원`(색). 폭 400dp 이상이면 수익률 열 추가, 좁으면 `수익` 라벨 생략.
 4. **넘침**: `+N종목` — 실제로 그린 개수 기준(`drawn + more == 전체`, 무경고 잘림 금지 — 아이폰 §137 회귀 규칙 그대로).
 
-**반응형**: `SizeMode.Responsive` 버킷 `{250×110, 300×150, 300×300, 450×150, 450×300}`(dp). 런처가 들어맞는 최대 버킷을 고르고
+> **2026-09-04 실기기 1차 수정 — 아래 Responsive 버킷은 폐기, `SizeMode.Exact`로 변경.** Fold 8 실측: 커버 4×3 ≈ 300×177dp에
+> 300×150 버킷이 잡혀 아래 1/3이 비었고, 메인 4×2 ≈ 600×160dp에 400×150 버킷이라 13sp 글자가 깨알. Exact는 LocalSize가 실제
+> 크기라 행 수는 실제 높이에서, 글자·행 높이는 폭 비례 k=clamp(폭/330, 1, 1.35)로 정한다. 비용 반론(아래 §대안 표)은 API 31+에선
+> 무효 — glance-appwidget 1.2.0 `SizeBox.ForEachSize`가 Exact도 `OPTION_APPWIDGET_SIZES` 목록(폴더블 ≤4개)마다 1회 구성해 같은
+> RemoteViews 크기맵에 담는다(바이트코드 확인). 같은 날 발견: Glance 컨테이너는 자식 10개 초과분을 오류 없이 버린다 → 행을 5개씩 Column으로 묶음.
+
+**반응형(폐기)**: `SizeMode.Responsive` 버킷 `{250×110, 300×150, 300×300, 450×150, 450×300}`(dp). 런처가 들어맞는 최대 버킷을 고르고
 `LocalSize.current`가 그 값이다. 행 수는 고정 개수가 아니라 **높이 예산**으로 계산한다:
 `budget = height − 패딩 − 헤더 − (합계 줄) − (+N 줄)`, 행 20dp + 구분선 3dp(두 번째부터) — 아이폰 `planCapacity`와 같은 규칙, 순수 함수.
 커버 4×2(≈380×170dp)와 메인 4×2(≈400×160dp)는 3~4종목, 세로 4×4는 8~10종목이 목표다. 실측 dp는 실기기에서 확인해 주석에 남긴다.
@@ -255,7 +261,7 @@ WorkManager **이름 있는 1회성 작업 체인** 하나(`sm-refresh`). 주기
 | `EncryptedSharedPreferences` | deprecated(2024~). 샌드박스 + `allowBackup=false`가 실제 위협(백업 유출)을 막는다 |
 | 주기 작업(PeriodicWork 15분 고정) | 밤·주말에도 15분마다 깨운다. 서버 힌트를 따르는 1회성 체인이 배터리에 낫다 |
 | AlarmManager / 포그라운드 서비스 | 배터리·권한 부담. WorkManager로 충분 |
-| `SizeMode.Exact` | 크기 변경마다 재구성. 공식 권장은 Responsive |
+| `SizeMode.Exact` | 크기 변경마다 재구성. 공식 권장은 Responsive — **2026-09-04 실측 후 채택**: API 31+에선 런처 크기 목록마다 1회 구성이라 Responsive와 비용이 같다 |
 | 별도 리포 | 서버 계약 테스트·설치 페이지·가이드와 분리되어 드리프트 |
 | 별도 진입 없는 debug 키 서명 | `~/.android/debug.keystore`를 잃으면 업데이트 불가 → `data/android/` 릴리스 키 |
 

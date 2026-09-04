@@ -28,6 +28,14 @@ class FormatTest {
         assertEquals("—", Format.change(null))
     }
 
+    @Test fun shares_label_for_held_items() {   // 마스터 요청 2026-09-04: 보유 수량을 행에 표시
+        assertEquals("10주", Format.shares(10.0))
+        assertEquals("1,200주", Format.shares(1200.0))
+        assertEquals("1.5주", Format.shares(1.5))        // 미국 소수점 주식
+        assertEquals("", Format.shares(null))
+        assertEquals("", Format.shares(0.0))
+    }
+
     @Test fun status_open_and_closed_labels() {
         val seoul = ZoneId.of("Asia/Seoul")
         val open = WidgetData(true, "2026-09-04", "2026-09-04T10:30:12+09:00", 900, emptyList())

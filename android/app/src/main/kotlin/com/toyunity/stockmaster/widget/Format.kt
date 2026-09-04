@@ -37,6 +37,14 @@ object Format {
         return arrow + if (currency == "USD") "$" + String.format(Locale.US, "%.2f", a) else krw(a) + "원"
     }
 
+    /** 보유 수량 — '10주' · 소수 보유(미국 소수점 주식) '1.5주' · 미보유(null/0) "". 마스터 요청 2026-09-04. */
+    fun shares(v: Double?): String {
+        if (v == null || v <= 0) return ""
+        val s = if (v == Math.rint(v)) String.format(Locale.US, "%,d", v.toLong())
+                else String.format(Locale.US, "%.4f", v).trimEnd('0').trimEnd('.')
+        return s + "주"
+    }
+
     /** 등락률 — 부호 항상(+ / U+2212), 소수 2자리, %. */
     fun change(c: Double?): String {
         if (c == null) return "—"

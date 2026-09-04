@@ -20,8 +20,8 @@ android {
         applicationId = "com.toyunity.stockmaster.widget"
         minSdk = 31          // 반응형 위젯(Android 12+)의 자연 하한. 기기(Fold 8)는 Android 17.
         targetSdk = 36
-        versionCode = 1      // 릴리스마다 수동 +1(같은 번호 재설치도 되지만 관례).
-        versionName = "1.0"
+        versionCode = 2      // 릴리스마다 수동 +1(같은 번호 재설치도 되지만 관례). 2 = 2026-09-04 실기기 1차 수정
+        versionName = "1.1"
     }
 
     signingConfigs {
