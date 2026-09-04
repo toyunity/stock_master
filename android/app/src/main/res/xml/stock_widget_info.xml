@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 기본 4×2. 커버(5.5" 10:16)·메인(7.6" 4:3) 양쪽에서 리사이즈 가능.
+     updatePeriodMillis는 OS 하한 30분 — 백스톱 전용(실제 주기는 RefreshWorker가 서버 힌트로 예약). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="60dp"
+    android:maxResizeWidth="600dp"
+    android:maxResizeHeight="500dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description"
+    android:previewLayout="@layout/widget_preview"
+    android:initialLayout="@layout/glance_default_loading_layout" />
