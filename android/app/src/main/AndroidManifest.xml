@@ -4,11 +4,14 @@
     <!-- 사이드로드 개인 앱 — Play 정책 무관. 설정 화면의 [배터리 제한 해제]가 시스템 대화상자를 띄운다. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- allowBackup=false: 자동 백업이 토큰(SharedPreferences)을 구글 드라이브로 올리는 것을 막는다(스펙 §보안). -->
+    <!-- allowBackup=false: 자동 백업이 토큰(SharedPreferences)을 구글 드라이브로 올리는 것을 막는다(스펙 §보안).
+         Android 12+ 는 dataExtractionRules 가 정본(lint DataExtractionRules, 2026-09-04) — 클라우드 백업·기기 이전 모두에서
+         토큰 파일(sm_widget.xml)을 제외한다. 둘 다 둔다. -->
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 

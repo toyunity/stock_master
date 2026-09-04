@@ -54,8 +54,10 @@ data class WidgetState(val status: String, val data: WidgetData?) {
  */
 class StockWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Responsive(
+        // 폭 버킷 250/300/400 — LocalSize 는 '들어맞는 최대 버킷'이라 wide(>=400dp) 는 400 버킷이 있어야 켜진다
+        // (T4 실측 2026-09-04: 450 버킷뿐이면 커버·메인 4×2 어느 쪽도 수익률 열을 못 얻는다).
         setOf(DpSize(250.dp, 110.dp), DpSize(300.dp, 150.dp), DpSize(300.dp, 300.dp),
-              DpSize(450.dp, 150.dp), DpSize(450.dp, 300.dp)))
+              DpSize(400.dp, 150.dp), DpSize(400.dp, 300.dp)))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val prefs = Prefs(context)
