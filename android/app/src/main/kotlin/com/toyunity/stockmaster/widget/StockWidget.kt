@@ -26,6 +26,7 @@ import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -126,8 +127,30 @@ private fun Message(title: String, sub: String, action: Action, k: Float) {
 }
 
 @Composable
-private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: Float) {
-    val kh = 1f + (k - 1f) / 3f   // 헤더·'+N'은 1/3만 커진다 — 메타 정보라 종목 행에 높이를 양보(2차 1/2 → 3차 1/3: '더 크게'에서 4행 확보)
+private fun ColumnScope.Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: Float) {   // ColumnScope: defaultWeight 용
+    val kh0 = 1f + (k - 1f) / 3f   // 헤더·'+N'은 기본 1/3만 커진다 — 메타 정보라 종목 행에 높이를 양보(2차 1/2 → 3차 1/3: '더 크게'에서 4행 확보)
+    val totals = Format.totals(d.items)
+    // 세로 예산 → 행 수(고정 개수 금지). +N 줄은 필요할 때만 예산에서 뺀다.
+    val n = d.items.size
+    // 텍스트는 sp, 예산은 dp — 시스템 글꼴 배율만큼 예산을 줄여야 마지막 행·+N 줄이 안 잘린다(리뷰 2026-09-04).
+    val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
+    val rowDp = ceil(ROW_SP * LINE * k).toInt()                       // 올림 — 모자라는 쪽(잘림)이 남는 쪽보다 나쁘다
+    val headerDp = ceil(HEADER_SP * LINE * kh0).toInt() + HEADER_GAP
+    val totalDp = ceil(TOTAL_SP * LINE * k).toInt()
+    val moreDp = ceil(MORE_SP * LINE * kh0).toInt()
+    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - headerDp - totalDp * totals.size -
+        (if (totals.isNotEmpty()) DIVIDER_DP else 0)
+    var plan = Format.planCapacity(n, budget - moreDp, rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(1+1+1)
+    if (plan.more == 0) plan = Format.planCapacity(n, budget, rowDp = rowDp, dividerDp = DIVIDER_DP)
+    // 남는 세로 공간 활용(마스터 2026-09-04 4차: "여백이 이렇게 많은데 왜 활용을 안 해" — '크게' 5×2에서 50dp가 남았다):
+    // ① 전부 들어갔고 헤더 글자를 k 까지 키울 자리가 있으면 헤더도 종목 행만큼 키운다(모델 계산 — 넘치면 마지막 행이 잘리므로 여유가 있을 때만).
+    // ② 그 뒤 남는 공간은 행에 weight 를 줘 런처가 균등 배분한다(LinearLayout weight — 남는 만큼만 나눠 가지므로 넘칠 수 없다).
+    var kh = kh0
+    if (plan.more == 0 && plan.drawn > 0) {
+        val used = plan.drawn * rowDp + (plan.drawn - 1) * DIVIDER_DP
+        val headerGrow = ceil(HEADER_SP * LINE * k).toInt() - ceil(HEADER_SP * LINE * kh0).toInt()
+        if (budget - used >= headerGrow) kh = k
+    }
     // 헤더: 관심종목 · HH:MM 갱신 · 장중/마감 (· 오프라인) ………… ↻ 갱신
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("관심종목", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(12, kh), fontWeight = FontWeight.Bold))
@@ -141,7 +164,6 @@ private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: 
     Spacer(GlanceModifier.height(HEADER_GAP.dp))
 
     // 통화별 합계(보유가 있을 때만)
-    val totals = Format.totals(d.items)
     for (t in totals) {
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("합계 " + Format.value(t.value, t.currency),
@@ -153,27 +175,20 @@ private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: 
     }
     if (totals.isNotEmpty()) Divider()
 
-    // 세로 예산 → 행 수(고정 개수 금지). +N 줄은 필요할 때만 예산에서 뺀다.
-    val n = d.items.size
-    // 텍스트는 sp, 예산은 dp — 시스템 글꼴 배율만큼 예산을 줄여야 마지막 행·+N 줄이 안 잘린다(리뷰 2026-09-04).
-    val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
-    val rowDp = ceil(ROW_SP * LINE * k).toInt()                       // 올림 — 모자라는 쪽(잘림)이 남는 쪽보다 나쁘다
-    val headerDp = ceil(HEADER_SP * LINE * kh).toInt() + HEADER_GAP
-    val totalDp = ceil(TOTAL_SP * LINE * k).toInt()
-    val moreDp = ceil(MORE_SP * LINE * kh).toInt()
-    val budget = ((heightDp - PAD_V * 2) / fontScale).toInt() - headerDp - totalDp * totals.size -
-        (if (totals.isNotEmpty()) DIVIDER_DP else 0)
-    var plan = Format.planCapacity(n, budget - moreDp, rowDp = rowDp, dividerDp = DIVIDER_DP)   // Divider() 실제 높이(2+1+2)
-    if (plan.more == 0) plan = Format.planCapacity(n, budget, rowDp = rowDp, dividerDp = DIVIDER_DP)
     // Glance 컨테이너는 자식 10개까지만 그리고 초과분은 오류 없이 버린다(glance-appwidget 1.2.0 LayoutSelection
     // "Truncated … container from N to 10 elements"; 생성 레이아웃도 *_10children 까지). 2026-09-04 커버 실측:
-    // 3행 계획인데 삼성전자 1행+구분선만 보이고 "+N종목"도 사라졌다. 행은 5개씩 Column 으로 묶는다(구분선+행 = 자식 2개 → 10).
+    // 3행 계획인데 삼성전자 1행+구분선만 보이고 "+N종목"도 사라졌다. 행은 최대 5개씩 Column 으로 묶는다(구분선+행 = 자식 2개 → 10).
     // 바깥 Column = 헤더·간격·합계(≤2)·구분선·묶음(≤4)·+N = 최대 10.
-    (0 until plan.drawn).chunked(5).forEach { group ->
-        Column(modifier = GlanceModifier.fillMaxWidth()) {
-            for (i in group) {
-                if (i > 0) Divider()
-                ItemRow(d.items[i], cols, k)
+    // 묶음마다 weight 가 같아 남는 공간을 똑같이 받으므로, 묶음 크기를 고르게(6행 → 3+3) 해야 행 간격이 고르다.
+    if (plan.drawn > 0) {
+        val groups = ceil(plan.drawn / 5.0).toInt()
+        val per = ceil(plan.drawn.toDouble() / groups).toInt()
+        (0 until plan.drawn).chunked(per).forEach { group ->
+            Column(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
+                for (i in group) {
+                    if (i > 0) Divider()
+                    ItemRow(d.items[i], cols, k)
+                }
             }
         }
     }
@@ -183,11 +198,12 @@ private fun Board(d: WidgetData, offline: Boolean, cols: Int, heightDp: Int, k: 
 }
 
 @Composable
-private fun ItemRow(it: WidgetItem, cols: Int, k: Float) {
+private fun ColumnScope.ItemRow(it: WidgetItem, cols: Int, k: Float) {   // ColumnScope: 행 weight 용
     val wide = cols >= 2
     val label = if (it.market == "US" && it.name.isNotEmpty() && it.name != it.code) "${it.code} ${it.name}" else it.name
     // 자식 최대 7개(Glance 컨테이너 10개 제한 안쪽). 이름이 weight 를 가져 길면 이름부터 줄임표.
-    Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // 세로 weight: 묶음 Column 에 남는 높이를 행들이 똑같이 나눠 가진다(글자는 가운데 정렬) — 위젯 아래 여백을 행 간격으로.
+    Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fs(13, k), fontWeight = FontWeight.Bold),
              maxLines = 1, modifier = GlanceModifier.defaultWeight())
         // 보유 수량 — 가격 앞 열(마스터 요청 2026-09-04). 미보유면 빈 문자열이라 열이 사라진다.
