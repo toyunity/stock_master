@@ -8,6 +8,7 @@
 > `/api/fundamentals`, `/api/financials/{code}`, `flow/scanner.py`, `/api/market`).
 > 완료 표와 커밋 해시는 같은 날짜의 자매 문서 `docs/kis-integration-plan.md`에 있다.
 > 여기서 아직 유효한 건 ②잔고 · ⑧~⑪매매/알림 · ⑫⑬해외뿐이고, §4 추천 로드맵은 폐기됐다.
+> **2026-09-08 전수 재검토**: 남은 304개를 화면별로 다시 훑은 결과는 `docs/kis-unused-features-2026-09.md`.
 
 ---
 
