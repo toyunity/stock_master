@@ -20,7 +20,7 @@ from typing import Optional
 from backend.config import settings
 from backend.flow import kst
 from backend.flow.demo import lookup_stock
-from backend.flow.kis import KisClient, parse_minute_candles
+from backend.flow.kis import KisClient, parse_minute_candles, parse_period_candles
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +209,14 @@ def _long_daily_bars(code: str) -> list:
 
 
 def _wm_candles(code: str, tf: str) -> list:
-    """주봉/월봉 120개 — 전체 구간에서 이동평균을 계산한 뒤 최근 120봉만 노출."""
+    """주봉/월봉 120개 — 국내는 KIS W/M 240봉(이동평균 선행분 포함), 그 외·실패는 FDR 일봉 집계."""
+    if _kis_live(code):
+        try:
+            bars = _kis_bars_sync(code, "W" if tf == "1w" else "M", 240)
+            if len(bars) >= 30:
+                return _attach_macd(_attach_ma(bars))[-120:]
+        except Exception:
+            log.warning("KIS %s봉 조회 실패(%s) — FDR 폴백", tf, code, exc_info=True)
     try:
         return _attach_macd(_attach_ma(aggregate_daily(_long_daily_bars(code), tf)))[-120:]
     except Exception:
@@ -302,28 +309,81 @@ def _demo_minutes(code: str) -> list:
     return bars
 
 
+# ── 일·주·월봉 원천: KIS 기간별시세 우선, FDR 폴백(2026-09-08) ─────────────────
+# FDR은 마지막 봉이 10~12분 지연 현재가인데 날짜만 어제로 붙는 함정이 있었다(메모리
+# fdr-daily-last-bar-is-live). KIS는 당일 봉이 당일 날짜로 온다. 키 없음·데모·미국 티커·
+# KIS 실패면 종전 FDR 경로 그대로다(차트가 키 없이도 뜨는 성질을 잃지 않는다).
+_KIS_PAGE = 100          # 호출당 최대 봉 수(실측)
+_KIS_MAX_CALLS = 4
+_KIS_SPAN_DAYS = {"D": 220, "W": 900, "M": 4000}   # 한 페이지(100봉)를 덮고 남을 달력일
+
+
+def _kis_live(code: str) -> bool:
+    return bool(settings.kis_app_key and settings.kis_app_secret
+                and settings.flow_mode != "demo" and code.isdigit() and len(code) == 6)
+
+
+async def _kis_bars(client, code: str, period: str, want: int) -> list:
+    """end에서 과거로 100봉씩 페이징 — want봉 모이거나 빈 페이지면 멈춘다(최대 4콜)."""
+    end = kst.today()
+    out: dict = {}
+    for _ in range(_KIS_MAX_CALLS):
+        start = end - dt.timedelta(days=_KIS_SPAN_DAYS.get(period, 220))
+        page = parse_period_candles(await client.period_candles(
+            code, period, end.strftime("%Y%m%d"), start.strftime("%Y%m%d")))
+        if not page:
+            break
+        for b in page:
+            out[b["t"]] = b
+        if len(out) >= want or len(page) < _KIS_PAGE:
+            break
+        end = dt.date.fromisoformat(page[0]["t"]) - dt.timedelta(days=1)
+    return [out[k] for k in sorted(out)]
+
+
+def _kis_bars_sync(code: str, period: str, want: int) -> list:
+    """to_thread 안(이벤트 루프 없는 스레드)에서 KIS 비동기 조회를 돌린다."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_kis_bars(_get_client(), code, period, want))
+    finally:
+        loop.close()
+
+
+def _fdr_daily(code: str) -> list:
+    """FDR 일봉 260개(종전 경로) — 이동평균 선행 구간까지."""
+    from backend.adapters.cache import OHLCVCache
+    from backend.adapters.prices import PriceAdapter
+    from backend.report.dashboard import to_candles
+    end = dt.date.today()
+    start = end - dt.timedelta(days=400)   # 120봉 이동평균이 채워지도록 넉넉히
+    df = PriceAdapter(OHLCVCache(settings.cache_dir)).get_ohlcv(
+        code, start.isoformat(), end.isoformat())
+    return [{"t": c["time"], "open": c["open"], "high": c["high"],
+             "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
+            for c in to_candles(df, 260)]
+
+
 def _daily_candles(code: str) -> list:
-    """일봉 120개 — 대시보드와 동일한 FDR 캐시 경로(키 불필요)."""
+    """일봉 120개 — 국내는 KIS 기간별시세(260봉으로 이동평균 계산 후 120봉), 그 외·실패는 FDR."""
     now = time.time()
     hit = _daily_cache.get(code)
     if hit and now - hit[0] < 3600:  # 일봉은 하루 단위라 1시간 캐시
         return hit[1]
-    try:
-        from backend.adapters.cache import OHLCVCache
-        from backend.adapters.prices import PriceAdapter
-        from backend.report.dashboard import to_candles
-        end = dt.date.today()
-        start = end - dt.timedelta(days=400)   # 120봉 이동평균이 채워지도록 넉넉히
-        df = PriceAdapter(OHLCVCache(settings.cache_dir)).get_ohlcv(
-            code, start.isoformat(), end.isoformat())
-        # 260봉으로 이동평균을 계산한 뒤 최근 120봉만 노출(선행 구간이 ma120을 채움)
-        full = [{"t": c["time"], "open": c["open"], "high": c["high"],
-                 "low": c["low"], "close": c["close"], "vol": c.get("vol", 0)}
-                for c in to_candles(df, 260)]
-        candles = _attach_macd(_attach_ma(full))[-120:]
-    except Exception:
-        log.warning("일봉 조회 실패(%s)", code, exc_info=True)
-        candles = []
+    full = []
+    if _kis_live(code):
+        try:
+            full = _kis_bars_sync(code, "D", 260)
+        except Exception:
+            log.warning("KIS 일봉 조회 실패(%s) — FDR 폴백", code, exc_info=True)
+            full = []
+    if len(full) < 30:
+        try:
+            full = _fdr_daily(code)
+        except Exception:
+            log.warning("일봉 조회 실패(%s)", code, exc_info=True)
+            full = []
+    candles = _attach_macd(_attach_ma(full))[-120:] if full else []
     _daily_cache[code] = (now, candles)
     return candles
 

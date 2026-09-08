@@ -145,6 +145,7 @@ def test_get_candles_weekly_and_monthly(monkeypatch):
             i += 1
         cur += dt.timedelta(days=1)
     monkeypatch.setattr(cd, "_long_daily_bars", lambda code: days)
+    monkeypatch.setattr(cd, "_kis_live", lambda code: False)   # FDR 집계 경로가 검증 대상(KIS 우선은 별도 테스트)
     loop = asyncio.new_event_loop()
     try:
         w = loop.run_until_complete(cd.get_candles("000660", "1w"))
@@ -463,3 +464,66 @@ def test_get_candles_1w_carries_weekly_signal(monkeypatch):
         loop.close()
     assert d["signal"]["tone"] == "info" and "얕아지는 중" in d["signal"]["text"]
     assert m["signal"] is None   # 월봉은 '주봉' 문구를 재활용하지 않는다
+
+
+# ── 일·주·월봉 KIS 기간별시세(FHKST03010100) — 2026-09-08 실응답 픽스처, FDR 폴백 ──
+def _fx(name):
+    import json
+    from pathlib import Path
+    return json.load(open(Path(__file__).parent / "fixtures" / "kis" / f"{name}.json", encoding="utf-8"))
+
+
+def test_parse_period_candles_real_fixture_ascending():
+    from backend.flow.kis import parse_period_candles
+    bars = parse_period_candles(_fx("daily_itemchartprice"))
+    assert [b["t"] for b in bars] == sorted(b["t"] for b in bars) and bars[0]["t"] == "2026-09-01"
+    last = bars[-1]
+    assert last["t"] == "2026-09-08" and last["close"] == 1793000 and last["open"] == 1799000
+    assert last["high"] == 1889000 and last["low"] == 1777000 and last["vol"] == 4119139
+    assert parse_period_candles({"rt_cd": "1"}) == []
+
+
+def test_kis_bars_pages_backwards_until_enough(monkeypatch):
+    import backend.flow.candles as cd
+    monkeypatch.setattr(cd, "_KIS_PAGE", 6)     # 픽스처는 6행 — '가득 찬 페이지'의 기준을 맞춘다
+    calls = []
+
+    class C:
+        async def period_candles(self, code, period, end, start):
+            calls.append((period, end, start))
+            if len(calls) == 1:
+                return _fx("daily_itemchartprice")                      # 09-08 … 09-01
+            if len(calls) == 2:
+                js = _fx("daily_itemchartprice")
+                for i, r in enumerate(js["output2"]):                   # 08-25 … 08-18 로 밀어 두 번째 페이지 흉내
+                    r["stck_bsop_date"] = "202608%02d" % (25 - i)
+                return js
+            return {"rt_cd": "0", "output2": []}
+    bars = asyncio.new_event_loop().run_until_complete(cd._kis_bars(C(), "000660", "D", 10))
+    assert len(bars) == 12 and [b["t"] for b in bars] == sorted(b["t"] for b in bars)
+    assert calls[0][0] == "D" and calls[1][1] == "20260831"           # 다음 페이지 end = 가장 오래된 날짜 − 1일
+
+
+def test_daily_candles_prefer_kis_and_fall_back_to_fdr(monkeypatch):
+    import backend.flow.candles as cd
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", "k")
+    monkeypatch.setattr(settings, "kis_app_secret", "s")
+    monkeypatch.setattr(settings, "flow_mode", "")
+    cd._daily_cache.clear()
+    kis_bars = [_day((dt.date(2025, 1, 1) + dt.timedelta(days=i)).isoformat(), o=100 + i, c=101 + i)
+                for i in range(300)]
+    monkeypatch.setattr(cd, "_kis_bars_sync", lambda code, period, want: kis_bars)
+    monkeypatch.setattr(cd, "_fdr_daily", lambda code: (_ for _ in ()).throw(AssertionError("FDR 호출됨")))
+    out = cd._daily_candles("000660")
+    assert len(out) == 120 and out[-1]["close"] == 101 + 299 and out[-1]["ma120"] is not None
+    # KIS 실패 → FDR 폴백(키 없는 데모·미국 티커와 같은 경로)
+    cd._daily_cache.clear()
+    monkeypatch.setattr(cd, "_kis_bars_sync", lambda code, period, want: (_ for _ in ()).throw(RuntimeError("down")))
+    monkeypatch.setattr(cd, "_fdr_daily", lambda code: kis_bars[:150])
+    out = cd._daily_candles("000660")
+    assert len(out) == 120 and out[-1]["close"] == 101 + 149
+    # 미국 티커는 항상 FDR
+    cd._daily_cache.clear()
+    monkeypatch.setattr(cd, "_kis_bars_sync", lambda code, period, want: (_ for _ in ()).throw(AssertionError("KIS 호출됨")))
+    assert len(cd._daily_candles("NVDA")) == 120

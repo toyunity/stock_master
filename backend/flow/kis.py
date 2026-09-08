@@ -410,6 +410,28 @@ def parse_minute_candles(js: dict, date: Optional[str] = None) -> list:
     return bars
 
 
+def parse_period_candles(js: dict) -> list:
+    """FHKST03010100(기간별시세 일/주/월/년) output2 → [{t:'YYYY-MM-DD',open,high,low,close,vol}] 오름차순.
+
+    실측 2026-09-08: 최신순·호출당 최대 100봉, 당일 봉은 장중엔 현재가를 종가 자리에 넣어
+    **당일 날짜로** 내려온다(FDR은 같은 값을 어제 날짜에 붙였다 — 이 TR로 바꾼 이유).
+    종가 없는 행(휴장 잔재)은 버린다."""
+    if not isinstance(js, dict) or js.get("rt_cd") != "0":
+        return []
+    bars = []
+    for r in js.get("output2") or []:
+        d = str(r.get("stck_bsop_date") or "").strip()
+        close = _i(r.get("stck_clpr"))
+        if len(d) != 8 or not close:
+            continue
+        bars.append({"t": f"{d[:4]}-{d[4:6]}-{d[6:8]}",
+                     "open": _i(r.get("stck_oprc")), "high": _i(r.get("stck_hgpr")),
+                     "low": _i(r.get("stck_lwpr")), "close": close,
+                     "vol": _i(r.get("acml_vol"))})
+    bars.sort(key=lambda b: b["t"])
+    return bars
+
+
 def drop_empty_daily(rows: list) -> list:
     """일별 확정에서 전부 0인 행 제거 — 당일분은 장 종료 전까지 0으로 내려와(실측)
     초보자가 '수급 없음'으로 오해한다. 확정된 날만 보여준다."""
@@ -625,6 +647,15 @@ class KisClient:
                              "FHKST01010200",
                              {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})
         return parse_asking(js)
+
+    async def period_candles(self, code: str, period: str, end: str, start: str) -> dict:
+        """기간별시세(FHKST03010100) 원응답 — period D/W/M/Y, end·start YYYYMMDD(end가 최신).
+        FID_ORG_ADJ_PRC '0'=수정주가(분할·감자 반영), '1'=원주가 — 차트는 수정주가."""
+        return await self._get("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+                               "FHKST03010100",
+                               {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+                                "FID_INPUT_DATE_1": start, "FID_INPUT_DATE_2": end,
+                                "FID_PERIOD_DIV_CODE": period, "FID_ORG_ADJ_PRC": "0"})
 
     async def index(self, iscd: str = "0001") -> Optional[dict]:
         """지수 시세 — 코스피(0001)/코스닥(1001)/코스피200(2001)."""
