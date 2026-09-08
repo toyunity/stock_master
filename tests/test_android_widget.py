@@ -88,3 +88,17 @@ def test_kotlin_colors_match_theme_tokens():
         # 슬롯 단위 대조 — UP/DOWN 을 서로 바꿔도 통과하던 '어딘가에 있음' 검사 보강(리뷰 2026-09-04)
         pat = r"val %s = colorprovider\(color\(0xff%s\), color\(0xff%s\)\)" % (name.lower(), light, dark)   # kt는 소문자화됨
         assert re.search(pat, kt), "%s (라이트 #%s, 다크 #%s) 슬롯이 Colors.kt에 없음" % (name, light, dark)
+
+
+PROGUARD = os.path.join(ROOT, "android", "app", "proguard-rules.pro")
+
+
+def test_proguard_keeps_action_callback_constructor():
+    """↻ 갱신이 릴리스 APK에서만 조용히 죽던 결함(2026-09-08 실측).
+
+    Glance 1.2.0 consumer 규칙은 `-keep public class * extends ActionCallback` 뿐이라 R8 full 모드(AGP 8+ 기본)가
+    RefreshAction.<init>() 을 지웠고(usage.txt), Glance는 Class.forName→getDeclaredConstructor()→newInstance() 로
+    콜백을 만들어 NoSuchMethodException 을 삼킨다. 디버그 빌드·JVM 테스트로는 못 잡는다 — 여기서 규칙 존재만 지킨다.
+    실증은 릴리스 빌드 뒤 usage.txt 에 RefreshAction <init> 이 없어야 한다."""
+    src = open(PROGUARD, encoding="utf-8").read()
+    assert re.search(r"-keep\s+class\s+\*\s+extends\s+androidx\.glance\.appwidget\.action\.ActionCallback\s*\{\s*<init>\(\);\s*\}", src)
