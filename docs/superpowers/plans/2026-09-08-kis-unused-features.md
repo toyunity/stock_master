@@ -80,10 +80,10 @@
 
 **Produces:** `parse_events(kind: str, js: dict) -> list[dict]`; 각 행 `{"date": "YYYY-MM-DD", "kind": kind, "label": str, "detail": str, "code": str}`. `KINDS = [("dividend","배당",TR,path,params_fn),...]`. `async get_events(client, code: str, today=None) -> {"rows": [...], "asof": "YYYY-MM-DD"}` — rows는 today-45일~today+120일, 날짜 오름차순, 24h 메모리 캐시(code별).
 
-- [ ] 실패 테스트: 배당 픽스처 → 첫 행 `date=="2026-08-31"`, `label=="배당 기준일"`, `detail`에 "375원"과 "지급 2026-09-30" 포함; 유상증자 → `date`=right_dt(권리락) 변환, detail에 배정률·청약기간; 액면 → detail "500원→2,500원 · 거래정지 2026-10-02~"; 매수청구 → detail 가격 20,891원(0패딩 제거), `date`=buy_req_rcpt_term의 앞 0 제거; 주총 → date "2026-12-07".
-- [ ] `_d8("20260831")->"2026-08-31"`, `_dslash("2026/09/30")->"2026-09-30"`, 빈 값→None. 종류별 매핑 함수 6개(합병분할은 액면과 같은 td_stop_dt 규칙). rt_cd≠"0"이면 []. 
-- [ ] `get_events`: 7 TR 순차 호출(각 try/except 격리, 하나 실패해도 나머지 반환), 파라미터 `{"CTS":"","F_DT":f,"T_DT":t,"SHT_CD":code}` (+배당 `"GB1":"0","HIGH_GB":""`, 유상 `"GB1":"1"`, 액면 `"MARKET_GB":"0"`). 캐시 dict `_cache[code]=(ts,data)`, TTL 86400.
-- [ ] 테스트 통과 확인 후 커밋 `feat(kis): 예탁원 일정 7종 파서`.
+- [x] 실패 테스트: 배당 픽스처 → 첫 행 `date=="2026-08-31"`, `label=="배당 기준일"`, `detail`에 "375원"과 "지급 2026-09-30" 포함; 유상증자 → `date`=right_dt(권리락) 변환, detail에 배정률·청약기간; 액면 → detail "500원→2,500원 · 거래정지 2026-10-02~"; 매수청구 → detail 가격 20,891원(0패딩 제거), `date`=buy_req_rcpt_term의 앞 0 제거; 주총 → date "2026-12-07".
+- [x] `_d8("20260831")->"2026-08-31"`, `_dslash("2026/09/30")->"2026-09-30"`, 빈 값→None. 종류별 매핑 함수 6개(합병분할은 액면과 같은 td_stop_dt 규칙). rt_cd≠"0"이면 []. 
+- [x] `get_events`: 7 TR 순차 호출(각 try/except 격리, 하나 실패해도 나머지 반환), 파라미터 `{"CTS":"","F_DT":f,"T_DT":t,"SHT_CD":code}` (+배당 `"GB1":"0","HIGH_GB":""`, 유상 `"GB1":"1"`, 액면 `"MARKET_GB":"0"`). 캐시 dict `_cache[code]=(ts,data)`, TTL 86400.
+- [x] 테스트 통과 확인 후 커밋 `feat(kis): 예탁원 일정 7종 파서`.
 
 ### Task 2: 종목 상세 부가 파서 6종 + 조립 (`stockinfo.py`)
 
@@ -100,21 +100,21 @@
 - `async get_stockinfo(code, client=None, now=None) -> dict` 키: `events, opinion, pbar, overtime, pgm_daily, tradevol, tradeamt, rankpos, asof`. 각 원천 try/except → 실패 키는 None. TTL: events·opinion·rankpos 24h(자기 모듈), pgm_daily·tradevol 3600, pbar·overtime·tradeamt 300. `client None`이면 `demo_stockinfo(code)`.
 - `demo_stockinfo(code)` — `random.Random(code)` 시드로 결정적 합성(일정 3건, 의견 5건, 매물대 8단, 시간외 vol>0, 30일 프로그램, 26일 체결량, 8구간).
 
-- [ ] 실패 테스트(픽스처): 의견 첫 행 broker 'DB증권' target 2300000 opinion '매수'; summarize(rows, 1793000) n==증권사 수, avg_target 계산값, gap_pct<0; 매물대 top price 1793000 pct 5.81; 시간외(032820) rate 1.19 vol 35757, zero 픽스처 → vol 0; 프로그램 오름차순 마지막 date 2026-09-08 net_qty 126584; 체결량 strength ≈107.3; 금액구간 첫 band '3백 이하' buy_cnt 55150.
-- [ ] 구현, 통과, 커밋 `feat(kis): 종목 상세 부가 데이터 6종 파서·조립`.
+- [x] 실패 테스트(픽스처): 의견 첫 행 broker 'DB증권' target 2300000 opinion '매수'; summarize(rows, 1793000) n==증권사 수, avg_target 계산값, gap_pct<0; 매물대 top price 1793000 pct 5.81; 시간외(032820) rate 1.19 vol 35757, zero 픽스처 → vol 0; 프로그램 오름차순 마지막 date 2026-09-08 net_qty 126584; 체결량 strength ≈107.3; 금액구간 첫 band '3백 이하' buy_cnt 55150.
+- [x] 구현, 통과, 커밋 `feat(kis): 종목 상세 부가 데이터 6종 파서·조립`.
 
 ### Task 3: 시장 속 위치 (`rankpos.py`)
 
 - `parse_short_rank(js) -> [{"code","name","ratio"}]` (output, ssts_vol_rlim), `parse_credit_rank(js) -> [{"code","name","rate"}]` (output2, whol_loan_rmnd_rate).
 - `async get_position(client, code) -> {"short":{"rank","n","ratio"}|None, "credit":{"rank","n","rate"}|None, "asof"}` — 시장 전체 목록 2콜 1h 캐시(전 종목 공유), rank는 1-based, 목록 밖이면 None이되 n은 채운다(`{"rank":None,"n":30}`).
-- [ ] 테스트: 픽스처 short_sale_rank에서 '034220' rank 2 ratio 19.46; credit rank '251340' rank 2; 없는 코드 → rank None n 6.
-- [ ] 커밋 `feat(kis): 공매도·신용 상위 속 종목 위치`.
+- [x] 테스트: 픽스처 short_sale_rank에서 '034220' rank 2 ratio 19.46; credit rank '251340' rank 2; 없는 코드 → rank None n 6.
+- [x] 커밋 `feat(kis): 공매도·신용 상위 속 종목 위치`.
 
 ### Task 4: `/api/stockinfo/{code}` 라우트
 
 - `app.py`: `@app.get("/api/stockinfo/{code}")` — 6자리 검증(`_CODE_RE`), `stockinfo.get_stockinfo(code, marketdata._client())`. 
-- [ ] 테스트(test_live_api): 키 없음 → 200 + JSON에 `events`·`opinion`·`pbar` 키, `pbar.levels` 길이>0(데모); 잘못된 코드 404.
-- [ ] 커밋.
+- [x] 테스트(test_live_api): 키 없음 → 200 + JSON에 `events`·`opinion`·`pbar` 키, `pbar.levels` 길이>0(데모); 잘못된 코드 404.
+- [x] 커밋.
 
 ### Task 5: 종목 상세 화면(live_page.py) — 패널 8개 + renderInfo
 
@@ -140,8 +140,8 @@ JS: `let INFO=null; async function loadInfo(){ const r=await fetch('/api/stockin
 - KIS 집계: 8행 `.szrow` — band, 순매수비율 부호 색.
 - 시장 속 위치: 4행 테이블 — 공매도 비중 rank/30 · ratio%, 신용잔고 비율 rank/100 · rate%, 52주 위치(`window.__W52` — loadFin이 v.w52_pos를 저장) "n% · 신고가 근접" (≥95), 시간외 등락(overtime.rate).
 
-- [ ] 테스트 `test_live_page_js.py`: 하니스에 `if(typeof renderInfo==='function'){renderInfo(JSON.parse(fs.readFileSync(process.argv[5])))}` 추가(argv[5]=INFO 픽스처 = `stockinfo.demo_stockinfo('000660')` 덤프), TXT로 `ev-chips`·`op-digest`·`pb-note`·`otpill`·`pgd-note`·`tv-note`·`rp-tbl`(innerHTML) 출력; 단언: 'D-' in ev-chips, '목표가' in op-digest, '원' in pb-note, '시간외' in otpill, '연속' in pgd-note, 'rp-tbl'에 '공매도'.
-- [ ] `make verify` 통과(가로 오버플로 0). 커밋 `feat(live): 일정·목표가·매물대·시간외·일별 추이·KIS 체결비중·시장 속 위치`.
+- [x] 테스트 `test_live_page_js.py`: 하니스에 `if(typeof renderInfo==='function'){renderInfo(JSON.parse(fs.readFileSync(process.argv[5])))}` 추가(argv[5]=INFO 픽스처 = `stockinfo.demo_stockinfo('000660')` 덤프), TXT로 `ev-chips`·`op-digest`·`pb-note`·`otpill`·`pgd-note`·`tv-note`·`rp-tbl`(innerHTML) 출력; 단언: 'D-' in ev-chips, '목표가' in op-digest, '원' in pb-note, '시간외' in otpill, '연속' in pgd-note, 'rp-tbl'에 '공매도'.
+- [x] `make verify` 통과(가로 오버플로 0). 커밋 `feat(live): 일정·목표가·매물대·시간외·일별 추이·KIS 체결비중·시장 속 위치`.
 
 ### Task 6: 홈 시장 수급·자금 (`marketflow.py` + `/api/market-flow` + dashboard)
 
@@ -152,9 +152,9 @@ JS: `let INFO=null; async function loadInfo(){ const r=await fetch('/api/stockin
 - `get_market_flow(client=None, now=None)`: `{"investors":{"rows":[-20:],"today":row|None,"streak_frgn","streak_orgn","asof","provisional":bool}, "funds":{"rows":[-20:],"deposit","deposit_chg5_pct","credit","credit_pos20","uncl","asof"}, "breadth":{"kospi":{...},"kosdaq":{...}}, "sectors":{"up":[3],"down":[3]}, "expected":{"rate"}|None, "basis":{"fut","spot","basis"}|None, "asof"}`. provisional = today row date==오늘 and now<16:00. expected는 08:30~09:00만 조회. basis: `marketdata.get_futures()` k200.price와 `client.index("2001")`. 캐시 TTL 표(투자자 300, 자금 3600, 폭·업종 60, 예상 30, 베이시스 60). 키 없음 → `demo_market_flow()`.
 - `app.py`: `/api/market-flow`.
 - dashboard: 지수 섹션 뒤 `<details class="sec" id="flowsec" style="display:none"><summary>수급·자금 <span class="gdig" id="flow-dig"></span></summary><div class="sec-body"><div id="flow-body"></div><div class="meta" id="flow-foot"></div></div></details>`; JS `loadFlow()` 60초; `renderFlow(d)` 줄 5개(투자자·자금·폭·업종·예상/베이시스), digest "외국인 +6,316억 · 예탁금 93.6조 · 상승 231/하락 634".
-- [ ] 테스트 test_marketflow: 픽스처로 investor 오름차순·억 변환(631623→6316.23), streak 계산(부호 열 만든 리스트), funds 억 그대로, breadth 231/634/45, sectors에 '종합' 없음·'화학' 있음, expected 0.94; demo dict 키 전부.
-- [ ] 테스트 test_dashboard: HTML에 `flowsec`·`renderFlow` 포함. test_live_api: `/api/market-flow` 키 없음 → 200 + investors 키.
-- [ ] `make verify`. 커밋 `feat(home): 시장 수급·자금·폭·업종·예상시가·베이시스`.
+- [x] 테스트 test_marketflow: 픽스처로 investor 오름차순·억 변환(631623→6316.23), streak 계산(부호 열 만든 리스트), funds 억 그대로, breadth 231/634/45, sectors에 '종합' 없음·'화학' 있음, expected 0.94; demo dict 키 전부.
+- [x] 테스트 test_dashboard: HTML에 `flowsec`·`renderFlow` 포함. test_live_api: `/api/market-flow` 키 없음 → 200 + investors 키.
+- [x] `make verify`. 커밋 `feat(home): 시장 수급·자금·폭·업종·예상시가·베이시스`.
 
 ### Task 7: 일·주·월봉 KIS 전환 (`kis.py` + `candles.py`)
 
@@ -162,8 +162,8 @@ JS: `let INFO=null; async function loadInfo(){ const r=await fetch('/api/stockin
 - `candles._kis_bars(client, code, period, want)`: end=오늘부터 100봉씩 뒤로 페이징(다음 end = 가장 오래된 날짜-1일), 빈 응답 또는 want 충족 시 종료, 최대 4콜.
 - `_daily_candles`: `live`면 `asyncio.run` 불가(스레드) → `_daily_candles`는 to_thread에서 도니 여기서 새 이벤트 루프로 `_kis_bars` 실행(기존 `_long_daily_bars`도 동기). 실패·빈 결과면 FDR 경로로 폴백(로그). `_wm_candles`: live면 KIS W/M 240봉 → MA 계산 → [-120:]; 아니면 기존 aggregate.
 - `live` 판정은 `get_candles`의 것과 같은 식(키 있음 and flow_mode != demo). **US 티커는 항상 FDR**(`userstore.market_of(code)=="US"`).
-- [ ] 테스트: 픽스처 `daily_itemchartprice` → 파서 6행 오름차순 첫 t '2026-09-01'? (픽스처 6행: 0908,0907,0904,0903,0902,0901 → 오름차순 첫 '2026-09-01', 마지막 close 1793000). `_kis_bars` 페이징 테스트(가짜 client 두 페이지). `_daily_candles` monkeypatch: live+KIS 성공 → FDR 미호출; KIS 예외 → FDR 호출.
-- [ ] 커밋 `feat(chart): 일·주·월봉을 KIS 기간별시세로(FDR 폴백)`.
+- [x] 테스트: 픽스처 `daily_itemchartprice` → 파서 6행 오름차순 첫 t '2026-09-01'? (픽스처 6행: 0908,0907,0904,0903,0902,0901 → 오름차순 첫 '2026-09-01', 마지막 close 1793000). `_kis_bars` 페이징 테스트(가짜 client 두 페이지). `_daily_candles` monkeypatch: live+KIS 성공 → FDR 미호출; KIS 예외 → FDR 호출.
+- [x] 커밋 `feat(chart): 일·주·월봉을 KIS 기간별시세로(FDR 폴백)`.
 
 ### Task 8: 미국 분봉·체결추이 (`kis.py` + `candles.py` + `usquote.py` + `app.py` + `us_page.py`)
 
@@ -173,8 +173,8 @@ JS: `let INFO=null; async function loadInfo(){ const r=await fetch('/api/stockin
 - `candles.get_candles`: US and tf in 5m/15m/60m → `_us_minutes(sym, {"5m":5,"15m":15,"60m":60}[tf])`; 키 없음/데모 → `_demo_minutes` 재사용(달러 소수: demo는 원 정수 → US 데모는 `price/1000` 소수 2자리로 스케일). `app.py`: US 400 거절 제거, 1m만 거절.
 - `app.py`: `/api/usccnl/{sym}` → `usquote.ccnl(client, sym)`; 키 없음 → 200 `{"rows":[],"vpow":None}`.
 - us_page: tf 버튼 `5분/15분/60분` 추가, `TF_CAP` 확장, `loadCandles`에서 `time: c.ts!=null?c.ts:c.t`; 체결강도 패널 `<div class="panel" id="uc-panel"><h2>체결 테이프·체결강도 <span class="fresh" id="uc-fresh">· REST 60초</span></h2><div class="sig" id="uc-sig"></div><div class="tbl-wrap"><table id="uc-tbl"></table></div></div>` + `loadCcnl()` 60초; `.nomore` 문구를 "분봉은 KIS 해외분봉(REST)로 그립니다"로 정정.
-- [ ] 테스트: us_minutes 픽스처 파서(ts 단조 증가, 마지막 close 230.53), us_ccnl 파서(vpow 58.4), `/api/candles/NVDA?tf=5m` 키 없음 → 200 candles>0, test_us_page 문자열('5분','uc-panel').
-- [ ] `make verify`(uslive 캡처). 커밋 `feat(us): 분봉 3종 + 체결강도(REST)`.
+- [x] 테스트: us_minutes 픽스처 파서(ts 단조 증가, 마지막 close 230.53), us_ccnl 파서(vpow 58.4), `/api/candles/NVDA?tf=5m` 키 없음 → 200 candles>0, test_us_page 문자열('5분','uc-panel').
+- [x] `make verify`(uslive 캡처). 커밋 `feat(us): 분봉 3종 + 체결강도(REST)`.
 
 ### Task 9: 문서·마무리
 

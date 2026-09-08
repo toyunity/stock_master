@@ -202,7 +202,7 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     filled, texts = _parse_harness(r.stdout)
     # 종목 상세 부가 패널(2026-09-08): renderInfo(데모 stockinfo)가 8묶음을 전부 채우는지
     assert "D-" in texts["ev-chips-html"] and "배당" in texts["ev-note"]
-    assert "평균" in texts["op-digest"] and "현재가 대비" in texts["op-digest"]
+    assert "평균" in texts["op-digest"] and "%" in texts["op-digest"]      # 접힌 줄은 "평균 n원 · -20.0%"로 짧게
     assert "가장 두꺼운 가격" in texts["pb-note"] and "원" in texts["pb-note"]
     assert texts["otpill"].startswith("시간외 ") and "주" in texts["otpill"]
     assert "연속" in texts["pgd-note"] or "보합" in texts["pgd-note"]
