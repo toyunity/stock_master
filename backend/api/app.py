@@ -185,6 +185,20 @@ def create_app(settings=None) -> FastAPI:
             q = None
         return JSONResponse(q or {}, status_code=200 if q else 204)
 
+    @app.get("/api/usccnl/{sym}")
+    async def us_ccnl_api(sym: str):
+        """미국 체결추이·체결강도 — KIS 해외주식 체결추이(REST, 60초 폴링). 웹소켓 아님(1키1세션 무관).
+        키 없음/데모면 합성. 국내 코드는 404(국내 체결은 SSE에 있다)."""
+        from backend.api import marketdata
+        from backend.flow import userstore, usquote
+        sym = sym.upper()
+        if userstore.market_of(sym) != "US":
+            return Response(status_code=404)
+        client = None if settings.flow_mode == "demo" else marketdata._client()
+        if client is None:
+            return JSONResponse(usquote.demo_ccnl(sym))
+        return JSONResponse(await usquote.ccnl(client, sym))
+
     @app.get("/api/live/{code}/stream")
     async def _live_stream(code: str):
         return await live_stream(code)
@@ -194,9 +208,10 @@ def create_app(settings=None) -> FastAPI:
         """봉 차트 — tf: 1m/5m/15m/60m(당일 분봉, LIVE는 KIS·데모는 합성) |
         1d/1w/1mo(일·주·월봉 120, FDR 경로).
 
-        일·주·월봉은 FDR 경로라 미국 티커도 된다. **분봉은 KIS 국내 TR 전용**이라
-        미국은 400으로 거절한다 — 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이
-        시장엔 아예 없다'가 화면에서 구분되지 않는다."""
+        일·주·월봉은 미국 티커도 된다(FDR). 5/15/60분봉은 2026-09-08부터 KIS 해외분봉
+        (REST)으로 미국도 연다. **1분봉만** 미국은 400 — 120봉이 2시간뿐이라 6.5시간 장을
+        못 덮는다. 빈 배열로 얼버무리면 '데이터가 없는 날'과 '이 시장엔 아예 없다'가
+        화면에서 구분되지 않는다."""
         from backend.flow import userstore
         # 대문자 정규화 — market_of는 내부에서 대문자로 봐 소문자도 통과시키는데,
         # 여기서부터는 코드가 **파일명**(<code>.parquet)·dict 키로 쓰인다. 안 맞추면
@@ -205,9 +220,9 @@ def create_app(settings=None) -> FastAPI:
         market = userstore.market_of(code)
         if market is None:
             return Response(status_code=404)
-        if market == "US" and tf not in ("1d", "1w", "1mo"):
-            return JSONResponse({"error": "미국 종목은 일·주·월봉만 제공해요 — "
-                                          "분봉은 국내 전용입니다"}, status_code=400)
+        if market == "US" and tf == "1m":
+            return JSONResponse({"error": "미국 종목은 5·15·60분봉과 일·주·월봉만 제공해요"},
+                                status_code=400)
         if tf not in candles.TIMEFRAMES:
             return JSONResponse({"error": f"tf는 {'/'.join(candles.TIMEFRAMES)} 중 하나"},
                                 status_code=400)

@@ -11,6 +11,7 @@ from __future__ import annotations
 """
 
 import asyncio
+import calendar
 import datetime as dt
 import logging
 import random
@@ -20,7 +21,8 @@ from typing import Optional
 from backend.config import settings
 from backend.flow import kst
 from backend.flow.demo import lookup_stock
-from backend.flow.kis import KisClient, parse_minute_candles, parse_period_candles
+from backend.flow import usquote
+from backend.flow.kis import KisClient, parse_minute_candles, parse_period_candles, parse_us_minutes
 
 log = logging.getLogger(__name__)
 
@@ -293,6 +295,40 @@ async def _day_minutes(client: KisClient, code: str) -> list:
     return out
 
 
+# ── 미국 분봉(2026-09-08): KIS 해외주식분봉 REST — 1키1세션(웹소켓)과 무관 ──
+_US_NMIN = {"5m": 5, "15m": 15, "60m": 60}
+
+
+async def _us_minutes(sym: str, nmin: int) -> list:
+    """거래소 NAS→NYS→AMS 순회(시세 조회와 확정 거래소 캐시를 공유). 빈 응답은 다음 거래소."""
+    client = _get_client()
+    for i, exch in enumerate(usquote._order(sym)):
+        if i:
+            await asyncio.sleep(0.25)   # 연속 호출 간헐 500 완화(실측 관례)
+        try:
+            bars = parse_us_minutes(await client.us_minutes(exch, sym, nmin))
+        except Exception:
+            log.warning("미국 분봉 조회 실패(%s %s)", sym, exch, exc_info=True)
+            continue
+        if bars:
+            usquote._exch_cache[sym] = (exch, time.time())
+            return bars
+    return []
+
+
+def _demo_us_minutes(sym: str, nmin: int) -> list:
+    """데모: 국내 합성 분봉을 달러 소수(÷1000)로 스케일하고 KST epoch(ts)을 붙인다."""
+    day = kst.today()
+    out = []
+    for b in aggregate(_demo_minutes(sym), nmin):
+        h, m, s = (int(x) for x in b["t"].split(":"))
+        out.append(dict(b, date=day.isoformat(),
+                        ts=calendar.timegm((day.year, day.month, day.day, h, m, s, 0, 0, 0)),
+                        open=round(b["open"] / 1000, 2), high=round(b["high"] / 1000, 2),
+                        low=round(b["low"] / 1000, 2), close=round(b["close"] / 1000, 2)))
+    return out
+
+
 def _demo_minutes(code: str) -> list:
     """데모: 시드 랜덤워크 당일 분봉(09:00~15:30, 391봉)."""
     rng = random.Random(int(code) if code.isdigit() else 42)
@@ -407,6 +443,20 @@ async def get_candles(code: str, tf: str) -> dict:
                 "signal": weekly_macd_signal(wm) if tf == "1w" else None}
     live = (settings.kis_app_key and settings.kis_app_secret
             and settings.flow_mode != "demo")
+    from backend.flow import userstore
+    if userstore.market_of(code) == "US":
+        nmin = _US_NMIN.get(tf)
+        if not nmin:
+            return {"tf": tf, "date": kdate, "candles": []}
+        if live:
+            try:
+                bars = await _us_minutes(code, nmin)
+            except Exception:
+                log.warning("미국 분봉 조회 실패(%s) — 빈 결과", code, exc_info=True)
+                bars = []
+        else:
+            bars = _demo_us_minutes(code, nmin)
+        return {"tf": tf, "date": kdate, "candles": _attach_macd(_attach_ma(bars))}
     if live:
         try:
             bars = await _day_minutes(_get_client(), code)

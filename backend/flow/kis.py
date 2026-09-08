@@ -10,6 +10,7 @@ from __future__ import annotations
 """
 
 import asyncio
+import calendar
 import json
 import logging
 import os
@@ -432,6 +433,49 @@ def parse_period_candles(js: dict) -> list:
     return bars
 
 
+def parse_us_minutes(js: dict) -> list:
+    """HHDFS76950200(해외주식분봉) output2 → [{t,date,ts,open,high,low,close,vol}] 오름차순.
+
+    실측 2026-09-08: 최신순·호출당 최대 120봉(NREC), kymd/khms가 KST, 가격은 소수 4자리.
+    ts는 KST 벽시계를 UTC로 간주한 epoch — 차트가 UTC로 그려도 라벨이 KST로 보인다(국내
+    toTs와 같은 관행). 미국 장은 KST 자정을 넘기므로 't'(HH:MM:SS)만으론 정렬이 깨진다."""
+    if not isinstance(js, dict) or js.get("rt_cd") != "0":
+        return []
+    bars = []
+    for r in js.get("output2") or []:
+        d, h = str(r.get("kymd") or "").strip(), str(r.get("khms") or "").strip()
+        last = _f(r.get("last"))
+        if len(d) != 8 or len(h) != 6 or not last:
+            continue
+        ts = calendar.timegm((int(d[:4]), int(d[4:6]), int(d[6:8]),
+                              int(h[:2]), int(h[2:4]), int(h[4:6]), 0, 0, 0))
+        bars.append({"t": f"{h[:2]}:{h[2:4]}:{h[4:6]}", "date": f"{d[:4]}-{d[4:6]}-{d[6:8]}", "ts": ts,
+                     "open": round(_f(r.get("open")), 4), "high": round(_f(r.get("high")), 4),
+                     "low": round(_f(r.get("low")), 4), "close": round(last, 4),
+                     "vol": _i(r.get("evol"))})
+    bars.sort(key=lambda b: b["ts"])
+    return bars
+
+
+def parse_us_ccnl(js: dict) -> dict:
+    """HHDFS76200300(해외주식 체결추이) output2 → {rows(오름차순, 최근 30건), vpow(최신 체결강도)}.
+
+    실측 2026-09-08: 최신순 100건, khms KST, vpow=체결강도(100↑ 사자 우위). 정렬은 응답
+    순서를 뒤집는다 — 미국 장이 KST 자정을 넘겨 시각 문자열 정렬은 틀린다."""
+    if not isinstance(js, dict) or js.get("rt_cd") != "0":
+        return {"rows": [], "vpow": None}
+    rows = []
+    for r in js.get("output2") or []:
+        h, last = str(r.get("khms") or "").strip(), _f(r.get("last"))
+        if len(h) != 6 or not last:
+            continue
+        rows.append({"t": f"{h[:2]}:{h[2:4]}:{h[4:6]}", "price": round(last, 4),
+                     "vol": _i(r.get("evol")), "vpow": _f(r.get("vpow"))})
+    if not rows:
+        return {"rows": [], "vpow": None}
+    return {"rows": rows[::-1][-30:], "vpow": rows[0]["vpow"]}
+
+
 def drop_empty_daily(rows: list) -> list:
     """일별 확정에서 전부 0인 행 제거 — 당일분은 장 종료 전까지 0으로 내려와(실측)
     초보자가 '수급 없음'으로 오해한다. 확정된 날만 보여준다."""
@@ -656,6 +700,18 @@ class KisClient:
                                {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
                                 "FID_INPUT_DATE_1": start, "FID_INPUT_DATE_2": end,
                                 "FID_PERIOD_DIV_CODE": period, "FID_ORG_ADJ_PRC": "0"})
+
+    async def us_minutes(self, exch: str, sym: str, nmin: int) -> dict:
+        """해외주식분봉(HHDFS76950200) 원응답 — nmin 분 봉 120개(NREC 최대)."""
+        return await self._get("/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice",
+                               "HHDFS76950200",
+                               {"AUTH": "", "EXCD": exch, "SYMB": sym, "NMIN": str(nmin), "PINC": "1",
+                                "NEXT": "", "NREC": "120", "FILL": "", "KEYB": ""})
+
+    async def us_ccnl(self, exch: str, sym: str) -> dict:
+        """해외주식 체결추이(HHDFS76200300) 원응답 — 당일(TDAY 0) 최근 100건."""
+        return await self._get("/uapi/overseas-price/v1/quotations/inquire-ccnl", "HHDFS76200300",
+                               {"EXCD": exch, "TDAY": "0", "SYMB": sym, "AUTH": "", "KEYB": ""})
 
     async def index(self, iscd: str = "0001") -> Optional[dict]:
         """지수 시세 — 코스피(0001)/코스닥(1001)/코스피200(2001)."""

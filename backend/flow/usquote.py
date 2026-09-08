@@ -15,11 +15,12 @@ semi 로직/응답 shape은 건드리지 않고, 파싱·이름·경로만 impor
 """
 
 import asyncio
+import random
 import time
 from typing import Optional
 
 from backend.flow import toss
-from backend.flow.kis import _f
+from backend.flow.kis import _f, parse_us_ccnl
 from backend.flow.semi import _GAP, _US_PATH, US_NAMES, parse_us_quote
 
 _EXCHANGES = ("NAS", "NYS", "AMS")
@@ -85,6 +86,41 @@ async def _toss_quote(sym) -> Optional[dict]:
     last, prev = rows[-1]["close"], rows[-2]["close"]
     return {"price": last, "change": round((last / prev - 1) * 100, 2),
             "currency": "USD", "exch": None, "src": "toss"}
+
+
+_CCNL_TTL = 30.0
+_ccnl_cache: dict = {}   # sym -> (ts, data)
+
+
+async def ccnl(client, sym) -> dict:
+    """미국 체결추이·체결강도(HHDFS76200300, REST) — 30초 캐시, 거래소 순회(시세와 확정 거래소 공유).
+
+    웹소켓이 아니다: 미국 실시간(HDFSCNT0)은 마스터 결정(2026-09-08)으로 제외했고, 이 REST가
+    1키1세션과 무관하게 체결강도를 준다."""
+    hit = _ccnl_cache.get(sym)
+    if hit and time.time() - hit[0] < _CCNL_TTL:
+        return hit[1]
+    for i, exch in enumerate(_order(sym)):
+        if i:
+            await asyncio.sleep(_GAP)
+        try:
+            d = parse_us_ccnl(await client.us_ccnl(exch, sym))
+        except Exception:
+            continue
+        if d["rows"]:
+            _exch_cache[sym] = (exch, time.time())
+            _ccnl_cache[sym] = (time.time(), d)
+            return d
+    return {"rows": [], "vpow": None}
+
+
+def demo_ccnl(sym) -> dict:
+    """키 없음 — 결정적 합성(uslive 캡처에 패널이 보이게)."""
+    rng = random.Random(sym)
+    base = 100 + rng.randint(0, 300)
+    rows = [{"t": "23:%02d:%02d" % (30 + i // 2, (i * 7) % 60), "price": round(base + rng.uniform(-1, 1), 2),
+             "vol": rng.randint(1, 500), "vpow": round(rng.uniform(40, 160), 2)} for i in range(20)]
+    return {"rows": rows, "vpow": rows[-1]["vpow"], "demo": True}
 
 
 async def price_us(client, sym) -> Optional[dict]:

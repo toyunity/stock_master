@@ -1,7 +1,7 @@
 """US 티커 상세 화면 — 라우트 확장·렌더·국내 전용 관문 유지. 설계 2026-08-06.
 
 핵심 불변식 두 가지:
-  · 넓히는 라우트는 **3곳뿐**이다(/live · /api/candles · /api/watch).
+  · 넓히는 라우트는 **4곳뿐**이다(/live · /api/candles · /api/watch · /api/usccnl — 2026-09-08 추가).
     국내 전용 TR을 쓰는 라우트가 US 코드를 받으면 KIS 호출이 실패하므로 404가 맞다.
   · US 화면엔 국내 전용 패널이 **아예 안 그려진다**(빈 채로 두지 않는다).
 """
@@ -65,9 +65,10 @@ def test_us_weekly_monthly_candles_route_is_open(cli, monkeypatch):
 
 
 def test_us_minute_candles_are_refused_not_faked(cli):
-    """분봉은 KIS 국내 전용이다. 빈 배열로 얼버무리지 않고 400으로 거절한다 —
-    '차트가 비었다'와 '이 시장엔 없다'는 화면에서 구분돼야 한다."""
-    r = cli.get("/api/candles/SKHY?tf=5m")
+    """1분봉은 미국에 없다(120봉이 2시간뿐). 빈 배열로 얼버무리지 않고 400으로 거절한다 —
+    '차트가 비었다'와 '이 시장엔 없다'는 화면에서 구분돼야 한다.
+    5·15·60분봉은 2026-09-08부터 KIS 해외분봉(REST)으로 열렸다(아래 별도 테스트)."""
+    r = cli.get("/api/candles/SKHY?tf=1m")
     assert r.status_code == 400
     assert "미국" in r.json()["error"]
 
@@ -153,10 +154,11 @@ def test_us_page_says_why_things_are_missing(cli):
     assert "국내 종목에만" in cli.get("/live/SKHY").text
 
 
-def test_us_page_has_no_minute_timeframe_buttons(cli):
-    """분봉이 없으므로 탭도 없다 — 눌렀는데 빈 차트보다 버튼이 없는 게 낫다."""
+def test_us_page_has_no_1m_tab_but_has_5_15_60(cli):
+    """1분봉은 없으므로 탭도 없다 — 눌렀는데 빈 차트보다 버튼이 없는 게 낫다. 5·15·60분은 있다(2026-09-08)."""
     html = cli.get("/live/SKHY").text
-    assert "tf=5m" not in html and ">5분<" not in html
+    assert 'data-tf="1m"' not in html and ">1분<" not in html
+    assert 'data-tf="5m"' in html and ">5분<" in html
 
 
 def test_us_page_has_daily_weekly_monthly_tabs(cli):
@@ -241,3 +243,26 @@ def test_watch_label_cannot_inject_a_placeholder(tmp_path, monkeypatch, render):
     js.write_text(src, encoding="utf-8")
     r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, "라벨이 자산 자리표시자를 주입했다:\n" + r.stderr[:400]
+
+
+# ── 미국 분봉·체결추이(2026-09-08): REST 전용, 1키1세션 무관 ──
+def test_us_minute_candles_route_open_and_1m_closed(cli, monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)        # 데모 합성 경로
+    r = cli.get("/api/candles/NVDA?tf=5m")
+    assert r.status_code == 200 and r.json()["candles"][-1]["ts"]
+    assert cli.get("/api/candles/NVDA?tf=1m").status_code == 400
+
+
+def test_us_ccnl_route(cli, monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    r = cli.get("/api/usccnl/NVDA")
+    assert r.status_code == 200 and r.json()["demo"] is True and r.json()["rows"]
+    assert cli.get("/api/usccnl/000660").status_code == 404   # 국내 코드엔 없는 데이터
+
+
+def test_us_page_has_minute_tabs_and_ccnl_panel(cli):
+    html = cli.get("/live/NVDA").text
+    assert 'data-tf="5m"' in html and 'data-tf="60m"' in html and 'id="uc-tbl"' in html
+    assert "분봉도 국내 전용" not in html                        # 2026-09-08 정정: KIS 해외분봉 TR이 있다

@@ -128,3 +128,34 @@ def test_no_client_at_all_returns_none(monkeypatch):
     from backend.flow import usquote
     monkeypatch.setattr(usquote.toss, "get_client", lambda: None)
     assert asyncio.run(usquote.price_us(None, "AAPL")) is None
+
+
+def _fx(name):
+    import json
+    from pathlib import Path
+    return json.load(open(Path(__file__).parent / "fixtures" / "kis" / f"{name}.json", encoding="utf-8"))
+
+
+def test_parse_us_ccnl_fixture_latest_vpow():
+    from backend.flow.kis import parse_us_ccnl
+    d = parse_us_ccnl(_fx("us_ccnl"))
+    assert d["vpow"] == 58.4 and d["rows"][-1]["t"] == "08:59:59" and d["rows"][-1]["price"] == 229.5
+    assert [r["t"] for r in d["rows"]] == sorted(r["t"] for r in d["rows"])
+    assert parse_us_ccnl({"rt_cd": "1"}) == {"rows": [], "vpow": None}
+
+
+def test_ccnl_walks_exchanges_and_caches():
+    from backend.flow import usquote
+    calls = []
+
+    class C:
+        async def us_ccnl(self, exch, sym):
+            calls.append(exch)
+            return _fx("us_ccnl") if exch == "NYS" else {"rt_cd": "0", "output2": []}
+    usquote._exch_cache.clear(); usquote._ccnl_cache.clear()
+    loop = asyncio.new_event_loop()
+    d = loop.run_until_complete(usquote.ccnl(C(), "NVDA"))
+    assert d["vpow"] == 58.4 and calls == ["NAS", "NYS"]          # NAS 빈 응답 → NYS 성공
+    d2 = loop.run_until_complete(usquote.ccnl(C(), "NVDA"))
+    assert d2["vpow"] == 58.4 and calls == ["NAS", "NYS"]        # 30초 캐시 — 추가 호출 0
+    assert usquote._cached_exch("NVDA") == "NYS"                 # 성공 거래소를 캐시(시세 조회와 공유)

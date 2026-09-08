@@ -73,6 +73,9 @@ __ICONS__
     <span class="seccap" id="tf-cap">일봉 120</span><span class="chev">▾</span></summary>
   <div class="sec-body">
     <div class="ma-row">
+      <button class="tf-btn" type="button" data-tf="5m">5분</button>
+      <button class="tf-btn" type="button" data-tf="15m">15분</button>
+      <button class="tf-btn" type="button" data-tf="60m">60분</button>
       <button class="tf-btn on" type="button" data-tf="1d">일봉</button>
       <button class="tf-btn" type="button" data-tf="1w">주봉</button>
       <button class="tf-btn" type="button" data-tf="1mo">월봉</button>
@@ -84,6 +87,17 @@ __ICONS__
       <button class="ma-btn" type="button" data-ma="120">120일</button>
       <span class="wl-status" id="ma-hint"></span>
     </div>
+  </div>
+</details>
+
+<details class="sec" id="uc-sec" open>
+  <summary><svg class="hic secic"><use href="#i-chart"/></svg> 체결 테이프·체결강도
+    <span class="seccap" id="uc-cap">KIS 체결추이 · 60초</span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="sig" id="uc-sig">체결 대기 중</div>
+    <div class="tbl-wrap"><table id="uc-tbl"></table></div>
+    <div class="meta">체결강도 = 매수 체결량 ÷ 매도 체결량 × 100 — 100 위면 사자가 세다. REST 조회라
+    실시간 웹소켓(1키1세션)을 건드리지 않는다. 미국 정규장(KST 22:30~05:00, 서머타임)에만 값이 움직인다.</div>
   </div>
 </details>
 
@@ -107,7 +121,7 @@ __ICONS__
 </details>
 
 <div class="nomore">이 화면에 없는 것: <b>수급·공매도·대차·신용·거래원·재무·호가·실시간 체결</b>은
-<b>국내 종목에만</b> 있는 데이터입니다. 분봉도 국내 전용이라 일·주·월봉만 그립니다.</div>
+<b>국내 종목에만</b> 있는 데이터입니다. 분봉(5·15·60분)은 KIS 해외분봉(REST)으로 그립니다.</div>
 
 <div class="disc">__DISCLAIMER__ 미국 시세는 일별 종가(FinanceDataReader) 기준이며,
 미국 정규장 중에는 한국투자증권 해외시세로 갱신합니다. 표시 시각은 현지 거래일 기준.</div>
@@ -153,8 +167,8 @@ function renderWatchLines(){
 }
 
 let TF='1d', tfSeq=0;
-const TF_CAP={'1d':'일봉 120','1w':'주봉 120','1mo':'월봉 120'};
-const TF_UNIT={'1d':'일','1w':'주','1mo':'개월'};
+const TF_CAP={'5m':'5분봉 120','15m':'15분봉 120','60m':'60분봉 120','1d':'일봉 120','1w':'주봉 120','1mo':'월봉 120'};
+const TF_UNIT={'5m':'봉','15m':'봉','60m':'봉','1d':'일','1w':'주','1mo':'개월'};
 async function loadCandles(){
   const seq=++tfSeq, tf=TF;  // 탭 연타 경합 방지 — 마지막 요청만 반영(국내 화면과 동일)
   try{
@@ -162,14 +176,16 @@ async function loadCandles(){
     const d=await r.json(); if(seq!==tfSeq)return;
     const cs=(d&&d.candles)||[];
     if(!cs.length)throw 0;
-    pseries.setData(cs.map(c=>({time:c.t,open:c.open,high:c.high,low:c.low,close:c.close})));
+    // 분봉은 ts(KST epoch), 일·주·월봉은 날짜 문자열 — 미국 장이 KST 자정을 넘겨 시각 문자열로는 못 그린다
+    const tm=c=>(c.ts!=null?c.ts:c.t);
+    pseries.setData(cs.map(c=>({time:tm(c),open:c.open,high:c.high,low:c.low,close:c.close})));
     // 이평선 — 표본이 없으면(신규 상장 등) 버튼을 비활성으로 두고 이유를 적는다.
     // SKHY처럼 거래일이 얼마 없는 종목은 20/60/120이 전부 빈다. 꾸며내지 않는다.
     const na=[];
     [20,60,120].forEach(function(n){
       const key='ma'+n, has=cs.some(c=>c[key]!=null);
       if(maSeries[n])maSeries[n].setData(has&&maOn[n]
-        ?cs.filter(c=>c[key]!=null).map(c=>({time:c.t,value:c[key]})):[]);
+        ?cs.filter(c=>c[key]!=null).map(c=>({time:tm(c),value:c[key]})):[]);
       if(!has)na.push(n);
     });
     document.querySelectorAll('.ma-btn').forEach(function(b){
@@ -236,6 +252,25 @@ async function pollLive(){
   }catch(e){}
   setTimeout(pollLive,60000);
 }
+
+// ── 체결 테이프·체결강도 — /api/usccnl 60초(2026-09-08). REST라 웹소켓 세션과 무관. ──
+async function loadCcnl(){
+  try{
+    const r=await fetch('/api/usccnl/'+SYM); if(!r.ok)return;
+    const d=await r.json(); const rows=d.rows||[];
+    const sig=document.getElementById('uc-sig'), tbl=document.getElementById('uc-tbl');
+    if(!rows.length){ sig.textContent='체결 없음 — 미국 장 시간(KST 22:30~05:00)에 다시 보세요'; sig.className='sig sig-flat'; tbl.innerHTML=''; return; }
+    const v=d.vpow;
+    sig.textContent='체결강도 '+(v==null?'–':v.toFixed(1))+(v==null?'':(v>=120?' — 사자가 확실히 셈':(v>=100?' — 사자 우위':(v>=80?' — 팔자 우위':' — 팔자가 확실히 셈'))))+(d.demo?' · 데모':'');
+    sig.className='sig '+(v==null?'sig-flat':(v>=100?'sig-good':'sig-warn'));
+    tbl.innerHTML='<tr><th>시각(KST)</th><th>체결가</th><th>수량</th><th>체결강도</th></tr>'
+      +rows.slice(-10).reverse().map(r=>'<tr><td>'+esc(r.t)+'</td><td>'+usd(r.price)+'</td><td>'+r.vol.toLocaleString('ko-KR')+'</td><td>'+(r.vpow==null?'–':r.vpow.toFixed(1))+'</td></tr>').join('');
+  }catch(e){}
+  // pollLive와 같은 setTimeout 사슬 — node 렌더 하니스는 setTimeout만 스텁한다(setInterval을 쓰면
+  // 하니스 프로세스가 영원히 안 끝난다, 실측 2026-09-08).
+  setTimeout(loadCcnl,60000);
+}
+loadCcnl();
 
 // ── 감시선 알림 ────────────────────────────────────────────────
 let armed=WATCH.map(()=>true), lastWatchPrice=null;

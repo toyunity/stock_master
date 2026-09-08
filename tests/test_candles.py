@@ -527,3 +527,30 @@ def test_daily_candles_prefer_kis_and_fall_back_to_fdr(monkeypatch):
     cd._daily_cache.clear()
     monkeypatch.setattr(cd, "_kis_bars_sync", lambda code, period, want: (_ for _ in ()).throw(AssertionError("KIS 호출됨")))
     assert len(cd._daily_candles("NVDA")) == 120
+
+
+# ── 미국 분봉 HHDFS76950200(해외주식분봉) — 2026-09-08 실응답 픽스처 ──
+def test_parse_us_minutes_fixture_kst_epoch_ascending():
+    from backend.flow.kis import parse_us_minutes
+    bars = parse_us_minutes(_fx("us_minutes"))
+    assert [b["ts"] for b in bars] == sorted(b["ts"] for b in bars) and len(bars) == 6
+    last = bars[-1]
+    assert last["date"] == "2026-09-08" and last["t"] == "17:10:00" and last["close"] == 230.53
+    assert last["open"] == 230.55 and last["vol"] == 13026
+    # ts는 KST 벽시계를 UTC로 간주한 epoch — 차트가 UTC로 그려도 라벨이 KST(국내 toTs와 같은 관행)
+    import calendar
+    assert last["ts"] == calendar.timegm((2026, 9, 8, 17, 10, 0, 0, 0, 0))
+    assert parse_us_minutes({"rt_cd": "1"}) == []
+
+
+def test_get_candles_us_minutes_demo_has_epoch(monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    loop = asyncio.new_event_loop()
+    try:
+        d = loop.run_until_complete(get_candles("NVDA", "5m"))
+    finally:
+        loop.close()
+    assert d["tf"] == "5m" and len(d["candles"]) > 50
+    b = d["candles"][-1]
+    assert b["ts"] and b["close"] < 10000 and isinstance(b["close"], float)   # 달러 소수(원 정수 아님)
