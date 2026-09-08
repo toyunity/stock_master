@@ -10,8 +10,10 @@ import httpx
 # 2026-08-25: tf=1w 추가. 주봉 MACD 배지가 이 경로를 따로 부르는데 목록에 없으면
 # 스텁 fetch가 못 받아 배지가 빈 채로 캡처된다 — .sig:empty가 감춰서 화면상
 # 아무 흔적이 없고, verify가 이 패널을 통째로 못 보는 구멍이 된다(실측).
+# 2026-09-08: /api/stockinfo 추가. 종목 상세 부가 패널 8개가 이 경로로만 채워지는데
+# 목록에 없으면 캡처에서 전부 '데이터 대기'로 비어 가로 오버플로(막대 행 420px)를 못 잡았다(실측).
 _FETCH_PATHS = ("/api/candles/%s?tf=5m", "/api/candles/%s?tf=1w",
-                "/api/asking/%s", "/api/financials/%s")
+                "/api/asking/%s", "/api/financials/%s", "/api/stockinfo/%s")
 
 
 def _js_safe(s: str) -> str:

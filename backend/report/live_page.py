@@ -270,13 +270,14 @@ __ICONS__
     <span id="conn" class="badge b-off">연결 중…</span>
     <span id="mstate" class="badge b-off">상태 확인 중</span>
     <span id="wpill"></span>
-    <span id="otpill"></span>
     <span class="ago" id="hago"></span>
   </div>
 </div>
 
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
 <div class="note" id="note"></div>
+<!-- 시간외 알약은 .hstate(줄바꿈 없음)에 넣으면 390px에서 넘친다(2026-09-08 실측 419px) — 자체 줄 -->
+<div class="evrow" id="otrow" style="display:none"><span id="otpill" class="badge b-off"></span></div>
 <div class="evrow" id="ev-chips" style="display:none"></div>
 <div class="meta evnote" id="ev-note"></div>
 
@@ -630,7 +631,7 @@ function renderInfo(d){
     else{
       const mx=Math.max.apply(null,pb.levels.map(l=>l.pct))||1, cur=pb.price||0;
       bars.innerHTML=pb.levels.map(l=>{ const above=l.price>cur, at=cur&&Math.abs(l.price-cur)/cur<0.004;
-        return '<div class="szrow"><span class="szlbl">'+won(l.price)+(at?' ◀':'')+'</span><div class="szbar '+(above?'szsell':'szbuy')+'" style="width:'+Math.max(2,l.pct/mx*150)+'px"></div><span class="szval">'+l.pct.toFixed(1)+'%</span></div>'; }).join('');
+        return '<div class="szrow"><span class="szlbl">'+won(l.price)+(at?' ◀':'')+'</span><div class="szbar '+(above?'szsell':'szbuy')+'" style="width:'+Math.max(2,l.pct/mx*100)+'px"></div><span class="szval">'+l.pct.toFixed(1)+'%</span></div>'; }).join('');
       const t=pb.top, dv=cur?(t.price/cur-1)*100:null;
       note.textContent='가장 두꺼운 가격 '+won(t.price)+'(거래량의 '+t.pct.toFixed(1)+'%)'
         +(dv==null?'':' · 현재가 대비 '+pctS(dv)+' → '+(dv>0.3?'위에 매물벽(저항 후보)':(dv<-0.3?'아래에 받침(지지 후보)':'현재가 근처 — 여기서 손바뀜이 가장 많았음')))
@@ -640,11 +641,11 @@ function renderInfo(d){
   }catch(e){}
   // 4) 시간외 단일가 알약 — 체결이 있을 때만(대형주는 애프터마켓이 NXT라 0)
   try{
-    const pl=document.getElementById('otpill');
-    if(ot&&ot.vol>0){ pl.textContent='시간외 '+pctS(ot.rate,2)+' · '+num(ot.vol)+'주';
+    const pl=document.getElementById('otpill'), row=document.getElementById('otrow');
+    if(ot&&ot.vol>0){ pl.textContent='시간외 단일가 '+pctS(ot.rate,2)+' · '+num(ot.vol)+'주 · '+won(ot.price);
       pl.className='badge '+(ot.rate>0?'b-live':(ot.rate<0?'b-warn':'b-off'));
-      pl.title='시간외 단일가(16:00~18:00, 10분마다 체결) '+won(ot.price)+' · 예상 '+won(ot.expected); }
-    else{ pl.textContent=''; pl.className=''; }
+      pl.title='시간외 단일가(16:00~18:00, 10분마다 체결) · 예상 '+won(ot.expected); row.style.display=''; }
+    else{ pl.textContent=''; row.style.display='none'; }
   }catch(e){}
   // 5) 프로그램매매 30일(확정) — 위 당일 누적 차트의 짝
   try{
@@ -665,7 +666,7 @@ function renderInfo(d){
     else{ sp.innerHTML=''; nt.textContent=''; }
     const ta=d.tradeamt||[], tb=document.getElementById('ta-bars');
     const mx=Math.max.apply(null,ta.map(r=>Math.abs(r.net_rate)).concat([0.01]));
-    tb.innerHTML=ta.map(r=>'<div class="szrow"><span class="szlbl">'+esc(r.band)+'</span><div class="szbar '+(r.net_rate>=0?'szbuy':'szsell')+'" style="width:'+Math.max(2,Math.abs(r.net_rate)/mx*150)+'px"></div><span class="szval">순매수 '+pctS(r.net_rate,2)+' · '+num(r.buy_cnt+r.sell_cnt)+'건</span></div>').join('');
+    tb.innerHTML=ta.map(r=>'<div class="szrow"><span class="szlbl">'+esc(r.band)+'</span><div class="szbar '+(r.net_rate>=0?'szbuy':'szsell')+'" style="width:'+Math.max(2,Math.abs(r.net_rate)/mx*100)+'px"></div><span class="szval">'+pctS(r.net_rate,2)+' · '+num(r.buy_cnt+r.sell_cnt)+'건</span></div>').join('');
   }catch(e){}
   // 7) 시장 속 위치 — 마스터 지시(2026-09-08): 스캐너 탭 대신 "이 종목이 시장 순위 어디에 있나"
   try{
@@ -676,7 +677,7 @@ function renderInfo(d){
       ['52주 위치', W52==null?'–':(Math.round(W52)+'%'+(W52>=95?' · 신고가 근접(돌파냐 저항이냐)':(W52<=5?' · 신저가 근접':''))), W52==null?'flat':(W52>=95?'up':(W52<=5?'down':'flat'))],
       ['시간외 단일가', ot&&ot.vol>0?pctS(ot.rate,2)+' · '+num(ot.vol)+'주':'거래 없음 — 대형주 애프터마켓은 NXT(거래소별 거래량 패널)', ot&&ot.vol>0?(ot.rate>0?'up':(ot.rate<0?'down':'flat')):'flat']];
     t.innerHTML=rows.map(r=>'<tr><th>'+r[0]+'</th><td class="'+r[2]+'">'+r[1]+'</td></tr>').join('');
-    pl.textContent=rp.asof?'🕐 '+fmtD(rp.asof)+' 기준 · T+1':'🕐 데이터 대기';
+    pl.textContent=rp.asof?'🕐 '+mdS(rp.asof)+' 기준 · T+1':'🕐 데이터 대기';
   }catch(e){}
 }
 loadInfo(); setInterval(loadInfo, 300000);
