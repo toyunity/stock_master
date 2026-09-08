@@ -1,0 +1,101 @@
+{
+"output1": {
+"bstp_nmix_prpr": "6954.52",
+"bstp_nmix_prdy_vrss": "-40.87",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.58",
+"acml_vol": "331925",
+"acml_tr_pbmn": "25959318",
+"bstp_nmix_oprc": "7045.79",
+"bstp_nmix_hgpr": "7171.52",
+"bstp_nmix_lwpr": "6951.78",
+"prdy_vol": "240446",
+"ascn_issu_cnt": "231",
+"down_issu_cnt": "634",
+"stnr_issu_cnt": "45",
+"uplm_issu_cnt": "0",
+"lslm_issu_cnt": "0",
+"prdy_tr_pbmn": "21762301",
+"dryy_bstp_nmix_hgpr_date": "20260619",
+"dryy_bstp_nmix_hgpr": "9385.59",
+"dryy_bstp_nmix_lwpr": "4216.68",
+"dryy_bstp_nmix_lwpr_date": "20260102"
+},
+"output2": [
+{
+"bstp_cls_code": "0001",
+"hts_kor_isnm": "종합",
+"bstp_nmix_prpr": "6954.52",
+"bstp_nmix_prdy_vrss": "-40.87",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.58",
+"acml_vol": "331925",
+"acml_tr_pbmn": "25959318",
+"acml_vol_rlim": "100.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "0002",
+"hts_kor_isnm": "대형주",
+"bstp_nmix_prpr": "7612.03",
+"bstp_nmix_prdy_vrss": "-45.95",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.60",
+"acml_vol": "84532",
+"acml_tr_pbmn": "21300764",
+"acml_vol_rlim": "25.47",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "0003",
+"hts_kor_isnm": "중형주",
+"bstp_nmix_prpr": "4100.32",
+"bstp_nmix_prdy_vrss": "-16.08",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.39",
+"acml_vol": "84298",
+"acml_tr_pbmn": "2743878",
+"acml_vol_rlim": "25.40",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "0004",
+"hts_kor_isnm": "소형주",
+"bstp_nmix_prpr": "2398.43",
+"bstp_nmix_prdy_vrss": "-11.22",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.47",
+"acml_vol": "154143",
+"acml_tr_pbmn": "1106204",
+"acml_vol_rlim": "46.44",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "0005",
+"hts_kor_isnm": "음식료·담배",
+"bstp_nmix_prpr": "4777.94",
+"bstp_nmix_prdy_vrss": "-44.27",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.92",
+"acml_vol": "2524",
+"acml_tr_pbmn": "213214",
+"acml_vol_rlim": "0.76",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "0006",
+"hts_kor_isnm": "섬유·의류",
+"bstp_nmix_prpr": "219.60",
+"bstp_nmix_prdy_vrss": "-0.03",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.01",
+"acml_vol": "2505",
+"acml_tr_pbmn": "11718",
+"acml_vol_rlim": "0.75",
+"acml_tr_pbmn_rlim": ""
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

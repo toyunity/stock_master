@@ -1,0 +1,61 @@
+{
+"output1": [
+{
+"record_date": "20261006",
+"sht_cd": "043610",
+"isin_name": "케이티지니뮤직",
+"inter_bf_face_amt": "000000500",
+"inter_af_face_amt": "000002500",
+"td_stop_dt": "2026/10/02 ~",
+"list_dt": ""
+},
+{
+"record_date": "20261002",
+"sht_cd": "058820",
+"isin_name": "CMG제약",
+"inter_bf_face_amt": "000000500",
+"inter_af_face_amt": "000005000",
+"td_stop_dt": "2026/10/01 ~",
+"list_dt": ""
+},
+{
+"record_date": "20260928",
+"sht_cd": "057540",
+"isin_name": "옴니시스템",
+"inter_bf_face_amt": "000000500",
+"inter_af_face_amt": "000002500",
+"td_stop_dt": "2026/09/23 ~",
+"list_dt": ""
+},
+{
+"record_date": "20260928",
+"sht_cd": "093240",
+"isin_name": "형지엘리트",
+"inter_bf_face_amt": "000000500",
+"inter_af_face_amt": "000002500",
+"td_stop_dt": "2026/09/23 ~",
+"list_dt": ""
+},
+{
+"record_date": "20260922",
+"sht_cd": "033340",
+"isin_name": "좋은사람들",
+"inter_bf_face_amt": "000000100",
+"inter_af_face_amt": "000000500",
+"td_stop_dt": "2026/09/21 ~",
+"list_dt": ""
+},
+{
+"record_date": "20260918",
+"sht_cd": "014160",
+"isin_name": "대영포장",
+"inter_bf_face_amt": "000000500",
+"inter_af_face_amt": "000002500",
+"td_stop_dt": "2026/09/17 ~",
+"list_dt": ""
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

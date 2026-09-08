@@ -1,0 +1,101 @@
+{
+"output1": {
+"bstp_nmix_prpr": "811.88",
+"bstp_nmix_prdy_vrss": "-10.31",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-1.25",
+"acml_vol": "762160",
+"acml_tr_pbmn": "8001905",
+"bstp_nmix_oprc": "825.03",
+"bstp_nmix_hgpr": "830.21",
+"bstp_nmix_lwpr": "811.88",
+"prdy_vol": "592709",
+"ascn_issu_cnt": "506",
+"down_issu_cnt": "1141",
+"stnr_issu_cnt": "90",
+"uplm_issu_cnt": "6",
+"lslm_issu_cnt": "0",
+"prdy_tr_pbmn": "6325477",
+"dryy_bstp_nmix_hgpr_date": "20260427",
+"dryy_bstp_nmix_hgpr": "1229.42",
+"dryy_bstp_nmix_lwpr": "630.99",
+"dryy_bstp_nmix_lwpr_date": "20260729"
+},
+"output2": [
+{
+"bstp_cls_code": "6018",
+"hts_kor_isnm": "엔선물",
+"bstp_nmix_prpr": "444.18",
+"bstp_nmix_prdy_vrss": "6.50",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "1.49",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "2787",
+"hts_kor_isnm": "F-K200 헬스케어  인버스-2X",
+"bstp_nmix_prpr": "120.78",
+"bstp_nmix_prdy_vrss": "0.98",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.82",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "2779",
+"hts_kor_isnm": "F-K200 철강/소재  인버스",
+"bstp_nmix_prpr": "411.24",
+"bstp_nmix_prdy_vrss": "1.49",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.36",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "6020",
+"hts_kor_isnm": "엔선물 인버스",
+"bstp_nmix_prpr": "935.13",
+"bstp_nmix_prdy_vrss": "-14.02",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-1.48",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "6025",
+"hts_kor_isnm": "유로선물 인버스",
+"bstp_nmix_prpr": "882.63",
+"bstp_nmix_prdy_vrss": "-1.28",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.14",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+},
+{
+"bstp_cls_code": "6027",
+"hts_kor_isnm": "유로선물 인버스-3X",
+"bstp_nmix_prpr": "391.68",
+"bstp_nmix_prdy_vrss": "-1.81",
+"prdy_vrss_sign": "5",
+"bstp_nmix_prdy_ctrt": "-0.46",
+"acml_vol": "0",
+"acml_tr_pbmn": "0",
+"acml_vol_rlim": "0.00",
+"acml_tr_pbmn_rlim": ""
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

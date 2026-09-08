@@ -1,0 +1,94 @@
+{
+"output1": {
+"bstp_nmix_prpr": "0.00",
+"bstp_nmix_prdy_vrss": "0.00",
+"prdy_ctrt": "0.00",
+"acml_vol": "0",
+"ascn_issu_cnt": "0",
+"down_issu_cnt": "0",
+"stnr_issu_cnt": "0"
+},
+"output2": [
+{
+"bstp_cls_code": "0001",
+"hts_kor_isnm": "종합",
+"bstp_nmix_prpr": "7061.01",
+"bstp_nmix_prdy_vrss": "65.62",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.94",
+"acml_vol": "2098",
+"nmix_sdpr": "6995.39",
+"ascn_issu_cnt": "492",
+"stnr_issu_cnt": "172",
+"down_issu_cnt": "154"
+},
+{
+"bstp_cls_code": "2001",
+"hts_kor_isnm": "KOSPI200",
+"bstp_nmix_prpr": "1115.75",
+"bstp_nmix_prdy_vrss": "10.56",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.96",
+"acml_vol": "925",
+"nmix_sdpr": "1105.19",
+"ascn_issu_cnt": "189",
+"stnr_issu_cnt": "7",
+"down_issu_cnt": "5"
+},
+{
+"bstp_cls_code": "4001",
+"hts_kor_isnm": "KRX100",
+"bstp_nmix_prpr": "17652.66",
+"bstp_nmix_prdy_vrss": "165.85",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.95",
+"acml_vol": "609",
+"nmix_sdpr": "17486.81",
+"ascn_issu_cnt": "97",
+"stnr_issu_cnt": "3",
+"down_issu_cnt": "1"
+},
+{
+"bstp_cls_code": "4002",
+"hts_kor_isnm": "KRX 자동차",
+"bstp_nmix_prpr": "2834.76",
+"bstp_nmix_prdy_vrss": "8.48",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.30",
+"acml_vol": "63",
+"nmix_sdpr": "2826.28",
+"ascn_issu_cnt": "0",
+"stnr_issu_cnt": "0",
+"down_issu_cnt": "0"
+},
+{
+"bstp_cls_code": "4003",
+"hts_kor_isnm": "KRX 반도체",
+"bstp_nmix_prpr": "13916.50",
+"bstp_nmix_prdy_vrss": "111.56",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.81",
+"acml_vol": "337",
+"nmix_sdpr": "13804.94",
+"ascn_issu_cnt": "0",
+"stnr_issu_cnt": "0",
+"down_issu_cnt": "0"
+},
+{
+"bstp_cls_code": "4004",
+"hts_kor_isnm": "KRX 헬스케어",
+"bstp_nmix_prpr": "3792.01",
+"bstp_nmix_prdy_vrss": "15.76",
+"prdy_vrss_sign": "2",
+"bstp_nmix_prdy_ctrt": "0.42",
+"acml_vol": "62",
+"nmix_sdpr": "3776.25",
+"ascn_issu_cnt": "0",
+"stnr_issu_cnt": "0",
+"down_issu_cnt": "0"
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

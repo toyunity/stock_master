@@ -1,0 +1,73 @@
+{
+"output1": [
+{
+"record_date": "20260924",
+"sht_cd": "192230",
+"isin_name": "아리바이오",
+"stk_kind": "보통",
+"opp_opi_rcpt_term": "020261028",
+"buy_req_rcpt_term": "020261118",
+"buy_req_price": "000000020891",
+"buy_amt_pay_dt": "2026/11/30",
+"get_meet_dt": "2026/10/30"
+},
+{
+"record_date": "20260924",
+"sht_cd": "19223K",
+"isin_name": "아리바이오1우",
+"stk_kind": "우선",
+"opp_opi_rcpt_term": "020261028",
+"buy_req_rcpt_term": "020261118",
+"buy_req_price": "000000000000",
+"buy_amt_pay_dt": "2026/11/30",
+"get_meet_dt": "2026/10/30"
+},
+{
+"record_date": "20260924",
+"sht_cd": "19223L",
+"isin_name": "아리바이오2우",
+"stk_kind": "2우선",
+"opp_opi_rcpt_term": "020261028",
+"buy_req_rcpt_term": "020261118",
+"buy_req_price": "000000000000",
+"buy_amt_pay_dt": "2026/11/30",
+"get_meet_dt": "2026/10/30"
+},
+{
+"record_date": "20260924",
+"sht_cd": "19223M",
+"isin_name": "아리바이오3우",
+"stk_kind": "3우선",
+"opp_opi_rcpt_term": "020261028",
+"buy_req_rcpt_term": "020261118",
+"buy_req_price": "000000000000",
+"buy_amt_pay_dt": "2026/11/30",
+"get_meet_dt": "2026/10/30"
+},
+{
+"record_date": "20260924",
+"sht_cd": "290690",
+"isin_name": "소룩스",
+"stk_kind": "보통",
+"opp_opi_rcpt_term": "020261028",
+"buy_req_rcpt_term": "020261118",
+"buy_req_price": "000000010719",
+"buy_amt_pay_dt": "2026/12/18",
+"get_meet_dt": "2026/10/30"
+},
+{
+"record_date": "20260916",
+"sht_cd": "064960",
+"isin_name": "에스앤티모티브",
+"stk_kind": "보통",
+"opp_opi_rcpt_term": "020260929",
+"buy_req_rcpt_term": "",
+"buy_req_price": "000000000000",
+"buy_amt_pay_dt": "",
+"get_meet_dt": ""
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

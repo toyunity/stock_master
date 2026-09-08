@@ -1,0 +1,91 @@
+{
+"output": [
+{
+"stck_bsop_date": "20260907",
+"invt_opnn": "BUY",
+"invt_opnn_cls_code": "2",
+"rgbf_invt_opnn": "BUY",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "DB증권",
+"hts_goal_prc": "2300000",
+"stck_prdy_clpr": "1647000",
+"stck_nday_esdg": "-653000",
+"nday_dprt": "-28.39",
+"stft_esdg": "-507000",
+"dprt": "-22.04"
+},
+{
+"stck_bsop_date": "20260907",
+"invt_opnn": "매수",
+"invt_opnn_cls_code": "2",
+"rgbf_invt_opnn": "매수",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "미래에셋",
+"hts_goal_prc": "3100000",
+"stck_prdy_clpr": "1647000",
+"stck_nday_esdg": "-1453000",
+"nday_dprt": "-46.87",
+"stft_esdg": "-1307000",
+"dprt": "-42.16"
+},
+{
+"stck_bsop_date": "20260831",
+"invt_opnn": "Buy",
+"invt_opnn_cls_code": "3",
+"rgbf_invt_opnn": "Buy",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "LS증권",
+"hts_goal_prc": "2400000",
+"stck_prdy_clpr": "1653000",
+"stck_nday_esdg": "-747000",
+"nday_dprt": "-31.12",
+"stft_esdg": "-607000",
+"dprt": "-25.29"
+},
+{
+"stck_bsop_date": "20260810",
+"invt_opnn": "BUY",
+"invt_opnn_cls_code": "2",
+"rgbf_invt_opnn": "BUY",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "키움",
+"hts_goal_prc": "2100000",
+"stck_prdy_clpr": "1422000",
+"stck_nday_esdg": "-678000",
+"nday_dprt": "-32.29",
+"stft_esdg": "-307000",
+"dprt": "-14.62"
+},
+{
+"stck_bsop_date": "20260730",
+"invt_opnn": "BUY",
+"invt_opnn_cls_code": "2",
+"rgbf_invt_opnn": "BUY",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "키움",
+"hts_goal_prc": "2200000",
+"stck_prdy_clpr": "1401000",
+"stck_nday_esdg": "-799000",
+"nday_dprt": "-36.32",
+"stft_esdg": "-407000",
+"dprt": "-18.50"
+},
+{
+"stck_bsop_date": "20260730",
+"invt_opnn": "BUY",
+"invt_opnn_cls_code": "2",
+"rgbf_invt_opnn": "BUY",
+"rgbf_invt_opnn_cls_code": "3",
+"mbcr_name": "DB증권",
+"hts_goal_prc": "2000000",
+"stck_prdy_clpr": "1401000",
+"stck_nday_esdg": "-599000",
+"nday_dprt": "-29.95",
+"stft_esdg": "-207000",
+"dprt": "-10.35"
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

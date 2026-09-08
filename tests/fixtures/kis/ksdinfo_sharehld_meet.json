@@ -1,0 +1,61 @@
+{
+"output1": [
+{
+"record_date": "20261110",
+"sht_cd": "272450",
+"isin_name": "(주)진에어",
+"gen_meet_dt": "2026/12/07",
+"gen_meet_type": "임시총회",
+"agenda": "합병 계약 체결 승인의 건(정관 변경 포함)",
+"vote_tot_qty": "    52200000"
+},
+{
+"record_date": "20261110",
+"sht_cd": "298690",
+"isin_name": "에어부산(주)",
+"gen_meet_dt": "2026/12/07",
+"gen_meet_type": "임시총회",
+"agenda": "합병계약 체결 승인의 건",
+"vote_tot_qty": "           0"
+},
+{
+"record_date": "20260928",
+"sht_cd": "288330",
+"isin_name": "파라택시스코리아(주)",
+"gen_meet_dt": "2026/11/27",
+"gen_meet_type": "임시총회",
+"agenda": "합병 승인의 건",
+"vote_tot_qty": "           0"
+},
+{
+"record_date": "20260928",
+"sht_cd": "290560",
+"isin_name": "파라택시스이더리움(주)",
+"gen_meet_dt": "2026/11/27",
+"gen_meet_type": "임시총회",
+"agenda": "합병 승인의 건",
+"vote_tot_qty": "           0"
+},
+{
+"record_date": "20260924",
+"sht_cd": "290690",
+"isin_name": "(주)아리바이오홀딩스",
+"gen_meet_dt": "2026/10/30",
+"gen_meet_type": "임시총회",
+"agenda": "사외이사 선임",
+"vote_tot_qty": "    52599610"
+},
+{
+"record_date": "20260924",
+"sht_cd": "290690",
+"isin_name": "(주)아리바이오홀딩스",
+"gen_meet_dt": "2026/10/30",
+"gen_meet_type": "임시총회",
+"agenda": "정관변경",
+"vote_tot_qty": "    52599610"
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

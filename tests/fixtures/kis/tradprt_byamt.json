@@ -1,0 +1,85 @@
+{
+"output": [
+{
+"prpr_name": "3백 이하",
+"smtn_avrg_prpr": "1844298",
+"acml_vol": "118108",
+"whol_ntby_qty_rate": "-0.19",
+"ntby_cntg_csnu": "-7808",
+"seln_cnqn_smtn": "62958",
+"whol_seln_vol_rate": "1.53",
+"seln_cntg_csnu": "62958",
+"shnu_cnqn_smtn": "55150",
+"whol_shun_vol_rate": "1.34",
+"shnu_cntg_csnu": "55150"
+},
+{
+"prpr_name": "5백 이하",
+"smtn_avrg_prpr": "1842563",
+"acml_vol": "62582",
+"whol_ntby_qty_rate": "-0.17",
+"ntby_cntg_csnu": "-3595",
+"seln_cnqn_smtn": "34886",
+"whol_seln_vol_rate": "0.85",
+"seln_cntg_csnu": "17443",
+"shnu_cnqn_smtn": "27696",
+"whol_shun_vol_rate": "0.67",
+"shnu_cntg_csnu": "13848"
+},
+{
+"prpr_name": "1천 이하",
+"smtn_avrg_prpr": "1842678",
+"acml_vol": "171402",
+"whol_ntby_qty_rate": "-0.22",
+"ntby_cntg_csnu": "-1243",
+"seln_cnqn_smtn": "90238",
+"whol_seln_vol_rate": "2.19",
+"seln_cntg_csnu": "22690",
+"shnu_cnqn_smtn": "81164",
+"whol_shun_vol_rate": "1.97",
+"shnu_cntg_csnu": "21447"
+},
+{
+"prpr_name": "3천 이하",
+"smtn_avrg_prpr": "1842512",
+"acml_vol": "382854",
+"whol_ntby_qty_rate": "-0.39",
+"ntby_cntg_csnu": "-1452",
+"seln_cnqn_smtn": "199361",
+"whol_seln_vol_rate": "4.84",
+"seln_cntg_csnu": "20826",
+"shnu_cnqn_smtn": "183493",
+"whol_shun_vol_rate": "4.45",
+"shnu_cntg_csnu": "19374"
+},
+{
+"prpr_name": "5천 이하",
+"smtn_avrg_prpr": "1842824",
+"acml_vol": "224629",
+"whol_ntby_qty_rate": "-0.42",
+"ntby_cntg_csnu": "-877",
+"seln_cnqn_smtn": "121023",
+"whol_seln_vol_rate": "2.94",
+"seln_cntg_csnu": "5835",
+"shnu_cnqn_smtn": "103606",
+"whol_shun_vol_rate": "2.52",
+"shnu_cntg_csnu": "4958"
+},
+{
+"prpr_name": "1억 이하",
+"smtn_avrg_prpr": "1842219",
+"acml_vol": "521371",
+"whol_ntby_qty_rate": "-1.37",
+"ntby_cntg_csnu": "-1456",
+"seln_cnqn_smtn": "288898",
+"whol_seln_vol_rate": "7.01",
+"seln_cntg_csnu": "7240",
+"shnu_cnqn_smtn": "232473",
+"whol_shun_vol_rate": "5.64",
+"shnu_cntg_csnu": "5784"
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}

@@ -1,0 +1,56 @@
+{
+"output1": {
+"rprs_mrkt_kor_name": "KOSPI200",
+"stck_shrn_iscd": "000660",
+"hts_kor_isnm": "SK하이닉스",
+"stck_prpr": "1793000",
+"prdy_vrss_sign": "2",
+"prdy_vrss": "10000",
+"prdy_ctrt": "0.56",
+"acml_vol": "4119139",
+"prdy_vol": "3480094",
+"wghn_avrg_stck_prc": "1841491.05",
+"lstn_stcn": "730492365"
+},
+"output2": [
+{
+"data_rank": "1",
+"stck_prpr": "1793000",
+"cntg_vol": "239268",
+"acml_vol_rlim": "5.81"
+},
+{
+"data_rank": "2",
+"stck_prpr": "1842000",
+"cntg_vol": "106342",
+"acml_vol_rlim": "2.58"
+},
+{
+"data_rank": "3",
+"stck_prpr": "1859000",
+"cntg_vol": "104586",
+"acml_vol_rlim": "2.54"
+},
+{
+"data_rank": "4",
+"stck_prpr": "1850000",
+"cntg_vol": "98757",
+"acml_vol_rlim": "2.40"
+},
+{
+"data_rank": "5",
+"stck_prpr": "1858000",
+"cntg_vol": "97751",
+"acml_vol_rlim": "2.37"
+},
+{
+"data_rank": "6",
+"stck_prpr": "1843000",
+"cntg_vol": "95913",
+"acml_vol_rlim": "2.33"
+}
+],
+"rt_cd": "0",
+"msg_cd": "MCA00000",
+"msg1": "정상처리 되었습니다."
+}
