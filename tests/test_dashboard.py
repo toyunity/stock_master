@@ -491,3 +491,10 @@ console.log(JSON.stringify({before, after}));
     out = json.loads(r.stdout.strip().splitlines()[-1])
     assert out["before"] == "", out
     assert out["after"] not in ("", "undefined"), out
+
+
+def test_render_dashboard_has_market_flow_section():
+    # 시장 수급·자금 섹션(2026-09-08): 마크업 + 렌더 함수 + 60초 폴링이 페이지에 들어 있다
+    html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자",
+                                          "candles": []}], "2026-06-22")
+    assert 'id="flowsec"' in html and "function renderFlow" in html and "/api/market-flow" in html

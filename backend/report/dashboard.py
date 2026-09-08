@@ -140,6 +140,15 @@ button.wadd{border:1px solid var(--border);background:var(--surface-2);
 /* 지수 칩 스트립(#market) */
 .market{display:flex;gap:8px;margin:12px 0 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .market::-webkit-scrollbar{height:0}
+/* 시장 수급·자금 섹션(2026-09-08) — 줄 5개: 투자자·자금·시장 폭·업종·선물 — 레이아웃만, 색은 토큰 */
+.fl{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border-2);font-size:12px;line-height:1.5}
+.fl:last-child{border-bottom:0}
+.fk{flex:0 0 56px;color:var(--text-3);font-weight:700;font-size:11px;padding-top:2px}
+.fv{flex:1;min-width:0;color:var(--text-2);overflow-wrap:anywhere}
+.fv b{font-family:var(--font-num);font-weight:700;color:var(--text)}
+.fv b.up{color:var(--up)} .fv b.down{color:var(--down)}
+.fchip{display:inline-block;font-size:11px;font-family:var(--font-num);padding:1px 6px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border-2);margin:1px 3px 1px 0;color:var(--text-2)}
+.fchip.up{color:var(--up)} .fchip.down{color:var(--down)}
 .mchip{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
   padding:8px 13px;box-shadow:var(--shadow-sm)}
 .mchip .ml{font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:.04em}
@@ -252,6 +261,14 @@ __REFRESH__
   <div class="sec-body">
     <div id="gsec-body"></div>
     <div class="meta" id="gsec-foot"></div>
+  </div>
+</details>
+<details class="sec" id="flowsec" style="display:none">
+  <summary><svg class="hic secic"><use href="#i-bars"/></svg> 시장 수급·자금
+    <span class="gdig" id="flow-dig"></span><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div id="flow-body"></div>
+    <div class="meta" id="flow-foot"></div>
   </div>
 </details>
 <details class="sec">
@@ -467,6 +484,62 @@ async function loadMarket(){
   }catch(e){}
 }
 loadMarket(); setInterval(loadMarket,30000);
+// ── 시장 수급·자금 — /api/market-flow 60초(2026-09-08). 시장 전체 투자자(일별·당일)·
+// 예탁금/신용/미수·시장 폭·업종·예상 시가(동시호가 때만)·선물 베이시스. 원천이 죽으면 그 줄만 빠진다.
+let FLOW=null;
+function eokS(v){ if(v==null)return '–'; const a=Math.abs(v), s=v>0?'+':(v<0?'-':'');
+  return a>=10000?s+(a/10000).toFixed(1)+'조':s+Math.round(a).toLocaleString('ko-KR')+'억'; }
+function joS(v){ return v==null?'–':(v/10000).toFixed(1)+'조'; }
+function mdS2(iso){ return String(iso||'').slice(5).replace('-','/'); }
+function renderFlow(d){
+  const sec=document.getElementById('flowsec'); if(!sec)return;
+  d=d||{};
+  const body=document.getElementById('flow-body'), dig=document.getElementById('flow-dig'), foot=document.getElementById('flow-foot');
+  const rows=[], digs=[], cls=v=>v>0?'up':(v<0?'down':'flat');
+  const inv=d.investors;
+  if(inv&&(inv.today||(inv.rows||[]).length)){
+    const t=inv.today||inv.rows[inv.rows.length-1], sf=inv.streak_frgn||0, so=inv.streak_orgn||0;
+    rows.push('<div class="fl"><span class="fk">투자자'+(inv.provisional?'<br><span class="mbadge">잠정</span>':'')+'</span><span class="fv">'
+      +'외국인 <b class="'+cls(t.frgn)+'">'+eokS(t.frgn)+'</b>'+(Math.abs(sf)>=2?' ('+Math.abs(sf)+'일 연속 '+(sf>0?'순매수':'순매도')+')':'')
+      +' · 개인 <b class="'+cls(t.prsn)+'">'+eokS(t.prsn)+'</b> · 기관 <b class="'+cls(t.orgn)+'">'+eokS(t.orgn)+'</b>'+(Math.abs(so)>=2?' ('+Math.abs(so)+'일 연속)':'')
+      +' · 코스피 '+mdS2(inv.asof)+(inv.provisional?' 장중 잠정':' 확정')+'</span></div>');
+    digs.push('외국인 '+eokS(t.frgn));
+  }
+  const fu=d.funds;
+  if(fu&&fu.deposit){
+    const cp=fu.credit_pos20;
+    rows.push('<div class="fl"><span class="fk">자금</span><span class="fv">예탁금 <b>'+joS(fu.deposit)+'</b>'
+      +(fu.deposit_chg5_pct!=null?' (5일 '+(fu.deposit_chg5_pct>0?'+':'')+fu.deposit_chg5_pct.toFixed(1)+'%)':'')
+      +' · 신용융자 <b>'+joS(fu.credit)+'</b>'+(cp!=null?' (20일 중 '+(cp>=80?'상단 — 빚투 많음':(cp<=20?'하단':'중간'))+')':'')
+      +' · 미수 '+joS(fu.uncl)+' · '+mdS2(fu.asof)+' 집계</span></div>');
+    digs.push('예탁금 '+joS(fu.deposit));
+  }
+  const br=d.breadth;
+  if(br&&br.kospi){
+    const k=br.kospi, q=br.kosdaq||{};
+    const verdict=k.up>k.down*1.5?'상승 우세':(k.down>k.up*1.5?'하락 우세 — 지수가 버텨도 대부분 종목은 빠지는 날':'혼조');
+    rows.push('<div class="fl"><span class="fk">시장 폭</span><span class="fv">코스피 상승 <b class="up">'+k.up+'</b> / 하락 <b class="down">'+k.down+'</b>'
+      +(q.up!=null?' · 코스닥 '+q.up+' / '+q.down:'')+' → '+verdict+'</span></div>');
+    digs.push('상승 '+k.up+'/하락 '+k.down);
+  }
+  const sc=d.sectors;
+  if(sc&&(sc.up||[]).length){
+    const chip=s=>'<span class="fchip '+cls(s.rate)+'">'+s.name+' '+(s.rate>0?'+':'')+s.rate.toFixed(1)+'%</span>';
+    rows.push('<div class="fl"><span class="fk">업종</span><span class="fv">'+sc.up.map(chip).join('')+' … '+sc.down.map(chip).join('')+'</span></div>');
+  }
+  const ex=d.expected, bs=d.basis;
+  if(ex||bs){
+    rows.push('<div class="fl"><span class="fk">선물·예상</span><span class="fv">'
+      +(ex?'코스피 예상 시가 <b class="'+cls(ex.rate)+'">'+(ex.rate>0?'+':'')+ex.rate.toFixed(2)+'%</b>'+(bs?' · ':''):'')
+      +(bs?'베이시스 <b class="'+cls(bs.basis)+'">'+(bs.basis>0?'+':'')+bs.basis.toFixed(2)+'</b> (선물 '+bs.fut.toLocaleString()+' − 현물 '+bs.spot.toLocaleString()+') — '
+        +(bs.basis>=0?'콘탱고: 선물이 현물보다 비쌈(낙관 쪽)':'백워데이션: 선물이 현물보다 쌈(비관 쪽)'):'')+'</span></div>');
+  }
+  if(!rows.length){ sec.style.display='none'; return; }
+  body.innerHTML=rows.join(''); dig.textContent=digs.join(' · '); sec.style.display='';
+  foot.textContent='내 종목이 빠질 때 외국인이 시장 전체를 팔고 있으면 종목 탓이 아니라 시장 탓 · 투자자·예탁금·신용은 KIS 일별 집계(당일 행은 장중 잠정) · 시장 폭·업종 60초'+(d.demo?' · 데모':'');
+}
+async function loadFlow(){ try{ const r=await fetch('/api/market-flow'); if(!r.ok)return; FLOW=await r.json(); renderFlow(FLOW); }catch(e){} }
+loadFlow(); setInterval(loadFlow,60000);
 // ── 글로벌 지표(미국채·원자재·해외지수) — /api/worldidx 5분 폴링. ──
 // 여긴 라이브가 아니다: 재무부는 직전 영업일 확정치, KIS 해외지수는 지연,
 // FDR(금·WTI)은 10~12분 지연된 '진행 중 세션의 현재가'인데 날짜 라벨만 어제다

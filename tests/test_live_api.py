@@ -129,3 +129,13 @@ def test_stockinfo_api_demo_and_validation(monkeypatch):
         assert k in d
     assert d["demo"] is True and len(d["pbar"]["levels"]) == 8
     assert client.get("/api/stockinfo/12ab").status_code == 404
+
+
+def test_market_flow_api_demo(monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    r = client.get("/api/market-flow")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["demo"] is True and d["investors"]["today"]["frgn"] is not None
+    assert d["breadth"]["kospi"]["up"] == 231 and d["basis"]["basis"] == 1.12

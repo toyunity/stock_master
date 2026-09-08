@@ -614,10 +614,10 @@ function renderInfo(d){
     if(!op||!op.n){ sec.style.display='none'; }
     else{
       const g=op.gap_pct;
-      document.getElementById('op-digest').textContent='평균 '+won(op.avg_target)+(g==null?'':' · 현재가 대비 '+pctS(g));
+      document.getElementById('op-digest').textContent='평균 '+won(op.avg_target)+(g==null?'':' · '+pctS(g));   // 접힌 줄은 좁다 — 짧게
       let h='<div class="grid3"><div><div class="lbl">평균 목표가</div><div class="val">'+won(op.avg_target)+'</div></div>'
         +'<div><div class="lbl">현재가 대비</div><div class="val '+(g>0?'up':(g<0?'down':'flat'))+'">'+pctS(g)+'</div></div>'
-        +'<div><div class="lbl">의견 '+op.n+'개사</div><div class="val">매수 '+op.buy+' · 중립 '+op.hold+' · 매도 '+op.sell+'</div></div></div>';
+        +'<div><div class="lbl">의견 '+op.n+'개사</div><div class="val">매수'+op.buy+'·중립'+op.hold+'·매도'+op.sell+'</div></div></div>';
       h+='<div class="meta">최고 '+won(op.max_target)+' · 최저 '+won(op.min_target)+' · '+esc(op.latest||'')+' 기준 · 증권사별 최신 1건씩</div>';
       if((op.changes||[]).length) h+='<div class="meta"><b>최근 의견 변경</b> '+op.changes.map(c=>esc(c.broker)+' '+esc(c.prev)+'→'+esc(c.opinion)+'('+won(c.target)+', '+mdS(c.date)+')').join(' · ')+'</div>';
       h+='<div class="meta">목표가는 예언이 아니라 증권사의 희망입니다. 숫자보다 <b>방향이 바뀌었나</b>(상향↔하향)가 신호예요. 현재가가 평균 목표가보다 한참 아래면 "싸다"가 아니라 "증권사들이 아직 안 내렸다"일 수도 있습니다.</div>';

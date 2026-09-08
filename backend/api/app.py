@@ -428,7 +428,19 @@ def create_app(settings=None) -> FastAPI:
         from backend.flow import stockinfo
         if not _CODE_RE.match(code):
             return Response(status_code=404)
-        return JSONResponse(await stockinfo.get_stockinfo(code, marketdata._client()))
+        # SM_FLOW_MODE=demo면 키가 있어도 데모 — 수동 데모서버가 .env 키로 실 KIS를
+        # 15콜 때린 실측(2026-09-08). marketdata._client()엔 이 게이트가 없다.
+        client = None if settings.flow_mode == "demo" else marketdata._client()
+        return JSONResponse(await stockinfo.get_stockinfo(code, client))
+
+    @app.get("/api/market-flow")
+    async def market_flow_api():
+        """홈 '시장 수급·자금' — 시장 전체 투자자(일별·당일)·예탁금/신용/미수·시장 폭·업종·
+        예상 시가(08:30~09:00)·선물 베이시스. 60초 폴링, 원천별 격리. 키 없음/데모면 합성."""
+        from backend.api import marketdata
+        from backend.flow import marketflow
+        client = None if settings.flow_mode == "demo" else marketdata._client()
+        return JSONResponse(await marketflow.get_market_flow(client))
 
     @app.get("/api/outlook")
     async def outlook_api(request: Request):
