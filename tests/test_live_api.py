@@ -116,3 +116,16 @@ def test_watch_post_invalid_400(monkeypatch, tmp_path):
 def test_watch_bad_code_404():
     assert client.get("/api/watch/12ab").status_code == 404
     assert client.post("/api/watch/12ab", json={"lines": []}).status_code == 404
+
+
+def test_stockinfo_api_demo_and_validation(monkeypatch):
+    # 키 없음 → 데모 합성(패널이 비지 않게) · 6자리 아니면 404
+    from backend.config import settings
+    monkeypatch.setattr(settings, "kis_app_key", None)
+    r = client.get("/api/stockinfo/000660")
+    assert r.status_code == 200
+    d = r.json()
+    for k in ("events", "opinion", "pbar", "overtime", "pgm_daily", "tradevol", "tradeamt", "rankpos"):
+        assert k in d
+    assert d["demo"] is True and len(d["pbar"]["levels"]) == 8
+    assert client.get("/api/stockinfo/12ab").status_code == 404

@@ -419,6 +419,17 @@ def create_app(settings=None) -> FastAPI:
             return Response(status_code=404)
         return JSONResponse(await marketdata.get_stock_detail(code))
 
+    @app.get("/api/stockinfo/{code}")
+    async def stockinfo_api(code: str):
+        """종목 상세 부가 데이터 8묶음(일정·목표가·매물대·시간외·프로그램 일별·체결량 일별·
+        체결금액 비중·시장 순위 위치) — /live가 5분마다 fetch. SSE 스냅샷과 별개 통로(설계
+        2026-09-08: 엔진을 안 건드린다). 키 없음이면 결정적 데모. 6자리 코드만."""
+        from backend.api import marketdata
+        from backend.flow import stockinfo
+        if not _CODE_RE.match(code):
+            return Response(status_code=404)
+        return JSONResponse(await stockinfo.get_stockinfo(code, marketdata._client()))
+
     @app.get("/api/outlook")
     async def outlook_api(request: Request):
         """관심종목 내일 예상(경량 배지) — 대시보드가 fetch. code→{direction,reason}."""

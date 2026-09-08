@@ -63,6 +63,8 @@ global.fetch = async () => ({ok:false, json:async()=>({})});
 global.setInterval = () => {};
 eval(code);
 render(snap);
+// 종목 상세 부가 패널(/api/stockinfo, 2026-09-08) — argv[5]에 INFO 픽스처가 오면 renderInfo까지 실행
+if (process.argv[5] && typeof renderInfo === 'function') renderInfo(JSON.parse(fs.readFileSync(process.argv[5], 'utf8')));
 console.log('RENDER OK');
 for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qty','sb-hist','sb-sig',
                   'adr-usd','ss-hist','cr-hist','sz-bars','xv-ses','mb-tbl',
@@ -70,12 +72,16 @@ for (const id of ['pgm-qty','daily','detail','tape','est-frgn','est-hist','sb-qt
   console.log('LEN:' + id + '=' + String((els[id]||{}).textContent || (els[id]||{}).innerHTML).length);
 for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh',
                   'sb-pill','ss-pill','cr-pill',
-                  'sb-pro-flow','ss-pro-value','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
+                  'sb-pro-flow','ss-pro-value','ss-pro-avgprc','ss-pro-verdict','cr-pro-verdict','cr-pro-flow',
                   'adr-sig','adr-fresh','ss-fresh','cr-fresh','cr-sig','walert','pstall','cstall',
                   'sz-sig','sz-fresh','xv-sig','xv-fresh','mb-sig','mb-fresh','hago',
                   'wpill','hr-prev','hr-amt','hr-str'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
+for (const id of ['ev-note','op-digest','pb-note','otpill','pgd-note','tv-note'])
+  console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
+for (const id of ['ev-chips','rp-tbl','ta-bars'])
+  console.log('TXT:' + id + '-html=' + String((els[id]||{}).innerHTML));
 console.log('TXT:glance-html=' + String((els['glance']||{}).innerHTML));
 console.log('TXT:today-line=' + String((els['today-line']||{}).textContent));
 console.log('TXT:daily-fresh=' + String((els['daily-fresh']||{}).textContent));
@@ -187,10 +193,22 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
                       encoding="utf-8")
     snap_p.write_text(json.dumps(_full_snapshot()), encoding="utf-8")
     js_p.write_text(_HARNESS, encoding="utf-8")
-    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p)],
+    from backend.flow import stockinfo
+    info_p = tmp_path / "info.json"
+    info_p.write_text(json.dumps(stockinfo.demo_stockinfo("000660")), encoding="utf-8")
+    r = subprocess.run(["node", str(js_p), str(html_p), str(snap_p), "", str(info_p)],
                        capture_output=True, text=True, timeout=30)
     assert "RENDER OK" in r.stdout, f"렌더 JS 예외: {r.stdout}\n{r.stderr}"
     filled, texts = _parse_harness(r.stdout)
+    # 종목 상세 부가 패널(2026-09-08): renderInfo(데모 stockinfo)가 8묶음을 전부 채우는지
+    assert "D-" in texts["ev-chips-html"] and "배당" in texts["ev-note"]
+    assert "평균" in texts["op-digest"] and "현재가 대비" in texts["op-digest"]
+    assert "가장 두꺼운 가격" in texts["pb-note"] and "원" in texts["pb-note"]
+    assert texts["otpill"].startswith("시간외 ") and "주" in texts["otpill"]
+    assert "연속" in texts["pgd-note"] or "보합" in texts["pgd-note"]
+    assert "사자 우위" in texts["tv-note"]
+    assert "공매도 비중" in texts["rp-tbl-html"] and "12위" in texts["rp-tbl-html"]
+    assert "3백 이하" in texts["ta-bars-html"]
     # 마지막 패널들(프로그램·일별·세부·체결·대차·ADR·공매도·신용)까지 실제로 채워졌는지
     for key in ("pgm-qty", "daily", "detail", "tape", "est-hist",
                 "sb-qty", "sb-hist", "sb-sig", "adr-usd", "ss-hist", "cr-hist",
@@ -251,6 +269,11 @@ def test_render_js_executes_and_fills_all_panels(tmp_path):
     assert "순증" in texts["sb-pro-flow"]                     # 체결-상환
     assert "억" in texts["ss-pro-value"] or "–" != texts["ss-pro-value"]
     assert "평균" in texts["ss-pro-verdict"]                  # 20일 평균 대비 문구
+    # 공매도 평균가(2026-09-08) = 거래대금/체결량: 564,882,324,000/254,632 = 2,218,426.29 → 2,218,426원.
+    # KIS avrg_prc는 공식 라벨이 '평균가격'뿐이라(공매도 평균가 보장 없음) 직접 나눈다.
+    assert texts["ss-pro-avgprc"] == "2,218,426원"
+    # 종가 2,180,000 < 평균가 → 공매도 쪽이 이익 중(아래)이라는 한 줄이 판정에 붙는다
+    assert "공매도 평균가보다" in texts["ss-pro-verdict"] and "아래" in texts["ss-pro-verdict"]
     assert texts["cr-pro-verdict"] and texts["cr-pro-flow"]   # 정밀판정·신규/상환
 
 

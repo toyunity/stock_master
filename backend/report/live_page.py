@@ -81,6 +81,14 @@ ul.finex{margin:6px 0 0;padding-left:17px;font-size:12px;color:var(--text-2);fon
 .pro>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
 .pro-body{padding:0 11px 11px;display:grid;gap:9px}
 .pro-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.pro-grid.g4{grid-template-columns:1fr 1fr}
+/* 종목 상세 부가 패널(/api/stockinfo, 2026-09-08): 일정 칩 · 시장 속 위치 표 — 레이아웃만, 색은 토큰 */
+.evrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 12px 0}
+.evchip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border-2);color:var(--text-2);white-space:nowrap}
+.evchip.soon{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.evnote{margin:4px 12px 0}
+#rp-tbl th{text-align:left;font-weight:600;color:var(--text-3);font-size:11px;padding:5px 6px;white-space:nowrap}
+#rp-tbl td{font-family:var(--font-num);font-size:12px;padding:5px 6px}
 .pro-cell{background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r-sm);padding:7px 9px;text-align:center}
 .pro-cell .pl{font-size:9.5px;color:var(--text-3);font-weight:700;letter-spacing:.02em}
 .pro-cell .pv{font-family:var(--font-num);font-size:13px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
@@ -262,12 +270,15 @@ __ICONS__
     <span id="conn" class="badge b-off">연결 중…</span>
     <span id="mstate" class="badge b-off">상태 확인 중</span>
     <span id="wpill"></span>
+    <span id="otpill"></span>
     <span class="ago" id="hago"></span>
   </div>
 </div>
 
 <div class="meta" id="pmeta">체결 대기 중 <span class="fresh">· 실시간</span></div>
 <div class="note" id="note"></div>
+<div class="evrow" id="ev-chips" style="display:none"></div>
+<div class="meta evnote" id="ev-note"></div>
 
 <details class="sec" id="finsec" style="display:none">
   <summary><svg class="hic secic"><use href="#i-bars"/></svg> 기업 체력
@@ -278,6 +289,12 @@ __ICONS__
       분기 실적 기준이라 <b>실시간이 아닙니다</b> — 오늘 등락이 아니라 회사 체력을 볼 때 씁니다.</div>
     <div class="fin" id="fin"></div>
   </div>
+</details>
+
+<details class="sec" id="opsec" style="display:none">
+  <summary><svg class="hic secic"><use href="#i-bars"/></svg> 증권사 목표가
+    <span class="findig" id="op-digest"></span><span class="chev">▾</span></summary>
+  <div class="sec-body" id="op-body"></div>
 </details>
 
 <div class="panel">
@@ -309,6 +326,10 @@ __ICONS__
     <div class="stall" id="pstall"></div>
     <div class="stall cload on" id="pcload">차트 불러오는 중…</div></div>
   <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
+  <div class="dp-h" style="margin-top:10px"><h2><svg class="hic"><use href="#i-bars"/></svg> 매물대</h2><span class="pill fixed" id="pb-pill">🕐 데이터 대기</span></div>
+  <p class="dp-one">가격대별로 거래가 얼마나 몰렸나. 두꺼운 가격 = 그 값에 산 사람이 많다 → 위면 저항, 아래면 지지 후보.</p>
+  <div id="pb-bars"></div>
+  <div class="meta" id="pb-note"></div>
   <div class="volwrap"><div id="mchart"></div><div class="vol-lb" id="mac-lb"></div></div>
   <div class="sig" id="wk-macd"></div>
   <div class="pc-count" id="pc-count"></div>
@@ -357,6 +378,8 @@ __ICONS__
       </div>
       <div class="chartwrap"><div id="chart"></div><div class="stall" id="cstall"></div></div>
       <div class="meta">당일 누적 순매수 금액 추이(억원) — Y축은 당일 전체 범위 고정</div>
+      <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">프로그램 30일(확정)</span><span class="sk-svg" id="pgd-spark"></span></span></div>
+      <div class="meta" id="pgd-note"></div>
     </div>
     <div class="panel">
       <h2><svg class="hic"><use href="#i-building"/></svg> 거래원(회원사) 창구 분석 <span class="fresh" id="mb-fresh">· 데이터 대기</span></h2>
@@ -389,6 +412,10 @@ __ICONS__
       </div>
       <div id="sz-bars"></div>
       <div class="sig" id="sz-sig"></div>
+      <div class="dp-h" style="margin-top:10px"><h2>체결금액 구간별 매수/매도 <span class="fresh">· KIS 집계(확정)</span></h2></div>
+      <div id="ta-bars"></div>
+      <div class="dp-foot"><span class="sparkwrap"><span class="sk-cap">일별 체결강도 20일</span><span class="sk-svg" id="tv-spark"></span></span></div>
+      <div class="meta" id="tv-note"></div>
       <div class="meta">체결량 구간별 건수·거래대금 비중 — <b>추정치(정확한 주체 식별 불가)</b>.
       100주 초과 대금 비중↑ = 기관성, 1-10주 건수 비중↑ = 개인 중심. 시장이 얇은
       시간외 구간일수록 판별력이 높다. 투자자별 순매수 <b>확정치는 T+1 09:30 이후</b> 제공.</div>
@@ -414,6 +441,12 @@ __ICONS__
         확정돼요. 그래서 오늘이 아니라 며칠 전 날짜로 보이는 게 정상이에요. 지금 이 순간의 매수·매도
         압력은 위 <span class="tag-live">🟢 실시간</span> 수급·호가·체결에서 보세요.</div>
       </details>
+    </div>
+    <div class="panel dp" id="rp-panel">
+      <div class="dp-h"><h2><svg class="hic"><use href="#i-short"/></svg> 시장 속 위치</h2><span class="pill fixed" id="rp-pill">🕐 데이터 대기</span></div>
+      <p class="dp-one">이 종목이 시장 전체 순위에서 어디쯤인가. 공매도·빚투 상위권이면 흔들릴 때 더 크게 흔들린다.</p>
+      <div class="tbl-wrap"><table id="rp-tbl"></table></div>
+      <div class="meta">공매도 상위 30·신용잔고 상위 100(전일 확정) 안이면 순위, 밖이면 '밖'. 52주 위치 95%↑ = 신고가 근접(돌파냐 저항이냐 갈림길).</div>
     </div>
     <div class="panel dp">
       <div class="dp-h"><h2><svg class="hic"><use href="#i-borrow"/></svg> 대차잔고</h2><span class="pill fixed" id="sb-pill">🕐 데이터 대기</span></div>
@@ -458,8 +491,9 @@ __ICONS__
           <div class="meta">위 대차잔고가 '빌린 물량'이라면 이것은 '실제로 쏜 물량'(T+1 확정). 비중 = 그날 전체 거래량 중 공매도 비율.</div>
           <details class="pro" open><summary>🔬 전문가 지표 ▾</summary>
             <div class="pro-body">
-              <div class="pro-grid">
+              <div class="pro-grid g4">
                 <div class="pro-cell"><div class="pl">거래대금</div><div class="pv" id="ss-pro-value">–</div></div>
+                <div class="pro-cell"><div class="pl">공매도 평균가</div><div class="pv" id="ss-pro-avgprc">–</div></div>
                 <div class="pro-cell"><div class="pl">비중</div><div class="pv" id="ss-pro-ratio">–</div></div>
                 <div class="pro-cell"><div class="pl">20일 평균</div><div class="pv" id="ss-pro-avg">–</div></div>
               </div>
@@ -545,6 +579,108 @@ const cls=n=>n>0?'up':(n<0?'down':'flat');
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const sgn={up:'▲',down:'▼',flat:''};
 
+// ── 종목 상세 부가 데이터 — /api/stockinfo/{code} 5분 폴링(설계 2026-09-08). ──
+// 일정·목표가·매물대·시간외·프로그램 일별·체결강도 일별·KIS 체결금액 비중·시장 속 위치.
+// SSE 스냅샷과 별개 통로라 render()와 독립이다 — 블록마다 try/catch로 격리해
+// 한 패널의 이상값이 다른 패널을 죽이지 않는다. 날짜 기준은 서버 KST(KDATE).
+let INFO=null, W52=null;
+async function loadInfo(){
+  try{ const r=await fetch('/api/stockinfo/'+CODE); if(!r.ok)return; INFO=await r.json(); renderInfo(INFO); }catch(e){}
+}
+function ddayS(iso){ const base=KDATE||new Date().toISOString().slice(0,10);
+  return Math.round((new Date(iso+'T00:00:00Z')-new Date(base+'T00:00:00Z'))/86400000); }
+function pctS(x,d){ return x==null?'–':(x>0?'+':'')+x.toFixed(d==null?1:d)+'%'; }
+function mdS(iso){ return String(iso||'').slice(5).replace('-','/'); }
+function renderInfo(d){
+  d=d||{};
+  const ot=d.overtime;
+  // 1) 📅 다가오는 일정 — 어제 기준일까지만 남긴다('놓쳤다'도 정보다)
+  try{
+    const el=document.getElementById('ev-chips'), nt=document.getElementById('ev-note');
+    const rows=((d.events||{}).rows||[]).filter(r=>ddayS(r.date)>=-1).slice(0,5);
+    if(!rows.length){ el.style.display='none'; el.innerHTML=''; nt.textContent=''; }
+    else{
+      el.innerHTML=rows.map(r=>{ const n=ddayS(r.date);
+        return '<span class="evchip'+(n<=7?' soon':'')+'">📅 '+(n===0?'오늘':(n<0?'D+'+(-n):'D-'+n))+' · '+esc(r.label)+' '+mdS(r.date)+'</span>'; }).join('');
+      el.style.display='';
+      nt.textContent=rows.slice(0,3).map(r=>mdS(r.date)+' '+r.label+' — '+r.detail).join('  ·  ')
+        +(rows.some(r=>r.kind==='dividend')?'  ·  배당은 기준일 2영업일 전까지 사야 받습니다':'');
+    }
+  }catch(e){}
+  // 2) 🎯 증권사 목표가 — 증권사별 최신 1건 집계(서버)
+  try{
+    const sec=document.getElementById('opsec'), op=d.opinion;
+    if(!op||!op.n){ sec.style.display='none'; }
+    else{
+      const g=op.gap_pct;
+      document.getElementById('op-digest').textContent='평균 '+won(op.avg_target)+(g==null?'':' · 현재가 대비 '+pctS(g));
+      let h='<div class="grid3"><div><div class="lbl">평균 목표가</div><div class="val">'+won(op.avg_target)+'</div></div>'
+        +'<div><div class="lbl">현재가 대비</div><div class="val '+(g>0?'up':(g<0?'down':'flat'))+'">'+pctS(g)+'</div></div>'
+        +'<div><div class="lbl">의견 '+op.n+'개사</div><div class="val">매수 '+op.buy+' · 중립 '+op.hold+' · 매도 '+op.sell+'</div></div></div>';
+      h+='<div class="meta">최고 '+won(op.max_target)+' · 최저 '+won(op.min_target)+' · '+esc(op.latest||'')+' 기준 · 증권사별 최신 1건씩</div>';
+      if((op.changes||[]).length) h+='<div class="meta"><b>최근 의견 변경</b> '+op.changes.map(c=>esc(c.broker)+' '+esc(c.prev)+'→'+esc(c.opinion)+'('+won(c.target)+', '+mdS(c.date)+')').join(' · ')+'</div>';
+      h+='<div class="meta">목표가는 예언이 아니라 증권사의 희망입니다. 숫자보다 <b>방향이 바뀌었나</b>(상향↔하향)가 신호예요. 현재가가 평균 목표가보다 한참 아래면 "싸다"가 아니라 "증권사들이 아직 안 내렸다"일 수도 있습니다.</div>';
+      document.getElementById('op-body').innerHTML=h; sec.style.display='';
+    }
+  }catch(e){}
+  // 3) 매물대 — 현재가 위의 두꺼운 가격대 = 저항 후보(하락색), 아래 = 지지 후보(상승색)
+  try{
+    const pb=d.pbar, bars=document.getElementById('pb-bars'), pill=document.getElementById('pb-pill'), note=document.getElementById('pb-note');
+    if(!pb||!(pb.levels||[]).length){ pill.textContent='🕐 데이터 대기'; bars.innerHTML=''; note.textContent=''; }
+    else{
+      const mx=Math.max.apply(null,pb.levels.map(l=>l.pct))||1, cur=pb.price||0;
+      bars.innerHTML=pb.levels.map(l=>{ const above=l.price>cur, at=cur&&Math.abs(l.price-cur)/cur<0.004;
+        return '<div class="szrow"><span class="szlbl">'+won(l.price)+(at?' ◀':'')+'</span><div class="szbar '+(above?'szsell':'szbuy')+'" style="width:'+Math.max(2,l.pct/mx*150)+'px"></div><span class="szval">'+l.pct.toFixed(1)+'%</span></div>'; }).join('');
+      const t=pb.top, dv=cur?(t.price/cur-1)*100:null;
+      note.textContent='가장 두꺼운 가격 '+won(t.price)+'(거래량의 '+t.pct.toFixed(1)+'%)'
+        +(dv==null?'':' · 현재가 대비 '+pctS(dv)+' → '+(dv>0.3?'위에 매물벽(저항 후보)':(dv<-0.3?'아래에 받침(지지 후보)':'현재가 근처 — 여기서 손바뀜이 가장 많았음')))
+        +' · 가중평균가 '+won(Math.round(pb.wavg||0));
+      pill.textContent='🟢 '+(d.demo?'데모':(d.asof||''))+' · 5분 갱신';
+    }
+  }catch(e){}
+  // 4) 시간외 단일가 알약 — 체결이 있을 때만(대형주는 애프터마켓이 NXT라 0)
+  try{
+    const pl=document.getElementById('otpill');
+    if(ot&&ot.vol>0){ pl.textContent='시간외 '+pctS(ot.rate,2)+' · '+num(ot.vol)+'주';
+      pl.className='badge '+(ot.rate>0?'b-live':(ot.rate<0?'b-warn':'b-off'));
+      pl.title='시간외 단일가(16:00~18:00, 10분마다 체결) '+won(ot.price)+' · 예상 '+won(ot.expected); }
+    else{ pl.textContent=''; pl.className=''; }
+  }catch(e){}
+  // 5) 프로그램매매 30일(확정) — 위 당일 누적 차트의 짝
+  try{
+    const pg=d.pgm_daily||[], sp=document.getElementById('pgd-spark'), nt=document.getElementById('pgd-note');
+    if(pg.length>=2){
+      const last=pg[pg.length-1], s0=Math.sign(last.net_qty); let k=0;
+      for(let i=pg.length-1;i>=0&&s0!==0&&Math.sign(pg[i].net_qty)===s0;i--)k++;
+      sp.innerHTML=spark(pg.map(r=>r.net_qty), s0>=0?'var(--up)':'var(--down)');
+      nt.textContent=(k?k+'일 연속 '+(s0>0?'순매수':'순매도'):'마지막 날 보합')+' · '+pg.length+'일 중 순매수 '+pg.filter(r=>r.net_qty>0).length+'일 · '+mdS(last.date)+' '+num(last.net_qty)+'주 확정';
+    }else{ sp.innerHTML=''; nt.textContent=''; }
+  }catch(e){}
+  // 6) 일별 체결강도 20일 + KIS 체결금액 구간별 매수/매도(확정) — 위 추정 분포의 확정판
+  try{
+    const tv=(d.tradevol||[]).filter(r=>r.strength!=null).slice(-20), sp=document.getElementById('tv-spark'), nt=document.getElementById('tv-note');
+    if(tv.length>=2){ const last=tv[tv.length-1], w=tv.slice(-5).filter(r=>r.strength>100).length;
+      sp.innerHTML=spark(tv.map(r=>r.strength), last.strength>=100?'var(--up)':'var(--down)');
+      nt.textContent='최근 5일 중 사자 우위(체결강도 100↑) '+w+'일 · '+mdS(last.date)+' '+last.strength.toFixed(0)+' (매수 '+num(last.buy)+'주 / 매도 '+num(last.sell)+'주)'; }
+    else{ sp.innerHTML=''; nt.textContent=''; }
+    const ta=d.tradeamt||[], tb=document.getElementById('ta-bars');
+    const mx=Math.max.apply(null,ta.map(r=>Math.abs(r.net_rate)).concat([0.01]));
+    tb.innerHTML=ta.map(r=>'<div class="szrow"><span class="szlbl">'+esc(r.band)+'</span><div class="szbar '+(r.net_rate>=0?'szbuy':'szsell')+'" style="width:'+Math.max(2,Math.abs(r.net_rate)/mx*150)+'px"></div><span class="szval">순매수 '+pctS(r.net_rate,2)+' · '+num(r.buy_cnt+r.sell_cnt)+'건</span></div>').join('');
+  }catch(e){}
+  // 7) 시장 속 위치 — 마스터 지시(2026-09-08): 스캐너 탭 대신 "이 종목이 시장 순위 어디에 있나"
+  try{
+    const rp=d.rankpos||{}, s=rp.short, c=rp.credit, t=document.getElementById('rp-tbl'), pl=document.getElementById('rp-pill');
+    const rows=[
+      ['공매도 비중', !s?'–':(s.rank?'시장 '+s.rank+'위 / 상위 '+s.n+' · '+s.ratio.toFixed(2)+'%':'상위 '+s.n+'위 밖'), s&&s.rank?(s.rank<=10?'down':'flat'):'up'],
+      ['신용잔고 비율', !c?'–':(c.rank?'시장 '+c.rank+'위 / 상위 '+c.n+' · '+c.rate.toFixed(2)+'%':'상위 '+c.n+'위 밖'), c&&c.rank?(c.rank<=10?'down':'flat'):'up'],
+      ['52주 위치', W52==null?'–':(Math.round(W52)+'%'+(W52>=95?' · 신고가 근접(돌파냐 저항이냐)':(W52<=5?' · 신저가 근접':''))), W52==null?'flat':(W52>=95?'up':(W52<=5?'down':'flat'))],
+      ['시간외 단일가', ot&&ot.vol>0?pctS(ot.rate,2)+' · '+num(ot.vol)+'주':'거래 없음 — 대형주 애프터마켓은 NXT(거래소별 거래량 패널)', ot&&ot.vol>0?(ot.rate>0?'up':(ot.rate<0?'down':'flat')):'flat']];
+    t.innerHTML=rows.map(r=>'<tr><th>'+r[0]+'</th><td class="'+r[2]+'">'+r[1]+'</td></tr>').join('');
+    pl.textContent=rp.asof?'🕐 '+fmtD(rp.asof)+' 기준 · T+1':'🕐 데이터 대기';
+  }catch(e){}
+}
+loadInfo(); setInterval(loadInfo, 300000);
+
 // ── 기업 체력(밸류 + 재무) — /api/financials/{code} 1회 로드. ──
 // 분기 실적·일 단위로만 바뀌어 폴링하지 않는다. 차트 위 접힘 섹션:
 // 접힌 줄엔 숫자 3개 요약(PER·ROE·부채), 펼치면 지표별 쉬운말 + ⓘ 개념 설명.
@@ -555,6 +691,7 @@ async function loadFin(){
   try{
     const r=await fetch('/api/financials/'+CODE); if(!r.ok){sec.style.display='none';return;}
     const d=await r.json()||{}; const v=d.valuation||{}; const f=(d.financials||[])[0]||{};
+    W52=(v.w52_pos!=null)?v.w52_pos:null; if(INFO)renderInfo(INFO);   // 시장 속 위치 표의 52주 행
     const bits=[],dig=[];
     if(v.per!=null){bits.push('PER <span class="n">'+v.per.toFixed(1)+'</span>');dig.push('PER '+v.per.toFixed(1));}
     if(v.pbr!=null)bits.push('PBR <span class="n">'+v.pbr.toFixed(1)+'</span>');
@@ -1342,13 +1479,23 @@ function render(S){
       +SS.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
       +'</td><td>'+(r.ratio||0).toFixed(2)+'%</td><td>'+won(r.close)+'</td></tr>').join('');
     document.getElementById('ss-pro-value').textContent=eok(sl.value).replace('+','');
+    // 공매도 평균가 = 거래대금/체결량. KIS 응답의 avrg_prc는 공식 라벨이 '평균가격'뿐이라
+    // (2026-09-08 확인) 공매도 평균가라는 보장이 없어 직접 나눈다. 실응답 픽스처의 avrg_prc
+    // 2,218,400원과는 26원 차(2,218,426) — KIS 쪽 백원 단위 반올림으로 추정, 검증 안 됨.
+    const _ap=(sl.qty>0&&sl.value>0)?sl.value/sl.qty:null;
+    document.getElementById('ss-pro-avgprc').textContent=won(_ap);
     document.getElementById('ss-pro-ratio').textContent=(sl.ratio||0).toFixed(2)+'%';
     const _avg=SS.rows.reduce((a,r)=>a+(r.ratio||0),0)/SS.rows.length;
     document.getElementById('ss-pro-avg').textContent=_avg.toFixed(2)+'%';
     const _hot=(sl.ratio||0)>_avg;
     const pv=document.getElementById('ss-pro-verdict');
-    pv.textContent=_hot?('비중이 20일 평균('+_avg.toFixed(1)+'%)을 웃돎 — 공매도 과열 구간')
-      :('비중이 20일 평균('+_avg.toFixed(1)+'%) 이하 — 평시');
+    // 종가 vs 공매도 평균가: 종가가 위면 공매도 쪽이 손실 중(되사기 압력), 아래면 이익 중.
+    const _gap=(_ap&&sl.close)?(sl.close/_ap-1)*100:null;
+    pv.textContent=(_hot?('비중이 20일 평균('+_avg.toFixed(1)+'%)을 웃돎 — 공매도 과열 구간')
+      :('비중이 20일 평균('+_avg.toFixed(1)+'%) 이하 — 평시'))
+      +(_gap==null?'':Math.abs(_gap)<0.05?' · 종가 ≈ 공매도 평균가 — 공매도 쪽 손익 균형'
+        :' · 종가가 공매도 평균가보다 '+Math.abs(_gap).toFixed(1)+'% '
+        +(_gap>0?'위 — 공매도 쪽 손실 중(되사기 압력)':'아래 — 공매도 쪽 이익 중'));
     pv.className='pro-verdict'+(_hot?'':' flat');
   }else{
     document.getElementById('ss-pill').textContent='🕐 데이터 대기';
