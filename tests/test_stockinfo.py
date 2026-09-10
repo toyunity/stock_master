@@ -22,7 +22,7 @@ def test_parse_opinions_normalizes_and_summarizes():
     assert s["n"] == len(brokers)                       # 증권사별 최신 1건만 집계
     assert s["buy"] == s["n"] and s["sell"] == 0
     assert s["max_target"] == max(r["target"] for r in rows)
-    assert s["gap_pct"] < 0 and s["latest"] == "2026-09-07"
+    assert s["upside_pct"] == 38.0 and s["latest"] == "2026-09-07"    # 목표가(평균 2,475,000)/현재가 − 1 — "목표가까지 +38%"
     assert si.summarize_opinions([], 100)["n"] == 0
 
 

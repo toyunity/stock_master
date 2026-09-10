@@ -613,10 +613,10 @@ function renderInfo(d){
     const sec=document.getElementById('opsec'), op=d.opinion;
     if(!op||!op.n){ sec.style.display='none'; }
     else{
-      const g=op.gap_pct;
+      const g=op.upside_pct;   // 목표가/현재가−1 — "현재가 대비 −46%"는 목표가가 위인지 아래인지 안 읽혀서 뒤집음(2026-09-10)
       document.getElementById('op-digest').textContent='평균 '+won(op.avg_target)+(g==null?'':' · '+pctS(g));   // 접힌 줄은 좁다 — 짧게
       let h='<div class="grid3"><div><div class="lbl">평균 목표가</div><div class="val">'+won(op.avg_target)+'</div></div>'
-        +'<div><div class="lbl">현재가 대비</div><div class="val '+(g>0?'up':(g<0?'down':'flat'))+'">'+pctS(g)+'</div></div>'
+        +'<div><div class="lbl">목표가까지</div><div class="val '+(g>0?'up':(g<0?'down':'flat'))+'">'+pctS(g)+'</div></div>'
         +'<div><div class="lbl">의견 '+op.n+'개사</div><div class="val">매수'+op.buy+'·중립'+op.hold+'·매도'+op.sell+'</div></div></div>';
       h+='<div class="meta">최고 '+won(op.max_target)+' · 최저 '+won(op.min_target)+' · '+esc(op.latest||'')+' 기준 · 증권사별 최신 1건씩</div>';
       if((op.changes||[]).length) h+='<div class="meta"><b>최근 의견 변경</b> '+op.changes.map(c=>esc(c.broker)+' '+esc(c.prev)+'→'+esc(c.opinion)+'('+won(c.target)+', '+mdS(c.date)+')').join(' · ')+'</div>';

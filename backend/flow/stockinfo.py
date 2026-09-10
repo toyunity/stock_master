@@ -72,7 +72,7 @@ def parse_opinions(js) -> list:
 
 
 def summarize_opinions(rows: list, price: Optional[int]) -> dict:
-    """증권사별 **최신 1건**만 집계. gap_pct = 현재가/평균 목표가 − 1. changes = 의견이 바뀐 행(최대 3)."""
+    """증권사별 **최신 1건**만 집계. upside_pct = 평균 목표가/현재가 − 1(목표가까지 +N%). changes = 의견이 바뀐 행(최대 3)."""
     latest, seen = [], set()
     for r in rows:                      # rows는 최신순 — 첫 등장이 최신
         if r["broker"] and r["broker"] not in seen:
@@ -90,7 +90,7 @@ def summarize_opinions(rows: list, price: Optional[int]) -> dict:
     return {"n": len(latest), "avg_target": avg,
             "max_target": max(targets) if targets else None,
             "min_target": min(targets) if targets else None,
-            "gap_pct": round((price / avg - 1) * 100, 1) if avg and price else None,
+            "upside_pct": round((avg / price - 1) * 100, 1) if avg and price else None,
             "buy": cnt["매수"], "hold": cnt["중립"], "sell": cnt["매도"],
             "latest": rows[0]["date"] if rows else None, "changes": changes}
 
@@ -247,7 +247,7 @@ def demo_stockinfo(code: str, today=None) -> dict:
               {"date": d(55), "kind": "paidin", "label": "유상증자 권리락",
                "detail": f"배정률 18.68% · 발행가 {int(base * 0.8):,}원 · 청약 {d(80)} ~ {d(82)}", "code": code}]
     opinion = {"n": 5, "avg_target": int(base * 1.25), "max_target": int(base * 1.5),
-               "min_target": int(base * 1.05), "gap_pct": -20.0, "buy": 4, "hold": 1, "sell": 0,
+               "min_target": int(base * 1.05), "upside_pct": 25.0, "buy": 4, "hold": 1, "sell": 0,
                "latest": d(-1), "changes": [{"date": d(-1), "broker": "데모증권", "prev": "매수",
                                               "opinion": "중립", "target": int(base * 1.05)}]}
     levels = sorted([{"price": base + (i - 4) * (base // 100), "vol": 0, "pct": 0.0} for i in range(8)],
