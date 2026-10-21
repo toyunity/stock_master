@@ -327,14 +327,16 @@ __ICONS__
     <div class="stall" id="pstall"></div>
     <div class="stall cload on" id="pcload">차트 불러오는 중…</div></div>
   <div class="volwrap"><div id="vchart"></div><div class="vol-lb" id="vol-lb"></div></div>
-  <div class="dp-h" style="margin-top:10px"><h2><svg class="hic"><use href="#i-bars"/></svg> 매물대</h2><span class="pill fixed" id="pb-pill">🕐 데이터 대기</span></div>
-  <p class="dp-one">가격대별로 거래가 얼마나 몰렸나. 두꺼운 가격 = 그 값에 산 사람이 많다 → 위면 저항, 아래면 지지 후보.</p>
-  <div id="pb-bars"></div>
-  <div class="meta" id="pb-note"></div>
   <div class="volwrap"><div id="mchart"></div><div class="vol-lb" id="mac-lb"></div></div>
   <div class="sig" id="wk-macd"></div>
   <div class="pc-count" id="pc-count"></div>
   <div class="mylines" id="mylines"></div>
+  <!-- 매물대는 시간축을 공유하지 않는 별도 패널 — 캔들·거래량·MACD(세 pane)·카운트다운·내 라인 뒤.
+       2026-09-08(98ca790)에 거래량과 MACD 사이에 끼워 넣었다가 "MACD가 없어졌다"는 제보(2026-10-21). -->
+  <div class="dp-h" style="margin-top:10px"><h2><svg class="hic"><use href="#i-bars"/></svg> 매물대</h2><span class="pill fixed" id="pb-pill">🕐 데이터 대기</span></div>
+  <p class="dp-one">가격대별로 거래가 얼마나 몰렸나. 두꺼운 가격 = 그 값에 산 사람이 많다 → 위면 저항, 아래면 지지 후보.</p>
+  <div id="pb-bars"></div>
+  <div class="meta" id="pb-note"></div>
 </div>
 
 <details class="sec" id="wl-panel">

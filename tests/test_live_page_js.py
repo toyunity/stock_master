@@ -893,6 +893,15 @@ def test_fin_section_sits_above_chart_and_is_collapsed():
     assert 'style="display:none"' in tag                            # 데이터 오기 전 깜빡임 방지
 
 
+def test_macd_chart_sits_right_under_volume_chart():
+    # MACD 히스토그램은 캔들·거래량과 시간축을 공유하는 세 번째 pane이다. 2026-09-08
+    # 매물대 패널(98ca790)이 거래량과 MACD 사이에 끼어 "MACD가 없어졌다"는 제보가 왔다
+    # (2026-10-21, 일봉 캡처로 확인 — 막대는 매물대 아래에 멀쩡히 그려지고 있었다).
+    from backend.report.live_page import render_live_page
+    html = render_live_page("000660", "SK하이닉스", "live")
+    assert html.index('id="vchart"') < html.index('id="mchart"') < html.index('id="pb-bars"')
+
+
 # ── 감시선 편집기: 저장 경로(POST payload 구성·무효 줄 필터·응답 반영) ──────
 # render() 스모크는 이 경로를 안 건드린다 — saveLines가 wlDraft에서 유효 줄만 모아
 # 올바른 POST 본문을 만들고, 응답 lines로 WATCH를 갱신하는지 계측한다.
