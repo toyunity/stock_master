@@ -116,7 +116,7 @@ def test_응답이_오면_오버레이를_걷는다(tmp_path):
     out = _run_node(tmp_path, _CANDLES)
     assert "on" in out["INIT"].split(), "요청 중엔 덮고 있어야 한다"
     assert "on" not in out["DONE"].split(), "다 그렸으면 걷어야 한다"
-    assert "5분봉" in out["FRESH"], "정상 경로를 탔는지 확인(라벨이 갱신됐나)"
+    assert "일봉" in out["FRESH"], "정상 경로를 탔는지 확인(라벨이 갱신됐나) — 최초 TF는 일봉(2026-10-30)"
 
 
 @needs_node

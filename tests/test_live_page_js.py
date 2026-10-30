@@ -986,6 +986,13 @@ def test_template_has_5ma_buttons():
     html = render_live_page("000660", "SK하이닉스", "live")
     assert 'data-ma="5"' in html and 'data-ma="10"' in html
     assert 'data-ma="20"' in html and 'data-ma="120"' in html
+    # 최초 표시가 일봉이므로 5·10선은 꺼진 채 시작(2026-10-30 마스터: 일·주봉에선 5·10 체크 해제).
+    # 버튼 'on'과 maOn 초기값이 어긋나면 칩은 꺼져 보이는데 선은 그려진다.
+    assert '<button class="ma-btn" data-ma="5">' in html and '<button class="ma-btn" data-ma="10">' in html
+    assert '<button class="ma-btn on" data-ma="20">' in html
+    assert 'maOn={5:false,10:false,20:true,60:true,120:true}' in html
+    # 주기 전환 시 규칙 재적용 훅 — 일·주봉이면 끄고 분·월봉이면 켠다
+    assert 'applyMaDefaults(' in html and "tf==='1d'||tf==='1w'" in html
 
 
 def test_page_logic_has_extreme_labels():

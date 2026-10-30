@@ -202,6 +202,9 @@ def test_live_page_has_chart_and_collapsed_panels():
     assert "pchart" in html and "일봉" in html and "5분" in html  # 봉 주기 선택
     assert "mchart" in html and "MACD" in html                  # MACD 히스토그램 패널
     assert 'data-tf="1w"' in html and 'data-tf="1mo"' in html    # 주봉·월봉 탭
+    # 최초 표시는 일봉(2026-10-30 마스터 지시). 버튼 'on'과 JS 초기 TF가 어긋나면 탭 표시와 차트가 따로 논다
+    assert '<button class="tf on" data-tf="1d">' in html and "let TF='1d'" in html
+    assert 'class="tf on" data-tf="5m"' not in html
     assert html.count("<details") >= 3  # 일별/기관세부/체결 기본 접힘
     assert "<summary" in html
 

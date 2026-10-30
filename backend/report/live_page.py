@@ -302,18 +302,18 @@ __ICONS__
   <h2><svg class="hic"><use href="#i-chart"/></svg> 가격 차트 <span class="fresh" id="pc-fresh">· 불러오는 중</span></h2>
   <div class="tfrow">
     <button class="tf" data-tf="1m">1분</button>
-    <button class="tf on" data-tf="5m">5분</button>
+    <button class="tf" data-tf="5m">5분</button>
     <button class="tf" data-tf="15m">15분</button>
     <button class="tf" data-tf="60m">60분</button>
-    <button class="tf" data-tf="1d">일봉</button>
+    <button class="tf on" data-tf="1d">일봉</button>
     <button class="tf" data-tf="1w">주봉</button>
     <button class="tf" data-tf="1mo">월봉</button>
     <button class="tf" id="notifbtn" style="display:none">🔔 감시선 알림 허용</button>
   </div>
   <div class="marow">
     <span class="ma-lb">이평선</span>
-    <button class="ma-btn on" data-ma="5">5</button>
-    <button class="ma-btn on" data-ma="10">10</button>
+    <button class="ma-btn" data-ma="5">5</button>
+    <button class="ma-btn" data-ma="10">10</button>
     <button class="ma-btn on" data-ma="20">20</button>
     <button class="ma-btn on" data-ma="60">60</button>
     <button class="ma-btn on" data-ma="120">120</button>
@@ -796,7 +796,15 @@ const pseries=pchart.addCandlestickSeries({upColor:'#e5342f',downColor:'#1f66e0'
 registerSemSeries(pseries,'candle');   // 라이트/다크 전환 시 캔들 색 재적용(theme.py)
 // 이동평균선(20/60/120봉) — 켜고 끄기. addLineSeries 없는 node 하니스에선 가드로 생략.
 const MA_COLORS={5:'#9aa0a6',10:'#ec4899',20:'#f59e0b',60:'#22c55e',120:'#3b82f6'};
-let maOn={5:true,10:true,20:true,60:true,120:true};
+// 5·10선은 일·주봉에서 기본 해제(2026-10-30 마스터 지시 — 일봉이 최초 표시라 꺼진 채 시작).
+// 분·월봉으로 바꾸면 다시 켠다. 주기 전환마다 규칙으로 되돌리므로 사용자 토글은 그 주기 안에서만 유지.
+let maOn={5:false,10:false,20:true,60:true,120:true};
+function applyMaDefaults(tf){
+  var off=tf==='1d'||tf==='1w';
+  [5,10].forEach(function(n){maOn[n]=!off;
+    var b=document.querySelector('.ma-btn[data-ma="'+n+'"]'); if(b)b.classList.toggle('on',maOn[n]);
+    if(maSeries[n])maSeries[n].applyOptions({visible:maOn[n]});});
+}
 let maSeries={};
 if(pchart.addLineSeries){[5,10,20,60,120].forEach(function(n){
   maSeries[n]=pchart.addLineSeries({color:MA_COLORS[n],lineWidth:1.5,
@@ -939,7 +947,7 @@ function placeExt(){
 }
 (function(){var _ts=pchart.timeScale();
   if(_ts.subscribeVisibleTimeRangeChange)_ts.subscribeVisibleTimeRangeChange(placeExt);})();
-let TF='5m', tfSeq=0;
+let TF='1d', tfSeq=0; // 최초 표시 일봉(2026-10-30 마스터 지시, 이전 5분)
 const TF_KO={'1m':'당일 1분봉','5m':'당일 5분봉','15m':'당일 15분봉','60m':'당일 60분봉',
   '1d':'일봉 120일','1w':'주봉 120주','1mo':'월봉 120개월'};
 // 일 단위 봉(시간 라벨이 날짜 문자열) — 분봉과 시간축 처리·갱신 주기가 갈린다
@@ -1039,7 +1047,7 @@ async function loadCandles(fit){
 // 전체 '.tf'를 잡으면 하이라이트를 서로 지운다(리뷰 확정)
 document.querySelectorAll('.tf[data-tf]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tf[data-tf]').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); TF=b.dataset.tf; loadCandles(true);
+  b.classList.add('on'); TF=b.dataset.tf; applyMaDefaults(TF); loadCandles(true);
 });
 // 이평선 토글 — .ma-btn[data-ma] 전용(봉주기 .tf 셀렉터와 분리)
 document.querySelectorAll('.ma-btn').forEach(function(b){b.onclick=function(){
