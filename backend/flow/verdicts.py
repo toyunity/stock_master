@@ -63,3 +63,60 @@ def record(kind: str, code: str, date: str, direction: str, px, **extra) -> bool
             json.dump(d, f, ensure_ascii=False)
         os.replace(tmp, p)
     return True
+
+
+HOLD_BARS = 10      # signal 채점 기간(봉) — backtest.py의 hold_days=10과 같은 잣대
+MIN_SAMPLE = 10     # 이 미만이면 비율 대신 "표본 부족 (n/10)" (표시용, dashboard.py가 참조)
+_UP = {"up": 1, "buy": 1, "down": -1, "sell": -1}   # 적중 방향. neutral/hold/그 외는 skip
+
+
+def _bucket() -> dict:
+    return {"n": 0, "hit": 0, "skip": 0, "pending": 0}
+
+
+def score(entries: dict, closes: dict, today: dt.date, window_days: int = 60) -> dict:
+    """순수 채점. closes[code] = [(date_iso, close), ...] 오름차순.
+
+    창: 모든 봉 날짜 합집합의 뒤에서 window_days번째 날짜 이후 키만(봉이 모자라면 첫 봉,
+    봉이 전혀 없으면 today-90일). outlook은 목표일 T 이상 첫 봉, signal은 D 이후 10번째 봉 —
+    D 봉 자체는 기록 시점에 부분봉이라 제외(2026-11-02 실측: 일봉 캐시는 첫 로드의 부분봉을
+    하루 종일 서빙). 둘 다 **그 다음 봉이 있어야 확정**(FDR 마지막 봉은 진행 중 값), 없으면 pending.
+    """
+    all_dates = sorted({d for bars in closes.values() for d, _ in bars})
+    if all_dates:
+        cutoff = all_dates[-window_days] if len(all_dates) >= window_days else all_dates[0]
+    else:
+        cutoff = (today - dt.timedelta(days=90)).isoformat()
+    total = {"outlook": _bucket(), "signal": _bucket()}
+    by_code: dict = {}
+    for key, e in entries.items():
+        try:
+            kind, code, date = key.split(":", 2)
+        except ValueError:
+            continue
+        if kind not in total or date < cutoff:
+            continue
+        b = by_code.setdefault(code, {"outlook": _bucket(), "signal": _bucket()})[kind]
+        t = total[kind]
+        sign = _UP.get(e.get("dir"))
+        if sign is None:
+            b["skip"] += 1
+            t["skip"] += 1
+            continue
+        bars = closes.get(code) or []
+        if kind == "outlook":
+            i = next((k for k, (d, _) in enumerate(bars) if d >= date), None)
+        else:
+            j = next((k for k, (d, _) in enumerate(bars) if d > date), None)
+            i = None if j is None else j + HOLD_BARS - 1
+        if i is None or i + 1 >= len(bars):
+            b["pending"] += 1
+            t["pending"] += 1
+            continue
+        ret = bars[i][1] / float(e["px"]) - 1
+        hit = 1 if ret * sign > 0 else 0        # ret == 0은 miss
+        b["n"] += 1
+        b["hit"] += hit
+        t["n"] += 1
+        t["hit"] += hit
+    return {"outlook": total["outlook"], "signal": total["signal"], "by_code": by_code}
