@@ -254,6 +254,10 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .sig-warn{background:var(--warn-bg);color:var(--warn);border-left-color:var(--warn)}
 .sig-info{background:var(--info-bg);color:var(--info);border-left-color:var(--info)}
 .sig-flat{background:var(--surface-2);color:var(--text-2);border-left-color:var(--flat)}
+/* 판정 적중률(홈 헤더 한 줄·카드 한 줄, 2026-11-02) — 색은 토큰만. --bad 토큰은 없다 → --down */
+.sc{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.sc-good{color:var(--good)} .sc-bad{color:var(--down)} .sc-flat{color:var(--text-2)}
+.scc{font-size:11.5px;color:var(--text-3);margin-top:5px} .scc:empty{display:none}
 .sig.up{background:var(--up-bg);color:var(--up);border-left-color:var(--up)}
 .sig.down{background:var(--down-bg);color:var(--down);border-left-color:var(--down)}
 

@@ -34,6 +34,36 @@ from backend.report.theme import (  # noqa: E402
     TABBAR as _TABBAR,
 )
 
+
+# ── 판정 적중률 문구(홈 헤더·카드) — 순수 함수, DOM 없음(tests/test_scorecard_js.py가 node로 실행). ──
+# 리터럴 10 = verdicts.MIN_SAMPLE(표본 부족 기준)·HOLD_BARS(매매판정 채점 봉 수)와 같아야 한다.
+# 비율 %는 어디에도 안 찍는다(3/4=75%는 정보가 아니다) — 횟수만. 톤은 내일예상 묶음 기준(2026-11-02).
+SCORECARD_JS = """
+function scText(sc){
+  var out = {head: null, tone: 'flat', cards: {}};
+  if (!sc) return out;
+  var o = sc.outlook || {}, s = sc.signal || {};
+  var parts, tone = 'flat';
+  if ((o.n || 0) < 10) { parts = ['내일예상 표본 부족 (' + (o.n || 0) + '/10)']; }
+  else {
+    var r = o.hit / o.n;
+    tone = r >= 0.55 ? 'good' : (r <= 0.45 ? 'bad' : 'flat');
+    parts = ['내일예상 적중 ' + o.hit + '/' + o.n];
+  }
+  if ((s.n || 0) + (s.skip || 0) > 0) parts.push('매매판정 ' + (s.hit || 0) + '/' + (s.n || 0) + ' (10일)');
+  if (o.skip) parts.push('중립 ' + o.skip);
+  out.head = parts.join(' · ');
+  out.tone = tone;
+  var bc = sc.by_code || {};
+  Object.keys(bc).forEach(function(code){
+    var b = (bc[code] || {}).outlook || {};
+    var n = b.n || 0, p = b.pending || 0;
+    out.cards[code] = (n + p === 0) ? '' : ('예상 적중 ' + (b.hit || 0) + '/' + n + (p ? ' · 대기 ' + p : ''));
+  });
+  return out;
+}
+"""
+
 _TEMPLATE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stock Master 대시보드 __DATE__</title>
@@ -283,13 +313,14 @@ __REFRESH__
 </details>
 __OPT_HTML__
 __VOL_HTML__
-<div class="grouphd"><svg class="hic secic"><use href="#i-chart"/></svg> 관심종목 분석 <span class="seccap">차트·뉴스·공시</span></div>
+<div class="grouphd"><svg class="hic secic"><use href="#i-chart"/></svg> 관심종목 분석 <span class="seccap" id="sc-head">차트·뉴스·공시</span></div>
 <div id="cards"></div>
 <div class="disc">__DISCLAIMER__</div>
 <script>__LIB__</script>
 <script>
 __CHART_THEME_JS__
 __AGO_JS__
+__SCORECARD_JS__
 const D = __DATA__;
 const won = n => n==null ? '–' : Math.round(n).toLocaleString('ko-KR')+'원';
 const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
@@ -339,6 +370,7 @@ function cardHtml(s){
     +'<div class="mc"><div class="mk">신뢰도</div><div class="mv star">'+stars(s.confidence)+'</div></div>'
     +'</div>';
   if(!isUS) h+='<div class="cnd" data-code="'+esc(s.code)+'"></div>';   // 내일 예상 — loadOutlook이 채움
+  if(!isUS) h+='<div class="sc scc" data-code="'+esc(s.code)+'"></div>'; // 예상 적중 — renderScorecard가 채움(마스터만)
   if(s.candles&&s.candles.length) h+='<div class="chart" id="chart-'+esc(s.code)+'"></div>';
   h+='<ul>'+s.reasons.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>';
   if(s.backtest) h+='<div class="bt">📈 백테스트 — 승률 '+esc(s.backtest.win_rate)+'% · '+esc(s.backtest.trades)+'거래 · 손익비 '+esc(s.backtest.payoff)+' · MDD '+esc(s.backtest.mdd)+'%</div>';
@@ -346,6 +378,14 @@ function cardHtml(s){
   return h+'</div>';
 }
 document.getElementById('cards').innerHTML = D.stocks.map(cardHtml).join('');
+function renderScorecard(){   // D.scorecard: 판정 장부 적중률(마스터 홈만, 아니면 null → 기본 캡션 유지)
+  var r = scText(D.scorecard); if(!r.head) return;
+  var hd = document.getElementById('sc-head'); hd.textContent = r.head; hd.className = 'seccap sc sc-' + r.tone;
+  Object.keys(r.cards).forEach(function(code){
+    document.querySelectorAll('.scc[data-code="'+code+'"]').forEach(function(el){ el.textContent = r.cards[code]; });
+  });
+}
+renderScorecard();
 D.stocks.forEach(s=>{
   if(!s.candles||!s.candles.length) return;
   const el=document.getElementById('chart-'+s.code); if(!el) return;
@@ -1020,6 +1060,7 @@ def render_dashboard(stocks, universe, date: str, pwa: bool = False, scorecard=N
             .replace("__ICONS__", _ICON_SPRITE)
             .replace("__CHART_THEME_JS__", _CHART_THEME_JS)
             .replace("__AGO_JS__", _AGO_JS)
+            .replace("__SCORECARD_JS__", SCORECARD_JS)
             .replace("__DATE__", escape(date))
             .replace("__TABBAR__", _TABBAR if pwa else "")
             .replace("__NAV_LOADER__", _NAV_LOADER)

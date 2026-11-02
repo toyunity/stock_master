@@ -498,3 +498,15 @@ def test_render_dashboard_has_market_flow_section():
     html = render_dashboard([_stock()], [{"code": "005930", "name": "삼성전자",
                                           "candles": []}], "2026-06-22")
     assert 'id="flowsec"' in html and "function renderFlow" in html and "/api/market-flow" in html
+
+
+def test_scorecard_markup_present_only_with_data():
+    """판정 적중률(2026-11-02) — scorecard가 있으면 헤더 id·렌더 함수·데이터가 베이크되고, 없으면 null."""
+    sc = {"outlook": {"n": 30, "hit": 17, "skip": 0, "pending": 0},
+          "signal": {"n": 0, "hit": 0, "skip": 0, "pending": 0}, "by_code": {}}
+    with_ = render_dashboard([_stock()], [], "2026-11-02", scorecard=sc)
+    without = render_dashboard([_stock()], [], "2026-11-02")
+    assert 'id="sc-head"' in with_ and "renderScorecard" in with_ and '"scorecard": {' in with_
+    assert '"scorecard": null' in without and "차트·뉴스·공시" in without
+    for cls in (".sc-good", ".sc-bad", ".sc-flat"):
+        assert cls in with_                              # theme.py 경유
