@@ -84,3 +84,26 @@ def test_build_dashboard_bakes_scorecard_for_master_only(cli_env):
 def test_scorecard_none_without_ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
     assert verdicts.scorecard({"005930": _df([1.0, 2.0])}) is None
+
+
+def test_build_dashboard_records_kr_only(cli_env):
+    """미국 티커의 판정은 장부에 넣지 않는다 — 헤더 '매매판정'은 국내 적중률이고, 미국 봉 날짜가
+    60거래일 창 계산에 섞이면 창이 짧아진다(리뷰 2026-11-02)."""
+    cli, tmp = cli_env
+    src = lambda code, s, e: _df([100.0] * 80)   # noqa: E731
+    cli.build_dashboard([{"code": "SKHY", "market": "US"}, {"code": "005930", "market": "KR"}],
+                        str(tmp), source=src, with_news=False, ledger=True)
+    assert list(verdicts.load()) == ["signal:005930:2026-12-19"]
+
+
+def test_build_dashboard_off_session_px_from_kis_not_universe_cache(cli_env, monkeypatch):
+    """장외엔 pm이 universe 캐시(StockListing, 최대 12h 묵은 전일 종가)라 px로 쓰면 하루 어긋난다 →
+    ledger 경로는 장외에도 KIS 현재가(=그날 종가)를 쓴다(리뷰 2026-11-02)."""
+    cli, tmp = cli_env
+    monkeypatch.setattr(cli, "_kr_market_open", lambda: False)
+    monkeypatch.setattr(cli, "get_universe", lambda d: [{"code": "005930", "name": "삼성전자",
+                                                        "close": 55555, "change": 0.1}])
+    src = lambda code, s, e: _df([100.0] * 80)   # noqa: E731
+    cli.build_dashboard([{"code": "005930", "market": "KR"}], str(tmp), source=src,
+                        with_news=False, ledger=True)
+    assert verdicts.load()["signal:005930:2026-12-19"]["px"] == 999      # _live_prices 값

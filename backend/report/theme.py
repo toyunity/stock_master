@@ -256,8 +256,10 @@ h2 .hic{width:17px;height:17px;color:var(--text-2)}
 .sig-flat{background:var(--surface-2);color:var(--text-2);border-left-color:var(--flat)}
 /* 판정 적중률(홈 헤더 한 줄·카드 한 줄, 2026-11-02) — 색은 토큰만. --bad 토큰은 없다 → --down */
 .sc{font-family:var(--font-num);font-variant-numeric:tabular-nums}
-.sc-good{color:var(--good)} .sc-bad{color:var(--down)} .sc-flat{color:var(--text-2)}
+.sc.sc-good{color:var(--good)} .sc.sc-bad{color:var(--down)} .sc.sc-flat{color:var(--text-2)}
+/* ↑ 두 클래스: 단일 .sc-*면 아래의 .seccap{color:--text-3}가 이겨 톤 색이 안 보인다(실렌더 2026-11-02) */
 .scc{font-size:11.5px;color:var(--text-3);margin-top:5px} .scc:empty{display:none}
+.grouphd .seccap.sc{flex-basis:100%;margin-top:-4px}   /* 적중률 줄은 제목 밑 한 줄 — 제목 "관심종목 분석"이 두 줄로 꺾이지 않게 */
 .sig.up{background:var(--up-bg);color:var(--up);border-left-color:var(--up)}
 .sig.down{background:var(--down-bg);color:var(--down);border-left-color:var(--down)}
 
@@ -322,7 +324,7 @@ details.sec[open]>summary{border-bottom:1px solid var(--border-2)}
   border-radius:0;padding:0;margin:0}
 .sec-body>.search{padding-bottom:2px} .sec-body>.manage{margin-top:10px}
 /* 플랫 그룹 헤더 — 카드 목록 앞(컨테이너 없이 .sec 헤더와 같은 톤) */
-.grouphd{display:flex;align-items:center;gap:9px;margin:22px 2px 11px;font-size:15px;
+.grouphd{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:22px 2px 11px;font-size:15px;
   font-weight:800;letter-spacing:-.02em;color:var(--text)}
 .grouphd .seccap{font-weight:500}
 

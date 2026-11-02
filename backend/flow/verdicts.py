@@ -41,20 +41,29 @@ def load() -> dict:
     return {}
 
 
-def record(kind: str, code: str, date: str, direction: str, px, **extra) -> bool:
-    """`kind:code:date` 키로 upsert. 저장했으면 True.
+def record_many(rows) -> int:
+    """rows = [(kind, code, date, direction, px, extra_dict), ...] 를 **한 번의 읽기·쓰기**로 upsert.
+    저장한 행 수를 돌려준다. 홈 1회·/api/outlook 1회가 종목마다 파일 전체를 다시 쓰면
+    12회 ≈ 0.48초(리뷰 실측 2026-11-02)라 호출부는 모아서 이걸 부른다.
 
-    px가 유한 양수가 아니면 기록하지 않는다(채점 불가한 기록은 소음).
+    px가 유한 양수가 아닌 행은 건너뛴다(채점 불가한 기록은 소음). 데모 모드면 0.
     쓰기마다 KEEP_DAYS 넘은 키를 버린다(키 끝의 날짜 기준, 정렬 없이 한 번 훑음).
     """
-    if settings.flow_mode == "demo" or not _finite_pos(px):
-        return False
+    if settings.flow_mode == "demo":
+        return 0
+    at = kst.now().isoformat(timespec="seconds")
+    new = {}
+    for kind, code, date, direction, px, extra in rows:
+        if _finite_pos(px):
+            e = {"dir": direction, "px": px, "at": at}
+            e.update(extra or {})
+            new["%s:%s:%s" % (kind, code, date)] = e
+    if not new:
+        return 0
     cutoff = (kst.today() - dt.timedelta(days=KEEP_DAYS)).isoformat()
-    entry = {"dir": direction, "px": px, "at": kst.now().isoformat(timespec="seconds")}
-    entry.update(extra)
     with _LOCK:
         d = load()
-        d["%s:%s:%s" % (kind, code, date)] = entry
+        d.update(new)
         d = {k: v for k, v in d.items() if k.rsplit(":", 1)[-1] >= cutoff}
         p = _path()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -62,7 +71,12 @@ def record(kind: str, code: str, date: str, direction: str, px, **extra) -> bool
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False)
         os.replace(tmp, p)
-    return True
+    return len(new)
+
+
+def record(kind: str, code: str, date: str, direction: str, px, **extra) -> bool:
+    """단건 upsert(record_many의 얇은 래퍼). 저장했으면 True."""
+    return record_many([(kind, code, date, direction, px, extra)]) == 1
 
 
 def scorecard(frames: dict, today=None, window_days: int = 60):

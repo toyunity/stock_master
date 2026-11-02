@@ -127,3 +127,25 @@ def test_score_window_falls_back_to_90_calendar_days_without_bars():
                "outlook:A:%s" % (TODAY - dt.timedelta(days=10)).isoformat(): {"dir": "up", "px": 1}}
     s = verdicts.score(entries, {}, TODAY)
     assert s["outlook"]["pending"] == 1     # 창 안 1건만 집계(pending), 창 밖은 제외
+
+
+def test_record_many_writes_file_once(monkeypatch):
+    """홈 1회·/api/outlook 1회에 종목 수만큼 전체 파일을 다시 쓰지 않는다(리뷰 2026-11-02:
+    12회 record ≈ 0.48초, async 경로에선 이벤트 루프가 그만큼 멈춘다)."""
+    import os
+    calls = {"n": 0}
+    real = os.replace
+
+    def counting(a, b):
+        calls["n"] += 1
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", counting)
+    rows = [("outlook", "000660", "2026-11-03", "up", 1, {}),
+            ("outlook", "005930", "2026-11-03", "down", 2, {"x": 1}),
+            ("outlook", "BAD", "2026-11-03", "up", None, {})]
+    assert verdicts.record_many(rows) == 2
+    assert calls["n"] == 1
+    d = verdicts.load()
+    assert set(d) == {"outlook:000660:2026-11-03", "outlook:005930:2026-11-03"}
+    assert d["outlook:005930:2026-11-03"]["x"] == 1
+    assert verdicts.record_many([]) == 0 and calls["n"] == 1     # 쓸 게 없으면 파일도 안 건드린다

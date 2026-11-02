@@ -976,3 +976,19 @@ def test_outlook_brief_default_does_not_record(monkeypatch, tmp_path):
     md = _outlook_env(monkeypatch, tmp_path, "us_closed")
     asyncio.run(md.get_outlook_brief(["000660"], client=object()))
     assert verdicts.load() == {} and not verdicts._path().exists()
+
+
+def test_outlook_brief_writes_ledger_once_for_all_codes(monkeypatch, tmp_path):
+    """종목마다 파일 전체를 다시 쓰지 않는다(리뷰 2026-11-02) — 2종목에 os.replace 1회."""
+    import os
+    from backend.flow import verdicts
+    md = _outlook_env(monkeypatch, tmp_path, "us_closed")
+    calls = {"n": 0}
+    real = os.replace
+
+    def counting(a, b):
+        calls["n"] += 1
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", counting)
+    asyncio.run(md.get_outlook_brief(["000660", "005930"], client=object(), ledger=True))
+    assert len(verdicts.load()) == 2 and calls["n"] == 1

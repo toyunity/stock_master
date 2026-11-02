@@ -745,14 +745,16 @@ async def get_outlook_brief(codes, client=None, ledger=False):
     if ledger:          # 비마스터 요청엔 휴장일 TR을 더 부르지 않는다
         now = kst.now()
         target = market_status.next_trade_date(now, await market_status._get_open_days(client, now))
-    out = {}
+    out, rows = {}, []
     for c in codes[:12]:
         o = await get_outlook(c, client)
         if o:
             reason = o["reasons"][0]["text"] if o["reasons"] else o["framing"]
             out[c] = {"direction": o["direction"], "reason": reason}
             if target and o.get("session") != "kr_open" and o.get("px"):
-                verdicts.record("outlook", c, target, o["direction"], o["px"])
+                rows.append(("outlook", c, target, o["direction"], o["px"], {}))
+    if rows:    # 파일 I/O는 한 번, 그리고 루프 밖에서(스레드) — SSE·WS가 같이 멈추지 않게
+        await asyncio.to_thread(verdicts.record_many, rows)
     return out
 
 

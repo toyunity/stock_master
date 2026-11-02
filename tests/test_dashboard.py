@@ -508,5 +508,7 @@ def test_scorecard_markup_present_only_with_data():
     without = render_dashboard([_stock()], [], "2026-11-02")
     assert 'id="sc-head"' in with_ and "renderScorecard" in with_ and '"scorecard": {' in with_
     assert '"scorecard": null' in without and "차트·뉴스·공시" in without
-    for cls in (".sc-good", ".sc-bad", ".sc-flat"):
+    # 두 클래스(.sc.sc-*)여야 한다 — 단일 클래스면 뒤에 오는 .seccap{color:--text-3}가 이겨서
+    # 톤 색이 영영 안 보인다(실렌더로 잡힘 2026-11-02)
+    for cls in (".sc.sc-good{", ".sc.sc-bad{", ".sc.sc-flat{"):
         assert cls in with_                              # theme.py 경유

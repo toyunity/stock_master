@@ -227,19 +227,29 @@ def build_dashboard(items, cache_dir, source=None, history_days=400,
                     q["change"] = (q["close"] - prev) / prev * 100
             pm[c] = q
     sc = None
-    if ledger:
+    if ledger:      # 국내만 — 미국 판정이 섞이면 헤더 '매매판정'이 시장 혼합 숫자가 되고, 미국 봉
+                    # 날짜가 60거래일 창 계산에 끼어 창이 짧아진다(리뷰 2026-11-02)
         from backend.flow import verdicts
+        px_map = dict(pm)
+        if kr and not _kr_market_open() and settings.flow_mode != "demo":
+            # 장외 pm은 universe 캐시(StockListing, 최대 12h 묵은 전일 종가)라 px로 쓰면 하루
+            # 어긋난 값이 장중 기록을 덮어쓴다(리뷰 2026-11-02) → 장부용으로만 KIS 현재가(=종가).
+            # 마스터 홈·장외·국내 ≤12콜. 화면 가격(pm)은 건드리지 않는다.
+            px_map.update(_live_prices(kr))
+        rows = []
         for s in signals:
             df = frames.get(s.code)
-            if df is None or len(df) == 0:
+            if mkt.get(s.code) != "KR" or df is None or len(df) == 0:
                 continue
             # 키 날짜는 마지막 봉(금·토·일에 열어도 같은 봉이면 같은 키). px는 봉이 아니라 pm —
             # 일봉 캐시는 첫 로드의 부분봉을 하루 종일 서빙한다(2026-11-02 실측,
             # `PriceAdapter._covers_end`)라 마지막 Close는 '오전 스냅샷'이고 사용자가 본 가격은 pm.
-            px = (pm.get(s.code) or {}).get("close") or float(df["Close"].iloc[-1])
-            verdicts.record("signal", s.code, df.index[-1].date().isoformat(), s.action, px,
-                            advice=s.advice)
-        sc = verdicts.scorecard(frames)     # 비마스터 홈엔 마스터 적중률이 보이면 안 된다 → ledger일 때만
+            px = (px_map.get(s.code) or {}).get("close") or float(df["Close"].iloc[-1])
+            rows.append(("signal", s.code, df.index[-1].date().isoformat(), s.action, px,
+                         {"advice": s.advice}))
+        verdicts.record_many(rows)          # 파일 I/O 1회
+        sc = verdicts.scorecard({c: f for c, f in frames.items() if mkt.get(c) == "KR"})
+        # ↑ 비마스터 홈엔 마스터 적중률이 보이면 안 된다 → ledger일 때만
     stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code),
                              nm, market=mkt.get(s.code, "KR"))
               for s in signals]
