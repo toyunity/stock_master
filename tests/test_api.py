@@ -115,3 +115,16 @@ def test_usprice_serves_outside_regular_hours_when_toss_is_on(tmp_path, monkeypa
     # 토스가 없으면 기존 게이트 그대로 — 정규장 밖은 204.
     monkeypatch.setattr(toss, "get_client", lambda: None)
     assert client.get("/api/usprice/AAPL").status_code == 204
+
+
+def test_outlook_route_passes_ledger_flag_for_master(monkeypatch):
+    """판정 장부는 마스터 계정이 본 판단만 — 라우트가 ledger 플래그를 넘긴다(2026-11-02)."""
+    from backend.api import marketdata as md
+    seen = {}
+
+    async def fake_brief(codes, client=None, ledger=False):
+        seen["ledger"] = ledger
+        return {}
+    monkeypatch.setattr(md, "get_outlook_brief", fake_brief)
+    assert client.get("/api/outlook").status_code == 200   # 인증 비활성 → default_account = 마스터
+    assert seen["ledger"] is True

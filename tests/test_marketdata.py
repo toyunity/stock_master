@@ -925,3 +925,54 @@ def test_night_tick_allows_a_large_but_plausible_overnight_move(monkeypatch):
     d = asyncio.run(md.get_futures(client=_FakeFut(), fetch=_nq_fail, now=_night()))
     assert abs(d["k200"]["price"] - 885.25 * 1.10) < 0.01
     md._night_tick = None
+
+
+# ---- 판정 장부: outlook 기록 (2026-11-02) ----
+
+def _outlook_env(monkeypatch, tmp_path, session):
+    from backend.api import marketdata as md
+    from backend.config import settings
+    from backend.flow import market_status
+    md._outlook_cache.clear()
+    monkeypatch.setattr(settings, "cache_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "flow_mode", "")
+
+    async def fake_signals(code, client):
+        return {"session": session, "is_semi": True, "px": 410000,
+                "us": {"sox_rate": 2.1, "nasdaq_rate": 1.0, "us_open": False},
+                "adr": None, "flow": None,
+                "momentum": {"rate": 1.0, "overheated": False}}
+    monkeypatch.setattr(md, "_gather_signals", fake_signals)
+
+    async def no_cal(client, now):
+        return None
+    monkeypatch.setattr(market_status, "_get_open_days", no_cal)
+    import datetime as dt
+    from backend.flow import kst
+    monkeypatch.setattr(kst, "now", lambda: dt.datetime(2026, 11, 6, 18, 0, tzinfo=kst.KST))  # 금 저녁
+    return md
+
+
+def test_outlook_brief_records_next_trade_date_for_master(monkeypatch, tmp_path):
+    from backend.flow import verdicts
+    md = _outlook_env(monkeypatch, tmp_path, "us_closed")
+    out = asyncio.run(md.get_outlook_brief(["000660"], client=object(), ledger=True))
+    assert out["000660"]["direction"] == "up"
+    d = verdicts.load()
+    assert list(d) == ["outlook:000660:2026-11-09"]           # 월요일
+    assert d["outlook:000660:2026-11-09"]["dir"] == "up"
+    assert d["outlook:000660:2026-11-09"]["px"] == 410000
+
+
+def test_outlook_brief_skips_kr_open_session(monkeypatch, tmp_path):
+    from backend.flow import verdicts
+    md = _outlook_env(monkeypatch, tmp_path, "kr_open")
+    asyncio.run(md.get_outlook_brief(["000660"], client=object(), ledger=True))
+    assert verdicts.load() == {}
+
+
+def test_outlook_brief_default_does_not_record(monkeypatch, tmp_path):
+    from backend.flow import verdicts
+    md = _outlook_env(monkeypatch, tmp_path, "us_closed")
+    asyncio.run(md.get_outlook_brief(["000660"], client=object()))
+    assert verdicts.load() == {} and not verdicts._path().exists()

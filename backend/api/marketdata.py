@@ -706,6 +706,7 @@ async def _gather_signals(code, client) -> dict:
         pass
     try:
         p = await client.price(code)
+        sig["px"] = (p or {}).get("price")      # 판정 장부의 기록 시점 가격(2026-11-02)
         if p and p.get("rate") is not None:
             sig["momentum"] = {"rate": p["rate"], "overheated": p["rate"] >= 10}
     except Exception:
@@ -725,21 +726,33 @@ async def get_outlook(code, client=None):
     if not any(sig.get(k) for k in ("us", "adr", "flow", "momentum")):
         return None
     o = nextday.outlook(sig)
+    o["px"] = sig.get("px")
     _outlook_cache[code] = (time.time(), o)
     return o
 
 
-async def get_outlook_brief(codes, client=None):
-    """관심종목 경량 내일 예상 — code→{direction,reason}. get_outlook 캐시 공유."""
+async def get_outlook_brief(codes, client=None, ledger=False):
+    """관심종목 경량 내일 예상 — code→{direction,reason}. get_outlook 캐시 공유.
+
+    ledger=True면 판정 장부(verdicts)에 기록 — 장부는 마스터 계정이 본 판단만(계정 3개,
+    2026-11-02 결정; 라우트가 플래그를 넘긴다). 장중(kr_open) 배지는 "오늘 흐름"이지 예측이
+    아니라 기록하지 않고, 키 날짜는 다음 개장일(outlook의 목표일 T)."""
+    from backend.flow import kst, market_status, verdicts
     client = client or _client()
     if client is None or not codes:
         return {}
+    target = None
+    if ledger:          # 비마스터 요청엔 휴장일 TR을 더 부르지 않는다
+        now = kst.now()
+        target = market_status.next_trade_date(now, await market_status._get_open_days(client, now))
     out = {}
     for c in codes[:12]:
         o = await get_outlook(c, client)
         if o:
             reason = o["reasons"][0]["text"] if o["reasons"] else o["framing"]
             out[c] = {"direction": o["direction"], "reason": reason}
+            if target and o.get("session") != "kr_open" and o.get("px"):
+                verdicts.record("outlook", c, target, o["direction"], o["px"])
     return out
 
 

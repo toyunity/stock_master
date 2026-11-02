@@ -462,8 +462,10 @@ def create_app(settings=None) -> FastAPI:
         """관심종목 내일 예상(경량 배지) — 대시보드가 fetch. code→{direction,reason}."""
         from backend.api import marketdata
         from backend.flow import userstore
-        codes = userstore.get_kr_codes(_req_email(request, settings))
-        return JSONResponse(await marketdata.get_outlook_brief(codes))
+        email = _req_email(request, settings)
+        codes = userstore.get_kr_codes(email)
+        return JSONResponse(await marketdata.get_outlook_brief(
+            codes, ledger=(email == userstore.default_account())))
 
     @app.get("/api/topview")
     async def topview_api():
