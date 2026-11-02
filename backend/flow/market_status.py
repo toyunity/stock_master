@@ -54,15 +54,23 @@ def _is_open_day(day, open_days) -> bool:
     return day.weekday() < 5
 
 
-def next_open_sec(now=None, open_days=None) -> int:
-    """다음 개장일 09:00 KST까지 남은 초. open_days(개장일 달력)가 있으면 공휴일도 스킵,
-    없으면 주말만 스킵(기존 동작)."""
-    now = now or kst.now()
+def next_trade_date(now, open_days=None) -> str:
+    """다음 개장일(ISO date) — 개장일이고 09:00 전이면 오늘, 그 외 다음 개장일.
+    open_days(개장일 달력)가 있으면 공휴일도 스킵, 없으면 주말만. 판정 장부(verdicts)의
+    outlook 목표일과 next_open_sec가 같은 걸음을 쓴다(2026-11-02)."""
     d = now.date()
     if not (_is_open_day(d, open_days) and now.hour < 9):
         d += dt.timedelta(days=1)
         while not _is_open_day(d, open_days):
             d += dt.timedelta(days=1)
+    return d.isoformat()
+
+
+def next_open_sec(now=None, open_days=None) -> int:
+    """다음 개장일 09:00 KST까지 남은 초. open_days(개장일 달력)가 있으면 공휴일도 스킵,
+    없으면 주말만 스킵(기존 동작)."""
+    now = now or kst.now()
+    d = dt.date.fromisoformat(next_trade_date(now, open_days))
     target = dt.datetime.combine(d, dt.time(9, 0), tzinfo=kst.KST)
     return max(60, int((target - now).total_seconds()))
 
