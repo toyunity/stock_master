@@ -65,6 +65,19 @@ def record(kind: str, code: str, date: str, direction: str, px, **extra) -> bool
     return True
 
 
+def scorecard(frames: dict, today=None, window_days: int = 60):
+    """홈 렌더용 — 장부를 읽어 frames(code→Close 열·DatetimeIndex DataFrame)로 채점. 장부가 비면 None."""
+    entries = load()
+    if not entries:
+        return None
+    closes = {}
+    for code, df in frames.items():
+        if df is None or len(df) == 0 or "Close" not in df:
+            continue
+        closes[code] = [(ts.date().isoformat(), float(c)) for ts, c in df["Close"].items() if c == c]
+    return score(entries, closes, today or kst.today(), window_days)
+
+
 HOLD_BARS = 10      # signal 채점 기간(봉) — backtest.py의 hold_days=10과 같은 잣대
 MIN_SAMPLE = 10     # 이 미만이면 비율 대신 "표본 부족 (n/10)" (표시용, dashboard.py가 참조)
 _UP = {"up": 1, "buy": 1, "down": -1, "sell": -1}   # 적중 방향. neutral/hold/그 외는 skip

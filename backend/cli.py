@@ -180,8 +180,11 @@ def _us_live_prices(syms) -> dict:
 
 def build_dashboard(items, cache_dir, source=None, history_days=400,
                     force: bool = False, with_news: bool = True, pwa: bool = False,
-                    chart_days: int = 120) -> str:
+                    chart_days: int = 120, ledger: bool = False) -> str:
     """대시보드(종목별 차트 + 검색 + 카드) 자기완결 HTML. CLI/웹앱 공용.
+
+    ledger=True면 매매 판정을 판정 장부(verdicts)에 기록하고 적중률(scorecard)을 베이크한다 —
+    마스터 계정이 본 판단만(라우트가 넘긴다, 2026-11-02). CLI·MCP·테스트 경로는 기본 False.
 
     items는 [{code, market}] 또는 코드 문자열 리스트(구 호출부 호환 — 전부 KR로 본다).
     US 티커도 카드가 된다: FDR이 OHLCV를 주므로 지표·신호·캔들이 국내와 같은 경로로
@@ -223,10 +226,24 @@ def build_dashboard(items, cache_dir, source=None, history_days=400,
                 if prev and q.get("close"):
                     q["change"] = (q["close"] - prev) / prev * 100
             pm[c] = q
+    sc = None
+    if ledger:
+        from backend.flow import verdicts
+        for s in signals:
+            df = frames.get(s.code)
+            if df is None or len(df) == 0:
+                continue
+            # 키 날짜는 마지막 봉(금·토·일에 열어도 같은 봉이면 같은 키). px는 봉이 아니라 pm —
+            # 일봉 캐시는 첫 로드의 부분봉을 하루 종일 서빙한다(2026-11-02 실측,
+            # `PriceAdapter._covers_end`)라 마지막 Close는 '오전 스냅샷'이고 사용자가 본 가격은 pm.
+            px = (pm.get(s.code) or {}).get("close") or float(df["Close"].iloc[-1])
+            verdicts.record("signal", s.code, df.index[-1].date().isoformat(), s.action, px,
+                            advice=s.advice)
+        sc = verdicts.scorecard(frames)     # 비마스터 홈엔 마스터 적중률이 보이면 안 된다 → ledger일 때만
     stocks = [assemble_stock(s, issues.get(s.code), candles.get(s.code), pm.get(s.code),
                              nm, market=mkt.get(s.code, "KR"))
               for s in signals]
-    return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa)
+    return render_dashboard(stocks, universe, end.isoformat(), pwa=pwa, scorecard=sc)
 
 
 def generate_report(codes, out_path, cache_dir, source=None, history_days=400,

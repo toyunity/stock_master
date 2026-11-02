@@ -135,9 +135,11 @@ def create_app(settings=None) -> FastAPI:
         from backend.flow import userstore
         # 카드 목록만 KR+US를 함께 쓴다(get_dash_items). /api/fundamentals·outlook·prices는
         # KIS 국내 TR이라 여전히 get_kr_codes다.
-        html = build_dashboard(userstore.get_dash_items(_req_email(request, settings)),
+        email = _req_email(request, settings)
+        html = build_dashboard(userstore.get_dash_items(email),
                                settings.cache_dir, history_days=settings.history_days,
-                               with_news=True, pwa=True)
+                               with_news=True, pwa=True,
+                               ledger=(email == userstore.default_account()))
         return HTMLResponse(html)
 
     @app.get("/live/{code}", response_class=HTMLResponse)

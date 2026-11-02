@@ -1008,10 +1008,10 @@ def _pulse_ext_js() -> str:
             "    if(hm>=930&&hm<%d){ return ['live','장후(NXT)']; }" % (start, end))
 
 
-def render_dashboard(stocks, universe, date: str, pwa: bool = False) -> str:
-    """assembled stocks + universe → 자기완결 HTML 문자열."""
+def render_dashboard(stocks, universe, date: str, pwa: bool = False, scorecard=None) -> str:
+    """assembled stocks + universe → 자기완결 HTML 문자열. scorecard는 판정 장부 적중률(마스터만, 없으면 null)."""
     lib = _LIB_PATH.read_text(encoding="utf-8")
-    data = {"date": date, "stocks": stocks, "universe": universe}
+    data = {"date": date, "stocks": stocks, "universe": universe, "scorecard": scorecard}
     # </script> 조기 종료 방지 + 잘못된 태그 해석 방지
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     refresh = '<button class="refresh" onclick="location.reload()">🔄 새로고침</button>' if pwa else ""
