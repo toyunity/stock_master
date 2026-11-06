@@ -104,6 +104,19 @@ Scriptable 위젯 스크립트와 계정별 읽기 토큰을 사파리에서 바
 
 ## 아키텍처
 
+```mermaid
+flowchart TB
+  C[아이폰 PWA · 홈 위젯<br/>Scriptable · 갤럭시 앱] -->|HTTPS| AUTH[인증 게이트<br/>Google OAuth2 + TOTP · 순수 ASGI]
+  AUTH --> API[FastAPI<br/>HTML 4 · JSON API 21 · SSE 1]
+  API --> FE[FlowEngine<br/>종목당 싱글턴 · lazy 기동/정지]
+  FE -->|REST 폴링| KIS[KisClient<br/>토큰 캐시 · 백오프]
+  FE -->|실시간| WS[wsbus<br/>웹소켓 연결 1개 단독 소유]
+  WS --> KISAPI[KIS 오픈API]
+  KIS --> KISAPI
+  KIS --> EXT[FinanceDataReader · DART · RSS · CNBC · 미 재무부]
+  CRON[launchd 배치<br/>collect-options] -.-> KISAPI
+```
+
 ```
 아이폰 사파리 / 홈화면 PWA  ·  위젯(아이폰 Scriptable · 갤럭시 앱 android/)
       │ HTTPS (Tailscale Funnel)
