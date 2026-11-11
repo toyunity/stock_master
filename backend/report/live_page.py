@@ -1486,9 +1486,11 @@ function render(S){
     const _ssq=SS.rows.map(r=>r.qty);
     document.getElementById('ss-spark').innerHTML=
       spark(_ssq,(_ssq[_ssq.length-1]-_ssq[0])>0?'var(--warn)':'var(--good)');
-    document.getElementById('ss-hist').innerHTML='<tr><th>날짜</th><th>공매도(주)</th><th>비중</th><th>종가</th></tr>'
+    // 평균가 = 그날 거래대금/체결량(아래 전문가 지표와 같은 식) — 종가 옆에 둬 날마다 비교되게
+    document.getElementById('ss-hist').innerHTML='<tr><th>날짜</th><th>공매도(주)</th><th>비중</th><th>평균가</th><th>종가</th></tr>'
       +SS.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.date.slice(5))+'</td><td>'+num(r.qty)
-      +'</td><td>'+(r.ratio||0).toFixed(2)+'%</td><td>'+won(r.close)+'</td></tr>').join('');
+      +'</td><td>'+(r.ratio||0).toFixed(2)+'%</td><td>'+won(r.qty>0&&r.value>0?r.value/r.qty:null)
+      +'</td><td>'+won(r.close)+'</td></tr>').join('');
     document.getElementById('ss-pro-value').textContent=eok(sl.value).replace('+','');
     // 공매도 평균가 = 거래대금/체결량. KIS 응답의 avrg_prc는 공식 라벨이 '평균가격'뿐이라
     // (2026-09-08 확인) 공매도 평균가라는 보장이 없어 직접 나눈다. 실응답 픽스처의 avrg_prc

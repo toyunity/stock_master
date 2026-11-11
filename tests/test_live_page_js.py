@@ -78,6 +78,7 @@ for (const id of ['est-fresh','sb-fresh','sb-note','sb-sig','mstate','pgm-fresh'
                   'wpill','hr-prev','hr-amt','hr-str'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 console.log('TXT:mb-tbl-html=' + String((els['mb-tbl']||{}).innerHTML));
+console.log('TXT:ss-hist-html=' + String((els['ss-hist']||{}).innerHTML));
 for (const id of ['ev-note','op-digest','pb-note','otpill','pgd-note','tv-note'])
   console.log('TXT:' + id + '=' + String((els[id]||{}).textContent));
 for (const id of ['ev-chips','rp-tbl','ta-bars'])
@@ -424,6 +425,23 @@ def test_render_js_shortsale_pill_marks_same_day_confirmation(tmp_path):
     _, texts = _run_harness(tmp_path, snap)
     assert "7/23" in texts["ss-pill"]
     assert "T+1" not in texts["ss-pill"] and "당일" in texts["ss-pill"]
+
+
+@needs_node
+def test_render_js_shortsale_table_shows_daily_avg_price(tmp_path):
+    # 공매도 일별 평균가(2026-11-11) = 그날 거래대금/체결량. 체결 0인 날은 나눌 수 없어 '–'.
+    snap = _full_snapshot()
+    snap["shortsale"] = {"rows": [
+        {"date": "2026-07-22", "qty": 0, "vol": 5000000, "ratio": 0.0,
+         "value": 0, "close": 1900000},
+        {"date": "2026-07-23", "qty": 272237, "vol": 6327408, "ratio": 4.30,
+         "value": 519243880000, "close": 1919000}], "asof": "2026-07-23"}
+    _, texts = _run_harness(tmp_path, snap)
+    html = texts["ss-hist-html"]
+    assert "<th>평균가</th>" in html
+    # 519,243,880,000 / 272,237 = 1,907,322.96 → 1,907,323원
+    assert "1,907,323원" in html
+    assert html.count("<td>–</td>") == 1
 
 
 @needs_node
